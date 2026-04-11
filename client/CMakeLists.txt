@@ -7,7 +7,7 @@ project(client VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick)
+find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat)
 
 
 qt_add_executable(appclient)
@@ -15,8 +15,20 @@ qt_add_executable(appclient)
 qt_add_qml_module(appclient
     URI client
     VERSION 1.0
-    SOURCES     main.cpp
-    QML_FILES   Main.qml
+    SOURCES main.cpp
+    SOURCES ApiClient.h ApiClient.cpp
+    SOURCES LocalDatabase.h LocalDatabase.cpp
+    SOURCES AuthManager.h AuthManager.cpp
+    QML_FILES qml/pages/LoginPage.qml
+    QML_FILES qml/pages/HomePage.qml
+    QML_FILES qml/pages/RecommendPage.qml
+    QML_FILES qml/pages/InventoryPage.qml
+    QML_FILES qml/pages/ProfilePage.qml
+    QML_FILES qml/Main.qml
+    QML_FILES qml/styles/Theme.qml
+    QML_FILES qml/components/CustomButton.qml
+    QML_FILES qml/components/RecipeCard.qml
+    QML_FILES qml/components/LoadingIndicator.qml
 )
 
 target_sources(appclient
@@ -35,6 +47,9 @@ target_compile_features(appclient PRIVATE cxx_std_23)
 target_link_libraries(appclient
     PRIVATE
         Qt6::Quick
+        Qt6::Sql
+        Qt6::Qml
+        Qt6::Core5Compat
 )
 
 set_target_properties(appclient PROPERTIES
@@ -51,6 +66,11 @@ install(TARGETS appclient
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# 设置 Theme.qml 为单例
+set_source_files_properties(qml/styles/Theme.qml PROPERTIES
+    QT_QML_SINGLETON_TYPE TRUE
 )
 
 
