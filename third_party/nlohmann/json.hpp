@@ -2480,8 +2480,8 @@ JSON_HEDLEY_INTEL_CL_VERSION_CHECK(2021,1,0)
 #endif
 #endif
 
-#ifndef JSON_HAS_EXPERIMENTAL_FILESYSTEM
-#define JSON_HAS_EXPERIMENTAL_FILESYSTEM 0
+#ifndef JSON_H
+#define JSON_H
 #endif
 
 #ifndef JSON_HAS_FILESYSTEM
@@ -4898,7 +4898,7 @@ namespace detail
             opt.emplace(j.template get<T>());
         }
     }
-    #endif // JSON_HAS_CPP_17
+#endif // JSON_H
 
     // overloads for basic_json template parameters
     template < typename BasicJsonType, typename ArithmeticType,

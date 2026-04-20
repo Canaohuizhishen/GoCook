@@ -3,16 +3,22 @@
 -- 执行方式：docker exec -i my_postgres psql -U gocook -d gocookdb < ./seed_test_data.sql
 
 -- 1. 插入测试用户（若已存在则不做任何操作）
-INSERT INTO users (username, password_hash)
-VALUES ('testuser', 'test123')
+INSERT INTO users (username, password_hash, email, phone, avatar_url)
+VALUES ('testuser', 'test123', 'test@example.com', '138****1234', '')
 ON CONFLICT (username) DO NOTHING;
 
--- 2. 插入示例菜谱（指定固定 id，冲突时更新）
-INSERT INTO recipes (id, name, description, ingredients, instructions, prep_time_minutes, cook_time_minutes, servings, tags)
+-- 2. 插入示例菜谱（指定固定 id，冲突时更新，新增 author_id 列）
+INSERT INTO recipes (id, name, description, ingredients, instructions, prep_time_minutes, cook_time_minutes, servings, tags, author_id)
 VALUES 
-    (1, '番茄炒蛋', '经典家常菜', '{"番茄", "鸡蛋", "盐", "糖"}', '1. 打散鸡蛋；2. 炒鸡蛋盛出；3. 炒番茄；4. 混合调味。', 5, 10, 2, '{"中式","快手"}'),
-    (2, '清炒西兰花', '健康低脂', '{"西兰花", "蒜", "盐"}', '1. 焯水西兰花；2. 爆香蒜；3. 翻炒调味。', 5, 5, 2, '{"低卡","素食"}'),
-    (3, '鸡胸肉沙拉', '高蛋白轻食', '{"鸡胸肉", "生菜", "小番茄", "橄榄油", "黑胡椒"}', '1. 鸡胸肉煮熟撕成丝；2. 蔬菜洗净切好；3. 混合淋上橄榄油和黑胡椒。', 10, 10, 1, '{"轻食","高蛋白"}')
+    (1, '番茄炒蛋', '经典家常菜',
+     '[{"name":"番茄","quantity":2,"unit":"个"},{"name":"鸡蛋","quantity":3,"unit":"个"},{"name":"盐","quantity":5,"unit":"克"},{"name":"糖","quantity":3,"unit":"克"}]',
+     '1. 打散鸡蛋；2. 炒鸡蛋盛出；3. 炒番茄；4. 混合调味。', 5, 10, 2, '{"中式","快手"}', 1),
+    (2, '清炒西兰花', '健康低脂',
+     '[{"name":"西兰花","quantity":1,"unit":"颗"},{"name":"蒜","quantity":3,"unit":"瓣"},{"name":"盐","quantity":3,"unit":"克"}]',
+     '1. 焯水西兰花；2. 爆香蒜；3. 翻炒调味。', 5, 5, 2, '{"低卡","素食"}', 1),
+    (3, '鸡胸肉沙拉', '高蛋白轻食',
+     '[{"name":"鸡胸肉","quantity":1,"unit":"块"},{"name":"生菜","quantity":3,"unit":"片"},{"name":"小番茄","quantity":5,"unit":"个"},{"name":"橄榄油","quantity":10,"unit":"毫升"},{"name":"黑胡椒","quantity":1,"unit":"克"}]',
+     '1. 鸡胸肉煮熟撕成丝；2. 蔬菜洗净切好；3. 混合淋上橄榄油和黑胡椒。', 10, 10, 1, '{"轻食","高蛋白"}', 1)
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description,
@@ -22,6 +28,7 @@ ON CONFLICT (id) DO UPDATE SET
     cook_time_minutes = EXCLUDED.cook_time_minutes,
     servings = EXCLUDED.servings,
     tags = EXCLUDED.tags,
+    author_id = EXCLUDED.author_id,
     updated_at = NOW();
 
 -- 3. 为测试用户添加/更新库存数据（动态获取 user_id）

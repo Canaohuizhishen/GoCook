@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat)
 
+# 自动设置所有推荐的策略
+qt_standard_project_setup()
 
 qt_add_executable(appclient)
 
@@ -16,9 +18,8 @@ qt_add_qml_module(appclient
     URI client
     VERSION 1.0
     SOURCES main.cpp
-    SOURCES ApiClient.h ApiClient.cpp
+    SOURCES HttpGoCookApi.h HttpGoCookApi.cpp
     SOURCES LocalDatabase.h LocalDatabase.cpp
-    SOURCES AuthManager.h AuthManager.cpp
     QML_FILES qml/pages/LoginPage.qml
     QML_FILES qml/pages/HomePage.qml
     QML_FILES qml/pages/RecommendPage.qml
@@ -29,7 +30,17 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/CustomButton.qml
     QML_FILES qml/components/RecipeCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
+    SOURCES ../contracts/include/gocook/DataModels.h
+    SOURCES ../contracts/include/gocook/IGoCookApi.h
+    SOURCES viewmodels/RecipeViewModel.cpp viewmodels/RecipeViewModel.h
+    SOURCES viewmodels/AuthViewModel.cpp viewmodels/AuthViewModel.h
+    SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
 )
+
+# 增加头文件查找路径
+target_include_directories(appclient PRIVATE ${CMAKE_SOURCE_DIR}/../contracts/include)
+target_include_directories(appclient PRIVATE ${CMAKE_SOURCE_DIR}/../third_party)
+target_include_directories(appclient PRIVATE ${CMAKE_SOURCE_DIR}/adapters)
 
 target_sources(appclient
     PRIVATE
@@ -66,11 +77,6 @@ install(TARGETS appclient
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-# 设置 Theme.qml 为单例
-set_source_files_properties(qml/styles/Theme.qml PROPERTIES
-    QT_QML_SINGLETON_TYPE TRUE
 )
 
 

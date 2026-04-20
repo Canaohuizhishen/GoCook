@@ -1,16 +1,16 @@
 #pragma once
 
 #include <QObject>
-#include "ApiClient.h"
+#include <gocook/IGoCookApi.h>
 #include "LocalDatabase.h"
 
 /**
  * @brief 用户认证管理类，处理登录、注册、登出及自动登录逻辑
  *
- * 管理用户登录状态，与 ApiClient 和 LocalDatabase 交互，实现 Token 的持久化。
+ * 管理用户登录状态，与 HttpGoCookApi 和 LocalDatabase 交互，实现 Token 的持久化。
  * 提供 QML 可用的属性和方法，便于界面绑定和调用。
  */
-class AuthManager : public QObject
+class AuthViewModel : public QObject
 {
     Q_OBJECT
     // 是否已登录
@@ -22,7 +22,7 @@ class AuthManager : public QObject
 
 public:
     // 构造函数
-    explicit AuthManager(QObject *parent = nullptr);
+    explicit AuthViewModel(IGoCookApi *api, QObject *parent = nullptr);
 
     // 获取登录状态
     bool loggedIn() const { return m_loggedIn; }
@@ -62,8 +62,8 @@ private:
     // 内部方法：设置登录状态并更新相关属性
     void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "", const QString &token = "");
 
-    // API 客户端实例
-    ApiClient *m_api;
+    // API 抽象接口指针
+    IGoCookApi *m_api;
     // 本地数据库单例
     LocalDatabase *m_db;
     // 登录状态标志

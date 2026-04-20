@@ -10,8 +10,8 @@ ApplicationWindow {
     height: 700
     title: qsTr("GoCook")
 
-    // 全局状态：从 C++ AuthManager 读取登录状态
-    property bool isLoggedIn: authManager.loggedIn
+    // 全局状态：从 C++ AuthViewModel 读取登录状态
+    property bool isLoggedIn: authViewModel.loggedIn
 
     // 主路由栈
     StackView {
@@ -35,9 +35,9 @@ ApplicationWindow {
 
     // 监听登录状态变化，自动切换页面
     Connections {
-        target: authManager
+        target: authViewModel
         function onLoggedInChanged() {
-            if (authManager.loggedIn) {
+            if (authViewModel.loggedIn) {
                 // 登录成功，切换到主页
                 stackView.replace(homePage)
             } else {

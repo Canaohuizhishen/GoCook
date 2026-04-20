@@ -10,7 +10,7 @@ Page {
         spacing: 20
 
         Label {
-            text: authManager.loggedIn ? "当前用户：" + authManager.username : "未登录"
+            text: authViewModel.loggedIn ? "当前用户：" + authViewModel.username : "未登录"
             font.pixelSize: 16
             Layout.alignment: Qt.AlignHCenter
         }
@@ -19,7 +19,7 @@ Page {
             text: qsTr("退出登录")
             Layout.alignment: Qt.AlignHCenter
             onClicked: {
-                authManager.logout()
+                authViewModel.logout()
             }
         }
     }
