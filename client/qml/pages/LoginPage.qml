@@ -39,7 +39,7 @@ Page {
             buttonType: CustomButton.ButtonType.Primary
             Layout.fillWidth: true
             onClicked: {
-                authManager.login(usernameField.text, passwordField.text)
+                authViewModel.login(usernameField.text, passwordField.text)
             }
         }
 
@@ -48,7 +48,7 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             Layout.fillWidth: true
             onClicked: {
-                authManager.registerUser(usernameField.text, passwordField.text)
+                authViewModel.registerUser(usernameField.text, passwordField.text)
             }
         }
 
@@ -62,7 +62,7 @@ Page {
 
         // 连接认证管理器的信号
         Connections {
-            target: authManager
+            target: authViewModel
             function onLoginFailed(error) {
                 errorLabel.text = error
             }

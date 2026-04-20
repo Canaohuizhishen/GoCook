@@ -1,9 +1,18 @@
-#include "./third_party/httplib/httplib.h"
+#include <httplib/httplib.h>
 #include <iostream>
 #include "DBConnection.h"
-#include "RecipeHandler.h"
-#include "UserHandler.h"
-#include "InventoryHandler.h"
+#include "services/RecipeServiceImpl.h"
+#include "services/UserServiceImpl.h"
+#include "services/InventoryServiceImpl.h"
+#include "services/MealPlanServiceImpl.h"
+#include "services/AnnouncementServiceImpl.h"
+#include "services/AdminServiceImpl.h"
+#include "handlers/RecipeHandler.h"
+#include "handlers/UserHandler.h"
+#include "handlers/InventoryHandler.h"
+#include "handlers/MealPlanHandler.h"
+#include "handlers/AnnouncementHandler.h"
+#include "handlers/AdminHandler.h"
 #include "Router.h"
 
 int main() {
@@ -14,12 +23,30 @@ int main() {
         return 1;
     }
 
-    RecipeHandler recipeHandler(db);
-    UserHandler userHandler(db);
-    InventoryHandler inventoryHandler(db);
-    // 后续创建其他 Handler
+    // 创建 Service 实现
+    RecipeServiceImpl recipeService(db);
+    UserServiceImpl userService(db);
+    InventoryServiceImpl inventoryService(db);
+    MealPlanServiceImpl mealPlanService(db);
+    AnnouncementServiceImpl announcementService(db);
+    AdminServiceImpl adminService(db);
 
-    Router router(db, recipeHandler, userHandler, inventoryHandler /*, userHandler, ... */);
+    // Handler 注入抽象
+    RecipeHandler recipeHandler(recipeService);
+    UserHandler userHandler(userService);
+    InventoryHandler inventoryHandler(inventoryService);
+    MealPlanHandler mealPlanHandler(mealPlanService);
+    AnnouncementHandler announcementHandler(announcementService);
+    AdminHandler adminHandler(adminService);
+
+    // 构造 Router，注入所有 Handler
+    Router router(db,
+                  recipeHandler,
+                  userHandler,
+                  inventoryHandler,
+                  mealPlanHandler,
+                  announcementHandler,
+                  adminHandler);
 
     httplib::Server svr;
     router.setupRoutes(svr);   // 一行注册所有路由

@@ -1,9 +1,10 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include "ApiClient.h"
+#include "HttpGoCookApi.h"
 #include "LocalDatabase.h"
-#include "AuthManager.h"
+#include "viewmodels/AuthViewModel.h"
+#include "viewmodels/RecipeViewModel.h"
 
 int main(int argc, char *argv[])
 {
@@ -19,12 +20,20 @@ int main(int argc, char *argv[])
         "Theme"                                     // QML 中的类型名
         );
 
-    // 创建实例（单例模式，LocalDatabase 和 ApiClient 由 AuthManager 内部创建）
-    AuthManager authManager;
+    // 创建具体 API 实现类实例，父对象设为 app 以确保生命周期
+    HttpGoCookApi *httpApi = new HttpGoCookApi(&app);
 
+    // 通过构造函数注入抽象接口，AuthViewModel 只依赖 GoCookApi 抽象
+    AuthViewModel authViewModel(httpApi);
+
+    // 创建 ViewModel 并注入 API 抽象接口
+    RecipeViewModel recipeVM(httpApi, &app);
+
+    // 暴露给 QML
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty("authManager", &authManager);
-    engine.rootContext()->setContextProperty("apiClient", authManager.findChild<ApiClient*>());
+    engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
+    engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
+    engine.rootContext()->setContextProperty("HttpGoCookApi", httpApi);
     engine.rootContext()->setContextProperty("localDB", LocalDatabase::instance());
 
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
@@ -39,7 +48,7 @@ int main(int argc, char *argv[])
     engine.load(url);
 
     // 启动后自动检测登录状态
-    authManager.checkAutoLogin();
+    authViewModel.checkAutoLogin();
 
     return app.exec();
 }
