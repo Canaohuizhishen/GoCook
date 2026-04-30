@@ -1,5 +1,5 @@
 #include "UserServiceImpl.h"
-#include <pqxx/pqxx>
+#include <jwt-cpp/jwt.h>
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -8,47 +8,21 @@
 using namespace gocook::models;
 using namespace gocook::services;
 
-std::string UserServiceImpl::base64Encode(const std::string& input) {
-    static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string result;
-    int i = 0;
-    unsigned char char_array_3[3];
-    unsigned char char_array_4[4];
-    int in_len = input.size();
-    const unsigned char* bytes_to_encode = reinterpret_cast<const unsigned char*>(input.c_str());
-
-    while (in_len--) {
-        char_array_3[i++] = *(bytes_to_encode++);
-        if (i == 3) {
-            char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-            char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-            char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
-            char_array_4[3] = char_array_3[2] & 0x3f;
-            for (i = 0; i < 4; i++)
-                result += chars[char_array_4[i]];
-            i = 0;
-        }
-    }
-    if (i) {
-        for (int j = i; j < 3; j++)
-            char_array_3[j] = '\0';
-        char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
-        char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
-        char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
-        char_array_4[3] = char_array_3[2] & 0x3f;
-        for (int j = 0; j < i + 1; j++)
-            result += chars[char_array_4[j]];
-        while (i++ < 3)
-            result += '=';
-    }
-    return result;
-}
-
 std::string UserServiceImpl::generateToken(int userId, const std::string& username) {
+    // 设置 Token 过期时间为 7 天后
     auto now = std::chrono::system_clock::now();
-    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
-    std::string raw = std::to_string(userId) + ":" + username + ":" + std::to_string(timestamp);
-    return base64Encode(raw);
+    auto exp = now + std::chrono::hours(24 * 7);
+
+    auto token = jwt::create()
+                     .set_issuer("GoCook")                                   // 签发者
+                     .set_type("JWS")                                        // 类型
+                     .set_payload_claim("userId", jwt::claim(std::to_string(userId))) // 用户ID
+                     .set_payload_claim("username", jwt::claim(username))   // 用户名
+                     .set_issued_at(now)                                     // 签发时间
+                     .set_expires_at(exp)                                    // 过期时间
+                     .sign(jwt::algorithm::hs256{jwt_secret});               // 使用 HMAC-SHA256 签名
+
+    return token;
 }
 
 bool UserServiceImpl::validatePassword(const std::string& plain, const std::string& storedHash) {

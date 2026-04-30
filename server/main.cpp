@@ -13,6 +13,7 @@
 #include "handlers/MealPlanHandler.h"
 #include "handlers/AnnouncementHandler.h"
 #include "handlers/AdminHandler.h"
+#include "auth_middleware.h"
 #include "Router.h"
 
 int main() {
@@ -23,6 +24,9 @@ int main() {
         return 1;
     }
 
+    // 创建认证中间件，后续通过构造函数注入给各 Handler
+    AuthMiddleware authMiddleware("GoCook-Project-Secret-Key-Change-Me-In-Production");
+
     // 创建 Service 实现
     RecipeServiceImpl recipeService(db);
     UserServiceImpl userService(db);
@@ -31,13 +35,13 @@ int main() {
     AnnouncementServiceImpl announcementService(db);
     AdminServiceImpl adminService(db);
 
-    // Handler 注入抽象
-    RecipeHandler recipeHandler(recipeService);
-    UserHandler userHandler(userService);
-    InventoryHandler inventoryHandler(inventoryService);
-    MealPlanHandler mealPlanHandler(mealPlanService);
+    // 创建 Handler，注入服务抽象与认证中间件
+    RecipeHandler recipeHandler(recipeService, authMiddleware);
+    UserHandler userHandler(userService, authMiddleware);
+    InventoryHandler inventoryHandler(inventoryService, authMiddleware);
+    MealPlanHandler mealPlanHandler(mealPlanService, authMiddleware);
     AnnouncementHandler announcementHandler(announcementService);
-    AdminHandler adminHandler(adminService);
+    AdminHandler adminHandler(adminService, authMiddleware);
 
     // 构造 Router，注入所有 Handler
     Router router(db,
@@ -49,7 +53,7 @@ int main() {
                   adminHandler);
 
     httplib::Server svr;
-    router.setupRoutes(svr);   // 一行注册所有路由
+    router.setupRoutes(svr);
 
     std::cout << "Server started on http://localhost:8080\n";
     svr.listen("0.0.0.0", 8080);
