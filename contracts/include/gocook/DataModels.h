@@ -52,6 +52,13 @@ namespace gocook::models {
         std::string message;
     };
 
+    /// 从 JWT 中解析出的用户信息（用于服务端认证中间件）
+    struct TokenInfo {
+        int userId = 0;
+        std::string username;
+        bool valid = false;
+    };
+
     // ==============================================
     // 用户信息
     // ==============================================

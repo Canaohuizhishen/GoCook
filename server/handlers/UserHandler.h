@@ -4,12 +4,14 @@
 #include <gocook/IServices.h>          // 依赖抽象 IUserService
 #include <nlohmann/json.hpp>
 #include <string>
+#include "../auth_middleware.h"
 
 using json = nlohmann::json;
 
 class UserHandler {
 public:
-    explicit UserHandler(gocook::services::IUserService& service);
+    explicit UserHandler(gocook::services::IUserService& service,
+                         AuthMiddleware& auth);
 
     // 注册新用户（公开接口）
     void registerUser(const httplib::Request& req, httplib::Response& res);
@@ -31,4 +33,5 @@ public:
 
 private:
     gocook::services::IUserService& service_;   // 业务抽象，不接触数据库
+    AuthMiddleware& auth_;                     // 认证中间件
 };

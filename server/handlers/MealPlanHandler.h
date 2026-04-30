@@ -3,10 +3,12 @@
 #include <httplib/httplib.h>
 #include <gocook/IServices.h>          // 依赖抽象 IMealPlanService
 #include <nlohmann/json.hpp>
+#include "../auth_middleware.h"
 
 class MealPlanHandler {
 public:
-    explicit MealPlanHandler(gocook::services::IMealPlanService& service);
+    explicit MealPlanHandler(gocook::services::IMealPlanService& service,
+                             AuthMiddleware& auth);
 
     // 创建膳食计划项（需认证）
     void createMealPlan(const httplib::Request& req, httplib::Response& res);
@@ -23,4 +25,5 @@ public:
 
 private:
     gocook::services::IMealPlanService& service_;   // 业务抽象
+    AuthMiddleware& auth_;                         // 认证中间件
 };

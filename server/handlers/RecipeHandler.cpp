@@ -1,5 +1,5 @@
 #include "RecipeHandler.h"
-#include "../auth_utils.h"
+#include "../auth_middleware.h"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 
@@ -33,7 +33,8 @@ static json toJson(const PagedRecipes& paged) {
     return resp;
 }
 
-RecipeHandler::RecipeHandler(IRecipeService& service) : service_(service) {}
+RecipeHandler::RecipeHandler(IRecipeService& service, AuthMiddleware& auth)
+    : service_(service), auth_(auth) {}
 
 void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Response& res) {
     try {
@@ -61,6 +62,13 @@ void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response
 }
 
 void RecipeHandler::getRecommendedRecipes(const httplib::Request& req, httplib::Response& res) {
+    // 需要认证
+    auto info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     // TODO: 实现智能推荐菜谱（需认证、分页）
     throw gocook::services::ServiceException("Not implemented");
 }
@@ -81,26 +89,61 @@ void RecipeHandler::getRecipeRatings(const httplib::Request& req, httplib::Respo
 }
 
 void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response& res) {
+    // 需要认证
+    auto info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     // TODO: 实现菜谱投稿（需认证、请求体解析）
     throw gocook::services::ServiceException("Not implemented");
 }
 
 void RecipeHandler::getMySubmittedRecipes(const httplib::Request& req, httplib::Response& res) {
+    // 需要认证
+    auto info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     // TODO: 实现获取我的投稿列表（需认证、分页）
     throw gocook::services::ServiceException("Not implemented");
 }
 
 void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& res) {
+    // 需要认证
+    auto info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     // TODO: 实现编辑未审核菜谱（需认证、路径参数 recipeId、请求体）
     throw gocook::services::ServiceException("Not implemented");
 }
 
 void RecipeHandler::toggleFavorite(const httplib::Request& req, httplib::Response& res) {
+    // 需要认证
+    auto info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     // TODO: 实现收藏/取消收藏（需认证、路径参数 recipeId）
     throw gocook::services::ServiceException("Not implemented");
 }
 
 void RecipeHandler::rateRecipe(const httplib::Request& req, httplib::Response& res) {
+    // 需要认证
+    auto info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     // TODO: 实现评分与评论（需认证、路径参数 recipeId、请求体）
     throw gocook::services::ServiceException("Not implemented");
 }

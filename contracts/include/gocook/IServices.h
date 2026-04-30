@@ -1,4 +1,3 @@
-// IServices.h （仅修改 IInventoryService::upsertInventory 返回类型）
 #pragma once
 
 #include <gocook/DataModels.h>

@@ -38,7 +38,7 @@ public:
 private:
     DBConnection& db_;
 
-    // 生成简单 token（生产环境应使用 JWT 或随机字符串 + 服务端存储）
+    // 生成 JWT Token
     std::string generateToken(int userId, const std::string& username);
 
     // 验证用户名密码（明文比较，后续应改为 bcrypt 验证）
@@ -47,5 +47,6 @@ private:
     // 哈希密码（当前直接返回原字符串，后续替换为 bcrypt）
     std::string hashPassword(const std::string& plain);
 
-    static std::string base64Encode(const std::string& input);
+    // JWT 签名密钥，生产环境应从安全配置中读取
+    const std::string jwt_secret = "GoCook-Project-Secret-Key-Change-Me-In-Production";
 };

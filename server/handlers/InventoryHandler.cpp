@@ -1,28 +1,21 @@
-// InventoryHandler.cpp
 #include "InventoryHandler.h"
-#include "../auth_utils.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <stdexcept>
 
 using json = nlohmann::json;
+using namespace gocook::models;
 
-InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service)
-    : service_(service) {}
+InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
+                                   AuthMiddleware& auth)
+    : service_(service), auth_(auth) {}
 
 void InventoryHandler::getInventory(const httplib::Request& req, httplib::Response& res) {
-    // ---------- Token 验证 ----------
-    auto auth = req.get_header_value("Authorization");
-    if (auth.empty() || auth.find("Bearer ") != 0) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid Authorization header"}}.dump();
-        return;
-    }
-    std::string token = auth.substr(7);  // 去掉 "Bearer "
-    TokenInfo info = verifyToken(token);
+    // ---------- 统一 Token 验证 ----------
+    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
         res.status = 401;
-        res.body = json{{"error", "Invalid token"}}.dump();
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
         return;
     }
 
@@ -34,10 +27,8 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
         size = std::stoi(req.get_param_value("size"));
 
     try {
-        // 调用抽象服务，获得分页结果
         auto paged = service_.getInventory(info.userId, page, size);
 
-        // 序列化为 API 规范格式
         json resp;
         resp["data"] = json::array();
         for (const auto& item : paged.data) {
@@ -71,24 +62,16 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
 }
 
 void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Response& res) {
-    // ---------- Token 验证 ----------
-    auto auth = req.get_header_value("Authorization");
-    if (auth.empty() || auth.find("Bearer ") != 0) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid Authorization header"}}.dump();
-        return;
-    }
-    std::string token = auth.substr(7);
-    TokenInfo info = verifyToken(token);
+    // ---------- 统一 Token 验证 ----------
+    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
         res.status = 401;
-        res.body = json{{"error", "Invalid token"}}.dump();
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
         return;
     }
 
     try {
         json reqJson = json::parse(req.body);
-        // 必需字段检查
         if (!reqJson.contains("ingredient_name") || !reqJson.contains("quantity") || !reqJson.contains("unit")) {
             res.status = 400;
             res.body = json{{"error", "Missing required fields: ingredient_name, quantity, unit"}}.dump();
@@ -102,7 +85,6 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
         if (reqJson.contains("expiry_date"))
             item.expiry_date = reqJson["expiry_date"];
 
-        // 委托给 Service
         int newId = service_.upsertInventory(info.userId, item);
 
         res.status = 200;
@@ -117,24 +99,14 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
 }
 
 void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Response& res) {
-    // ---------- Token 验证 ----------
-    auto auth = req.get_header_value("Authorization");
-    if (auth.empty() || auth.find("Bearer ") != 0) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid Authorization header"}}.dump();
-        return;
-    }
-    std::string token = auth.substr(7);
-    TokenInfo info = verifyToken(token);
+    // ---------- 统一 Token 验证 ----------
+    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
         res.status = 401;
-        res.body = json{{"error", "Invalid token"}}.dump();
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
         return;
     }
 
-    // ---------- 从路径提取 item_id ----------
-    // 路由注册时需使用正则捕获，例如：/api/inventory/(\d+)
-    // 这里的 req.matches[1] 即为捕获到的 item_id 字符串
     if (req.matches.size() < 2) {
         res.status = 400;
         res.body = json{{"error", "Missing item_id in path"}}.dump();
@@ -163,13 +135,31 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
 }
 
 void InventoryHandler::getShoppingList(const httplib::Request& req, httplib::Response& res) {
+    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     throw gocook::services::ServiceException("Not implemented");
 }
 
 void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httplib::Response& res) {
+    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     throw gocook::services::ServiceException("Not implemented");
 }
 
 void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httplib::Response& res) {
+    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
+    if (!info.valid) {
+        res.status = 401;
+        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        return;
+    }
     throw gocook::services::ServiceException("Not implemented");
 }
