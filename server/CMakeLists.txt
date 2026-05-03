@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.1.1)
-project(server LANGUAGES CXX)
+project(server LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,6 +36,7 @@ add_executable(server
     ../third_party/picojson/picojson.h
     ../third_party/jwt-cpp/base.h
     ../third_party/jwt-cpp/traits/kazuho-picojson/defaults.h ../third_party/jwt-cpp/traits/kazuho-picojson/traits.h
+    ../third_party/bcrypt/crypt_blowfish.c ../third_party/bcrypt/crypt_blowfish.h
 )
 
 # 增加头文件查找路径

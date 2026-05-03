@@ -4,6 +4,11 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include <cstring>
+#include "bcrypt/crypt_blowfish.h"   // 基于 Blowfish 算法的安全密码哈希（Openwall bcrypt 实现）
+
+// bcrypt 输出缓冲区安全大小（实际输出约 60 字节）
+#define BCRYPT_OUTPUT_SIZE 128
 
 using namespace gocook::models;
 using namespace gocook::services;
@@ -25,14 +30,46 @@ std::string UserServiceImpl::generateToken(int userId, const std::string& userna
     return token;
 }
 
-bool UserServiceImpl::validatePassword(const std::string& plain, const std::string& storedHash) {
-    // 当前为明文比较（后续应替换为 bcrypt 验证）
-    return plain == storedHash;
+// 使用 crypt_blowfish 生成盐和哈希
+std::string UserServiceImpl::hashPassword(const std::string& plain) {
+    // 1. 生成 16 字节随机盐值
+    char random_bytes[16];
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(0, 255);
+    for (int i = 0; i < 16; ++i) {
+        random_bytes[i] = static_cast<char>(distrib(gen));
+    }
+
+    // 2. 调用 _crypt_gensalt_blowfish_rn 生成标准格式的盐串，如 "$2a$10$..."
+    char salt[BCRYPT_OUTPUT_SIZE];
+    char *salt_result = _crypt_gensalt_blowfish_rn("$2a$", 10, random_bytes, 16, salt, sizeof(salt));
+    if (!salt_result) {
+        throw ServiceException("Failed to generate password salt");
+    }
+
+    // 3. 用 _crypt_blowfish_rn 计算哈希
+    char hash[BCRYPT_OUTPUT_SIZE];
+    char *hash_result = _crypt_blowfish_rn(plain.c_str(), salt, hash, sizeof(hash));
+    if (!hash_result) {
+        throw ServiceException("Failed to hash password");
+    }
+
+    return std::string(hash_result);
 }
 
-std::string UserServiceImpl::hashPassword(const std::string& plain) {
-    // 当前直接返回明文（不安全，后续应替换为 bcrypt）
-    return plain;
+bool UserServiceImpl::validatePassword(const std::string& plain, const std::string& hash) {
+    char output[BCRYPT_OUTPUT_SIZE];
+    char *result = _crypt_blowfish_rn(plain.c_str(), hash.c_str(), output, sizeof(output));
+    if (!result) {
+        return false;
+    }
+    // 常量时间比较，防止时序攻击
+    int diff = 0;
+    for (size_t i = 0; i < hash.size(); ++i) {
+        diff |= (static_cast<unsigned char>(result[i]) ^ static_cast<unsigned char>(hash[i]));
+    }
+    return diff == 0;
 }
 
 // ------------------ IUserService 接口实现 ------------------
@@ -41,7 +78,6 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     try {
         pqxx::work txn(db_.getConn());
 
-        // 使用新式 exec 配合 quote，避免弃用 exec_params
         pqxx::result check = txn.exec(
             "SELECT id FROM users WHERE username = " + txn.quote(request.username));
         if (!check.empty()) {

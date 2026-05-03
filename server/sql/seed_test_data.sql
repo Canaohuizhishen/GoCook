@@ -4,7 +4,8 @@
 
 -- 1. 插入测试用户（若已存在则不做任何操作）
 INSERT INTO users (username, password_hash, email, phone, avatar_url)
-VALUES ('testuser', 'test123', 'test@example.com', '138****1234', '')
+-- 密码：test123
+VALUES ('testuser', '$2a$10$AabeJArJr8/VkhmM9kWaxe4qc01p54NXg7QVAYYAVq7I136EVp1T6', 'test@example.com', '138****1234', '')
 ON CONFLICT (username) DO NOTHING;
 
 -- 2. 插入示例菜谱（指定固定 id，冲突时更新，新增 author_id 列）
