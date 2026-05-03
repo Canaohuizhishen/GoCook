@@ -13,9 +13,40 @@ Router::Router(DBConnection& db,
     inventoryHandler_(inventoryHandler),
     mealPlanHandler_(mealPlanHandler),
     announcementHandler_(announcementHandler),
-    adminHandler_(adminHandler) {}
+    adminHandler_(adminHandler),
+    rateLimiter_(createRateLimiterRules())   // 通过工厂函数创建，业务规则外置
+{
+}
+
+std::vector<RateLimiter::Rule> Router::createRateLimiterRules()
+{
+    using namespace std::chrono;
+    return {
+        // 认证接口：严格限制，每分钟最多 5 次，防止暴力破解
+        {"/api/login",    seconds(60), 5},
+        {"/api/register", seconds(60), 5},
+        // 管理后台所有接口：每分钟 30 次（管理员操作频率较低，但安全要求更高）
+        {"/api/admin",    seconds(60), 30},
+        // 其他所有 API 接口：每分钟 60 次（适合普通用户正常使用）
+        {"/api",          seconds(60), 60}
+    };
+}
 
 void Router::setupRoutes(httplib::Server& svr) {
+    // 注册全局频率限制中间件
+    svr.set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
+        std::string ip = req.remote_addr;
+        if (ip.empty()) {
+            ip = "127.0.0.1";   // 本地调试保护
+        }
+        if (!rateLimiter_.isAllowed(ip, req.path)) {
+            res.status = 429;
+            res.set_content(R"({"error":"Too many requests. Please try again later."})", "application/json");
+            return httplib::Server::HandlerResponse::Handled;
+        }
+        return httplib::Server::HandlerResponse::Unhandled;
+    });
+
     // 根路径（公开）
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
         std::string html = R"(
