@@ -222,8 +222,9 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Get("/api/inventory/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
             pqxx::work txn(db_.getConn());
-            pqxx::result userRes = txn.exec(
-                "SELECT id FROM users WHERE username = " + txn.quote("testuser"));
+            // 参数化查询避免注入
+            pqxx::result userRes = txn.exec_params(
+                "SELECT id FROM users WHERE username = $1", "testuser");
             if (userRes.empty()) {
                 res.status = 404;
                 res.body = json{{"error", "Test user 'testuser' not found. Please run seed_test_data.sql"}}.dump();
@@ -231,9 +232,10 @@ void Router::setupRoutes(httplib::Server& svr) {
             }
             int testUserId = userRes[0]["id"].as<int>();
 
-            auto rows = txn.exec(
+            auto rows = txn.exec_params(
                 "SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
-                "FROM inventory WHERE user_id = " + txn.quote(testUserId) + " ORDER BY added_at DESC");
+                "FROM inventory WHERE user_id = $1 ORDER BY added_at DESC",
+                testUserId);
 
             json result = json::array();
             for (const auto& row : rows) {
@@ -262,14 +264,14 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Get("/api/users/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
             pqxx::work txn(db_.getConn());
-            // 查询密码哈希字段
+            // 无拼接的查询
             pqxx::result rows = txn.exec("SELECT id, username, password_hash, created_at FROM users ORDER BY id");
             json users = json::array();
             for (const auto& row : rows) {
                 json u;
                 u["id"] = row["id"].as<int>();
                 u["username"] = row["username"].c_str();
-                // 新增：输出密码哈希
+                // 输出密码哈希
                 if (!row["password_hash"].is_null())
                     u["password_hash"] = row["password_hash"].c_str();
                 else

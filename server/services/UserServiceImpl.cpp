@@ -78,16 +78,16 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     try {
         pqxx::work txn(db_.getConn());
 
-        pqxx::result check = txn.exec(
-            "SELECT id FROM users WHERE username = " + txn.quote(request.username));
+        pqxx::result check = txn.exec_params(
+            "SELECT id FROM users WHERE username = $1", request.username);
         if (!check.empty()) {
             throw ServiceException("Username already exists");
         }
 
         std::string hashed = hashPassword(request.password);
-        txn.exec(
-            "INSERT INTO users (username, password_hash) VALUES (" +
-            txn.quote(request.username) + ", " + txn.quote(hashed) + ")");
+        txn.exec_params(
+            "INSERT INTO users (username, password_hash) VALUES ($1, $2)",
+            request.username, hashed);
         txn.commit();
     } catch (const std::exception& e) {
         throw ServiceException(std::string("Database error: ") + e.what());
@@ -97,8 +97,9 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
 LoginResponse UserServiceImpl::login(const LoginRequest& request) {
     try {
         pqxx::work txn(db_.getConn());
-        pqxx::result result = txn.exec(
-            "SELECT id, password_hash FROM users WHERE username = " + txn.quote(request.username));
+        pqxx::result result = txn.exec_params(
+            "SELECT id, password_hash FROM users WHERE username = $1",
+            request.username);
 
         if (result.empty()) {
             throw ServiceException("Invalid username or password");
