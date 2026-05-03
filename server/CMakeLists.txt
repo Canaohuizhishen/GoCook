@@ -37,6 +37,7 @@ add_executable(server
     ../third_party/jwt-cpp/base.h
     ../third_party/jwt-cpp/traits/kazuho-picojson/defaults.h ../third_party/jwt-cpp/traits/kazuho-picojson/traits.h
     ../third_party/bcrypt/crypt_blowfish.c ../third_party/bcrypt/crypt_blowfish.h
+    RateLimiter.h RateLimiter.cpp
 )
 
 # 增加头文件查找路径
