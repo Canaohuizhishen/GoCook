@@ -41,11 +41,11 @@ private:
     // 生成 JWT Token
     std::string generateToken(int userId, const std::string& username);
 
-    // 验证用户名密码（明文比较，后续应改为 bcrypt 验证）
-    bool validatePassword(const std::string& plain, const std::string& storedHash);
-
-    // 哈希密码（当前直接返回原字符串，后续替换为 bcrypt）
+    // 使用 bcrypt 对密码进行哈希（返回完整的 bcrypt 哈希串，包含盐）
     std::string hashPassword(const std::string& plain);
+
+    // 使用 bcrypt 验证明文密码与哈希值是否匹配
+    bool validatePassword(const std::string& plain, const std::string& hash);
 
     // JWT 签名密钥，生产环境应从安全配置中读取
     const std::string jwt_secret = "GoCook-Project-Secret-Key-Change-Me-In-Production";

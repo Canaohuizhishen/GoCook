@@ -262,12 +262,18 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Get("/api/users/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
             pqxx::work txn(db_.getConn());
-            pqxx::result rows = txn.exec("SELECT id, username, created_at FROM users ORDER BY id");
+            // 查询密码哈希字段
+            pqxx::result rows = txn.exec("SELECT id, username, password_hash, created_at FROM users ORDER BY id");
             json users = json::array();
             for (const auto& row : rows) {
                 json u;
                 u["id"] = row["id"].as<int>();
                 u["username"] = row["username"].c_str();
+                // 新增：输出密码哈希
+                if (!row["password_hash"].is_null())
+                    u["password_hash"] = row["password_hash"].c_str();
+                else
+                    u["password_hash"] = nullptr;
                 u["created_at"] = row["created_at"].c_str();
                 users.push_back(u);
             }
