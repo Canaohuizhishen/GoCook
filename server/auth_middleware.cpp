@@ -27,6 +27,7 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
         // 5. 提取负荷中的用户信息
         info.userId = std::stoi(decoded.get_payload_claim("userId").as_string());
         info.username = decoded.get_payload_claim("username").as_string();
+        info.role = decoded.get_payload_claim("role").as_string();   // 提取角色
         info.valid = true;
 
     } catch (const std::exception& e) {

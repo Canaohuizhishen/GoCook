@@ -34,7 +34,7 @@ public:
     // 登录方法，供 QML 调用
     Q_INVOKABLE void login(const QString &username, const QString &password);
     // 注册方法，供 QML 调用
-    Q_INVOKABLE void registerUser(const QString &username, const QString &password);
+    Q_INVOKABLE void registerUser(const QString &username, const QString &password, const QString &email);
     // 登出方法，供 QML 调用
     Q_INVOKABLE void logout();
     // 检查自动登录状态，供 QML 调用

@@ -12,17 +12,30 @@ public:
     int upsertInventory(int userId, const gocook::models::UpsertInventoryRequest& item) override;
     void deleteInventoryItem(int userId, int itemId) override;
 
-    // 以下方法暂时未实现（骨架）
-    gocook::models::ShoppingList getShoppingList(int userId,
-                                                 std::optional<int> planId = std::nullopt) override {
+    // 购物清单（多清单模型）
+    std::vector<gocook::models::ShoppingListSummary> getShoppingLists(int userId) override {
         throw gocook::services::ServiceException("Not implemented");
     }
-    void updateShoppingListItem(int userId, int itemId,
+    int createShoppingList(int userId, const gocook::models::CreateShoppingListRequest& request) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+    gocook::models::ShoppingList getShoppingListDetail(int userId, int listId) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+    void deleteShoppingList(int userId, int listId) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+    void updateShoppingListItem(int userId, int listId, int itemId,
                                 const gocook::models::UpdateShoppingItemRequest& request) override {
         throw gocook::services::ServiceException("Not implemented");
     }
     gocook::models::BatchShoppingResponse batchAddShoppingItems(
-        int userId, const std::vector<gocook::models::BatchShoppingItem>& items) override {
+        int userId, int listId,
+        const std::vector<gocook::models::BatchShoppingItem>& items) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+    std::string exportShoppingList(int userId, int listId,
+                                   const std::string& format) override {
         throw gocook::services::ServiceException("Not implemented");
     }
 

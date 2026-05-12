@@ -14,48 +14,68 @@ public:
     gocook::models::PagedRecipes searchRecipes(const std::string& keyword,
                                                int page, int size,
                                                const nlohmann::json& filters) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     gocook::models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
                                                                   int page, int size) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     gocook::models::RecipeDetail getRecipeDetail(int recipeId) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     std::vector<gocook::models::RecipeVideo> getRecipeVideos(int recipeId) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     gocook::models::PagedRatings getRecipeRatings(int recipeId, int page, int size) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     gocook::models::SubmitRecipeResponse submitRecipe(int userId,
                                                       const gocook::models::SubmitRecipeRequest& data) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     gocook::models::PagedMyRecipes getMySubmittedRecipes(int userId,
-                                                         int page, int size) override {
-        throw std::runtime_error("Not implemented");
+                                                         int page, int size,
+                                                         const std::string& status = "") override {
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     void editRecipe(int userId, int recipeId,
                     const gocook::models::EditRecipeRequest& updates) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
     }
 
-    void toggleFavorite(int userId, int recipeId) override {
-        throw std::runtime_error("Not implemented");
+    void toggleFavorite(int userId, int recipeId,
+                        std::optional<int> groupId = std::nullopt,
+                        std::optional<bool> isPublic = std::nullopt) override {
+        throw gocook::services::ServiceException("Not implemented");
     }
 
     void rateRecipe(int userId, int recipeId,
                     const gocook::models::RateRecipeRequest& request) override {
-        throw std::runtime_error("Not implemented");
+        throw gocook::services::ServiceException("Not implemented");
+    }
+
+    void updateRating(int userId, int recipeId, int ratingId,
+                      const gocook::models::RateRecipeRequest& request) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+
+    void deleteRating(int userId, int recipeId, int ratingId) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+
+    gocook::models::PagedUserRatings getMyRatings(int userId, int page, int size) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+
+    gocook::models::NutritionReport getRecipeNutrition(int recipeId) override {
+        throw gocook::services::ServiceException("Not implemented");
     }
 
 private:

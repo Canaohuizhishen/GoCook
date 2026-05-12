@@ -61,13 +61,13 @@ namespace DataMapper {
         return map;
     }
 
-    // MissingIngredient：含有 suggested_quantity 而非 quantity
+    // MissingIngredient：字段已修正为 quantity，对齐 API 契约
     QVariantMap toMap(const gocook::models::MissingIngredient& ingredient)
     {
         QVariantMap map;
-        map["name"]               = QString::fromStdString(ingredient.name);
-        map["suggested_quantity"]  = ingredient.suggested_quantity;
-        map["unit"]               = QString::fromStdString(ingredient.unit);
+        map["name"]     = QString::fromStdString(ingredient.name);
+        map["quantity"] = ingredient.quantity;
+        map["unit"]     = QString::fromStdString(ingredient.unit);
         return map;
     }
 
@@ -160,6 +160,44 @@ namespace DataMapper {
         return item;
     }
 
+    // ---------- 营养报告相关（v2.8 新增） ----------
+
+    QVariantMap toMap(const gocook::models::NutritionBreakdownItem& item)
+    {
+        QVariantMap map;
+        map["name"]      = QString::fromStdString(item.name);
+        map["calories"]  = item.calories;
+        map["protein_g"] = item.protein_g;
+        map["fat_g"]     = item.fat_g;
+        map["carbs_g"]   = item.carbs_g;
+        return map;
+    }
+
+    QVariantMap toMap(const gocook::models::NutritionReport& report)
+    {
+        QVariantMap map;
+        map["recipe_id"]   = report.recipe_id;
+        map["recipe_name"] = QString::fromStdString(report.recipe_name);
+
+        QVariantMap perServing;
+        perServing["calories"]    = report.per_serving.calories;
+        perServing["protein_g"]   = report.per_serving.protein_g;
+        perServing["fat_g"]       = report.per_serving.fat_g;
+        perServing["carbs_g"]     = report.per_serving.carbs_g;
+        perServing["fiber_g"]     = report.per_serving.fiber_g;
+        perServing["sodium_mg"]   = report.per_serving.sodium_mg;
+        perServing["vitamin_c_mg"]= report.per_serving.vitamin_c_mg;
+        map["per_serving"] = perServing;
+
+        QVariantList breakdown;
+        for (const auto& item : report.ingredients_breakdown)
+            breakdown << toMap(item);
+        map["ingredients_breakdown"] = breakdown;
+
+        map["health_notes"] = QString::fromStdString(report.health_notes);
+        return map;
+    }
+
     // ---------- 用户 / 认证相关 ----------
 
     QVariantMap toMap(const gocook::models::FavoriteItem& item)
@@ -228,6 +266,36 @@ namespace DataMapper {
         return map;
     }
 
+    // ---------- 通知 / 我的评论 ----------
+
+    QVariantMap toMap(const gocook::models::NotificationItem& item)
+    {
+        QVariantMap map;
+        map["id"]               = item.id;
+        map["title"]            = QString::fromStdString(item.title);
+        map["content"]          = QString::fromStdString(item.content);
+        map["type"]             = QString::fromStdString(item.type);
+        map["sub_type"]         = QString::fromStdString(item.sub_type);
+        map["is_read"]          = item.is_read;
+        map["related_id"]       = item.related_id;
+        map["trigger_user_name"]= QString::fromStdString(item.trigger_user_name);
+        map["createdAt"]        = QString::fromStdString(item.created_at);
+        return map;
+    }
+
+    QVariantMap toMap(const gocook::models::UserRatingItem& item)
+    {
+        QVariantMap map;
+        map["ratingId"]   = item.rating_id;
+        map["recipeId"]   = item.recipe_id;
+        map["recipeName"] = QString::fromStdString(item.recipe_name);
+        map["rating"]     = item.rating;
+        map["comment"]    = QString::fromStdString(item.comment);
+        map["createdAt"]  = QString::fromStdString(item.created_at);
+        map["updatedAt"]  = QString::fromStdString(item.updated_at);
+        return map;
+    }
+
     // ---------- 库存 / 购物清单相关 ----------
 
     QVariantMap toMap(const gocook::models::InventoryItem& item)
@@ -256,6 +324,28 @@ namespace DataMapper {
         return map;
     }
 
+    QVariantMap toMap(const gocook::models::ShoppingListSummary& summary)
+    {
+        QVariantMap map;
+        map["id"]         = summary.id;
+        map["name"]       = QString::fromStdString(summary.name);
+        map["itemCount"]  = summary.item_count;
+        map["createdAt"]  = QString::fromStdString(summary.created_at);
+        return map;
+    }
+
+    QVariantMap toMap(const gocook::models::ShoppingList& list)
+    {
+        QVariantMap map;
+        map["id"]   = list.id;
+        map["name"] = QString::fromStdString(list.name);
+        QVariantList items;
+        for (const auto& item : list.items)
+            items << toMap(item);
+        map["items"] = items;
+        return map;
+    }
+
     // ---------- 膳食计划相关 ----------
 
     QVariantMap toMap(const gocook::models::MealPlanSummary& plan)
@@ -266,6 +356,29 @@ namespace DataMapper {
         map["mealType"] = QString::fromStdString(plan.meal_type);
         map["recipe"]   = toMap(plan.recipe);
         map["nutrition"] = toMap(plan.nutrition);
+        return map;
+    }
+
+    QVariantMap toMap(const gocook::models::DailyMealDetails& daily)
+    {
+        QVariantMap map;
+        if (daily.breakfast.has_value())
+            map["breakfast"] = toMap(daily.breakfast.value());
+        if (daily.lunch.has_value())
+            map["lunch"] = toMap(daily.lunch.value());
+        if (daily.dinner.has_value())
+            map["dinner"] = toMap(daily.dinner.value());
+        if (daily.snack.has_value())
+            map["snack"] = toMap(daily.snack.value());
+        return map;
+    }
+
+    QVariantMap toMap(const gocook::models::CalendarDay& day)
+    {
+        QVariantMap map;
+        map["date"]        = QString::fromStdString(day.date);
+        map["meals"]       = toMap(day.meals);
+        map["daily_total"] = toMap(day.daily_total);
         return map;
     }
 
@@ -365,6 +478,15 @@ namespace DataMapper {
             map["status"]      = QString::fromStdString(r.status);
             return map;
         });
+    }
+    QVariantMap toMap(const gocook::models::PagedNotifications& paged) {
+        return pagedToMap(paged, [](const gocook::models::NotificationItem& r) { return toMap(r); });
+    }
+    QVariantMap toMap(const gocook::models::PagedUserRatings& paged) {
+        return pagedToMap(paged, [](const gocook::models::UserRatingItem& r) { return toMap(r); });
+    }
+    QVariantMap toMap(const gocook::models::PagedCalendarDays& paged) {
+        return pagedToMap(paged, [](const gocook::models::CalendarDay& r) { return toMap(r); });
     }
 
 } // namespace DataMapper

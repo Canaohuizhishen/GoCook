@@ -34,6 +34,13 @@ Page {
             Layout.fillWidth: true
         }
 
+        TextField {
+            id: emailField
+            visible: false
+            placeholderText: qsTr("邮箱")
+            Layout.fillWidth: true
+        }
+
         CustomButton {
             buttonText: qsTr("登录")
             buttonType: CustomButton.ButtonType.Primary
@@ -48,7 +55,14 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             Layout.fillWidth: true
             onClicked: {
-                authViewModel.registerUser(usernameField.text, passwordField.text)
+                if(emailField.visible === false)emailField.visible = true
+                else {
+                    authViewModel.registerUser(
+                        usernameField.text,
+                        passwordField.text,
+                        emailField.text
+                    )
+                }
             }
         }
 

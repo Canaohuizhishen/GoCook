@@ -26,6 +26,10 @@ namespace DataMapper {
     QVariantMap toMap(const gocook::models::RecommendedRecipe& recipe);
     QVariantMap toMap(const gocook::models::RecipeDetail& detail);
 
+    // ========== 营养报告（v2.8 新增） ==========
+    QVariantMap toMap(const gocook::models::NutritionBreakdownItem& item);
+    QVariantMap toMap(const gocook::models::NutritionReport& report);
+
     // ========== 用户 / 认证相关 ==========
     QVariantMap toMap(const gocook::models::FavoriteItem& item);
     QVariantMap toMap(const gocook::models::RecipeRating& rating);
@@ -34,12 +38,20 @@ namespace DataMapper {
     QVariantMap toMap(const gocook::models::LoginResponse& login);
     QVariantMap toMap(const gocook::models::HealthProfileResponse& health);
 
+    // ========== 通知 / 我的评论 ==========
+    QVariantMap toMap(const gocook::models::NotificationItem& item);
+    QVariantMap toMap(const gocook::models::UserRatingItem& item);
+
     // ========== 库存 / 购物清单相关 ==========
     QVariantMap toMap(const gocook::models::InventoryItem& item);
     QVariantMap toMap(const gocook::models::ShoppingListItem& item);
+    QVariantMap toMap(const gocook::models::ShoppingListSummary& summary);
+    QVariantMap toMap(const gocook::models::ShoppingList& list);
 
     // ========== 膳食计划相关 ==========
     QVariantMap toMap(const gocook::models::MealPlanSummary& plan);
+    QVariantMap toMap(const gocook::models::DailyMealDetails& daily);
+    QVariantMap toMap(const gocook::models::CalendarDay& day);
     QVariantMap toMap(const gocook::models::NutritionTrendItem& trend);
 
     // ========== 公告相关 ==========
@@ -56,5 +68,8 @@ namespace DataMapper {
     QVariantMap toMap(const gocook::models::PagedUsers& paged);
     QVariantMap toMap(const gocook::models::PagedMealPlans& paged);
     QVariantMap toMap(const gocook::models::PagedPendingRecipes& paged);
+    QVariantMap toMap(const gocook::models::PagedNotifications& paged);
+    QVariantMap toMap(const gocook::models::PagedUserRatings& paged);
+    QVariantMap toMap(const gocook::models::PagedCalendarDays& paged);
 
 } // namespace DataMapper

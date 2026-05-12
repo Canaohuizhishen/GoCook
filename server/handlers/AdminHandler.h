@@ -26,6 +26,11 @@ public:
     void publishAnnouncement(const httplib::Request& req, httplib::Response& res);
     void sendNotification(const httplib::Request& req, httplib::Response& res);
 
+    // 统计与日志
+    void getStatistics(const httplib::Request& req, httplib::Response& res);
+    void getAdminLogs(const httplib::Request& req, httplib::Response& res);
+    void getActivityLogs(const httplib::Request& req, httplib::Response& res);
+
 private:
     gocook::services::IAdminService& service_;
     AuthMiddleware& auth_;
