@@ -87,8 +87,8 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
 
         std::string hashed = hashPassword(request.password);
         txn.exec_params(
-            "INSERT INTO users (username, password_hash) VALUES ($1, $2)",
-            request.username, hashed);
+            "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)",
+            request.username, hashed, request.email);
         txn.commit();
     } catch (const std::exception& e) {
         throw ServiceException(std::string("Database error: ") + e.what());
