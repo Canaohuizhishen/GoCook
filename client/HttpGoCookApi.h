@@ -82,18 +82,51 @@ public:
                       SuccessCallback callback) override;
     void login(const gocook::models::LoginRequest& request,
                LoginCallback callback) override;
+    void forgotPassword(const std::string& email,
+                        SuccessCallback callback) override;
+    void resetPassword(const std::string& token,
+                       const std::string& newPassword,
+                       SuccessCallback callback) override;
 
     // 用户相关
     void getCurrentUser(UserProfileCallback callback) override;
     void updateProfile(const gocook::models::UpdateProfileRequest& profile,
-                       SuccessCallback callback) override;
+                       UserProfileCallback callback) override;
     void getPreferences(PreferencesCallback callback) override;
     void updatePreferences(const gocook::models::UserPreferences& prefs,
                            SuccessCallback callback) override;
     void updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                              HealthProfileCallback callback) override;
+    void uploadAvatar(const std::string& filePath,
+                      AvatarUploadCallback callback) override;
+    void changePassword(const std::string& currentPassword,
+                        const std::string& newPassword,
+                        SuccessCallback callback) override;
+    void deleteAccount(SuccessCallback callback) override;
     void getFavorites(int page, int size,
+                      const std::string& group,
                       FavoritesCallback callback) override;
+    void getFavoriteGroups(FavoriteGroupsCallback callback) override;
+    void createFavoriteGroup(const gocook::models::CreateGroupRequest& request,
+                             FavoriteGroupCallback callback) override;
+    void updateFavoriteGroup(int groupId,
+                             const gocook::models::UpdateGroupRequest& request,
+                             SuccessCallback callback) override;
+    void deleteFavoriteGroup(int groupId,
+                             SuccessCallback callback) override;
+    void updateFavoriteItem(int favoriteId,
+                            const gocook::models::UpdateFavoriteRequest& request,
+                            SuccessCallback callback) override;
+    void batchDeleteFavorites(const gocook::models::BatchDeleteFavoritesRequest& request,
+                              SuccessCallback callback) override;
+    void getNotifications(int page, int size,
+                          const std::string& type,
+                          PagedNotificationsCallback callback) override;
+    void markNotificationRead(int notificationId,
+                              SuccessCallback callback) override;
+    void markAllNotificationsRead(SuccessCallback callback) override;
+    void deleteNotification(int notificationId,
+                            SuccessCallback callback) override;
 
     // 菜谱相关
     void getPublicRecipes(int page, int size,
@@ -114,32 +147,53 @@ public:
     void submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
                       SubmitRecipeCallback callback) override;
     void getMySubmittedRecipes(int page, int size,
+                               const std::string& status,
                                PagedMyRecipesCallback callback) override;
     void editRecipe(int recipeId,
                     const gocook::models::EditRecipeRequest& updates,
                     SuccessCallback callback) override;
     void toggleFavorite(int recipeId,
+                        std::optional<int> groupId,
+                        std::optional<bool> isPublic,
                         SuccessCallback callback) override;
     void rateRecipe(int recipeId,
                     const gocook::models::RateRecipeRequest& request,
                     SuccessCallback callback) override;
+    void updateRating(int recipeId, int ratingId,
+                      const gocook::models::RateRecipeRequest& request,
+                      SuccessCallback callback) override;
+    void deleteRating(int recipeId, int ratingId,
+                      SuccessCallback callback) override;
+    void getMyRatings(int page, int size,
+                      PagedUserRatingsCallback callback) override;
+    void getRecipeNutrition(int recipeId,
+                            NutritionReportCallback callback) override;
 
     // 库存管理
     void getInventory(int page, int size,
                       PagedInventoryCallback callback) override;
     void upsertInventory(const gocook::models::UpsertInventoryRequest& item,
-                         SuccessCallback callback) override;
+                         IntCallback callback) override;
     void deleteInventoryItem(int itemId,
                              SuccessCallback callback) override;
 
     // 购物清单 / 膳食计划
-    void getShoppingList(int planId,
-                         ShoppingListCallback callback) override;
-    void updateShoppingListItem(int itemId,
+    void getShoppingLists(ShoppingListsCallback callback) override;
+    void createShoppingList(const gocook::models::CreateShoppingListRequest& request,
+                            ShoppingListCallback callback) override;
+    void getShoppingListDetail(int listId,
+                               ShoppingListCallback callback) override;
+    void deleteShoppingList(int listId,
+                            SuccessCallback callback) override;
+    void updateShoppingListItem(int listId, int itemId,
                                 const gocook::models::UpdateShoppingItemRequest& request,
                                 SuccessCallback callback) override;
-    void batchAddShoppingItems(const std::vector<gocook::models::BatchShoppingItem>& items,
+    void batchAddShoppingItems(int listId,
+                               const std::vector<gocook::models::BatchShoppingItem>& items,
                                BatchShoppingCallback callback) override;
+    void exportShoppingList(int listId,
+                            const std::string& format,
+                            std::function<void(bool, const std::string&, const std::string&)> callback) override;
 
     // 膳食计划
     void createMealPlan(const gocook::models::MealPlanRequest& planData,
@@ -147,9 +201,10 @@ public:
     void getMealPlans(const std::string& startDate,
                       const std::string& endDate,
                       int page, int size,
-                      PagedMealPlansCallback callback) override;
+                      MealPlansCallback callback) override;
     void getMealPlanDetail(const std::string& startDate,
                            const std::string& endDate,
+                           int page, int size,
                            MealPlanCalendarCallback callback) override;
     void updateMealPlan(int planId,
                         const gocook::models::MealPlanRequest& updates,
@@ -191,6 +246,15 @@ public:
                              SuccessCallback callback) override;
     void sendNotification(const gocook::models::NotificationRequest& notification,
                           NotificationCallback callback) override;
+    void getStatistics(StatisticsCallback callback) override;
+    void getAdminLogs(int page, int size,
+                      const std::string& type,
+                      int userId,
+                      PagedAdminLogsCallback callback) override;
+    void getActivityLogs(int page, int size,
+                         int userId,
+                         const std::string& action,
+                         PagedActivityLogsCallback callback) override;
 
     // 令牌管理
     void setAuthToken(const std::string& token) override;

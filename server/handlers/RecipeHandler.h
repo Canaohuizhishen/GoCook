@@ -17,10 +17,16 @@ public:
     void getRecommendedRecipes(const httplib::Request& req, httplib::Response& res);
     // 获取菜谱详情
     void getRecipeDetail(const httplib::Request& req, httplib::Response& res);
+    // 获取菜谱营养报告（v2.8）
+    void getRecipeNutrition(const httplib::Request& req, httplib::Response& res);
     // 获取菜谱关联视频
     void getRecipeVideos(const httplib::Request& req, httplib::Response& res);
     // 获取菜谱评分与评论
     void getRecipeRatings(const httplib::Request& req, httplib::Response& res);
+    // 修改评论
+    void updateRating(const httplib::Request& req, httplib::Response& res);
+    // 删除评论
+    void deleteRating(const httplib::Request& req, httplib::Response& res);
     // 投稿新菜谱
     void submitRecipe(const httplib::Request& req, httplib::Response& res);
     // 获取我的投稿列表

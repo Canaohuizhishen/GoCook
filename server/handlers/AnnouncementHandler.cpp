@@ -1,5 +1,27 @@
 #include "AnnouncementHandler.h"
+#include <nlohmann/json.hpp>
 #include <stdexcept>
+
+using json = nlohmann::json;
+using namespace gocook::models;
+
+static json toJson(const AnnouncementItem& ann) {
+    return {
+        {"id", ann.id},
+        {"title", ann.title},
+        {"content", ann.content},
+        {"created_at", ann.created_at}
+    };
+}
+
+static json toJson(const Pagination& pag) {
+    return {
+        {"page", pag.page},
+        {"size", pag.size},
+        {"total", pag.total},
+        {"total_pages", pag.total_pages}
+    };
+}
 
 AnnouncementHandler::AnnouncementHandler(gocook::services::IAnnouncementService& service)
     : service_(service)
@@ -8,6 +30,23 @@ AnnouncementHandler::AnnouncementHandler(gocook::services::IAnnouncementService&
 
 void AnnouncementHandler::getAnnouncements(const httplib::Request& req, httplib::Response& res)
 {
-    // TODO: 解析分页参数、调用 service_.getAnnouncements() 并构造响应
-    throw gocook::services::ServiceException("Not implemented");
+    try {
+        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
+        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 5;
+        auto paged = service_.getAnnouncements(page, size);
+        json resp;
+        resp["data"] = json::array();
+        for (const auto& ann : paged.data)
+            resp["data"].push_back(toJson(ann));
+        resp["pagination"] = toJson(paged.pagination);
+        res.set_header("Content-Type", "application/json");
+        res.status = 200;
+        res.body = resp.dump();
+    } catch (const gocook::services::ServiceException& e) {
+        res.status = 500;
+        res.body = json{{"error", e.what()}}.dump();
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.body = json{{"error", e.what()}}.dump();
+    }
 }

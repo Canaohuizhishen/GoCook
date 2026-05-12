@@ -79,6 +79,14 @@ void Router::setupRoutes(httplib::Server& svr) {
         userHandler_.loginUser(req, res);
     });
 
+    // 忘记密码 / 重置密码（公开）
+    svr.Post("/api/password/forgot", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.forgotPassword(req, res);
+    });
+    svr.Post("/api/password/reset", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.resetPassword(req, res);
+    });
+
     // ============================================================
     // 菜谱相关（RecipeHandler）
     // ============================================================
@@ -98,6 +106,10 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Get(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeDetail(req, res);
     });
+    // 菜谱营养报告（v2.8 新增）
+    svr.Get(R"(/api/recipes/(\d+)/nutrition)", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.getRecipeNutrition(req, res);
+    });
     // 关联视频
     svr.Get(R"(/api/recipes/(\d+)/videos)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeVideos(req, res);
@@ -105,6 +117,14 @@ void Router::setupRoutes(httplib::Server& svr) {
     // 评分与评论列表
     svr.Get(R"(/api/recipes/(\d+)/ratings)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeRatings(req, res);
+    });
+    // 修改评论
+    svr.Put(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.updateRating(req, res);
+    });
+    // 删除评论
+    svr.Delete(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.deleteRating(req, res);
     });
     // 投稿新菜谱
     svr.Post("/api/recipes", [this](const httplib::Request& req, httplib::Response& res) {
@@ -136,17 +156,70 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Put("/api/users/me/profile", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateProfile(req, res);
     });
+    // 头像上传
+    svr.Post("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.uploadAvatar(req, res);
+    });
+    // 修改密码
+    svr.Put("/api/users/me/password", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.changePassword(req, res);
+    });
+    // 注销账户
+    svr.Delete("/api/users/me", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.deleteAccount(req, res);
+    });
+    // 饮食偏好
     svr.Get("/api/users/me/preferences", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getPreferences(req, res);
     });
     svr.Put("/api/users/me/preferences", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updatePreferences(req, res);
     });
+    // 健康指标
     svr.Put("/api/users/me/health-profile", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateHealthProfile(req, res);
     });
+    // 收藏列表
     svr.Get("/api/users/me/favorites", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getFavorites(req, res);
+    });
+    // 收藏分组管理
+    svr.Get("/api/users/me/favorites/groups", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.getFavoriteGroups(req, res);
+    });
+    svr.Post("/api/users/me/favorites/groups", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.createFavoriteGroup(req, res);
+    });
+    svr.Put(R"(/api/users/me/favorites/groups/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.updateFavoriteGroup(req, res);
+    });
+    svr.Delete(R"(/api/users/me/favorites/groups/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.deleteFavoriteGroup(req, res);
+    });
+    // 更新单个收藏项属性（移动分组/可见性）
+    svr.Patch(R"(/api/users/me/favorites/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.updateFavoriteItem(req, res);
+    });
+    // 批量删除收藏
+    svr.Delete("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.batchDeleteFavorites(req, res);
+    });
+    // 通知中心
+    svr.Get("/api/users/me/notifications", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.getNotifications(req, res);
+    });
+    svr.Patch(R"(/api/users/me/notifications/(\d+)/read)", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.markNotificationRead(req, res);
+    });
+    svr.Put("/api/users/me/notifications/read-all", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.markAllNotificationsRead(req, res);
+    });
+    svr.Delete(R"(/api/users/me/notifications/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.deleteNotification(req, res);
+    });
+    // 我的评论列表
+    svr.Get("/api/users/me/ratings", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.getMyRatings(req, res);
     });
 
     // ============================================================
@@ -164,17 +237,37 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Delete(R"(/api/inventory/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.deleteInventory(req, res);
     });
-    // 获取购物清单
-    svr.Get("/api/inventory/shopping-list", [this](const httplib::Request& req, httplib::Response& res) {
-        inventoryHandler_.getShoppingList(req, res);
+
+    // ============================================================
+    // 购物清单（多清单模型，需认证）
+    // ============================================================
+    // 获取用户的购物清单列表
+    svr.Get("/api/inventory/shopping-lists", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.getShoppingLists(req, res);
+    });
+    // 创建购物清单
+    svr.Post("/api/inventory/shopping-lists", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.createShoppingList(req, res);
+    });
+    // 获取指定购物清单详情
+    svr.Get(R"(/api/inventory/shopping-lists/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.getShoppingListDetail(req, res);
+    });
+    // 删除购物清单
+    svr.Delete(R"(/api/inventory/shopping-lists/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.deleteShoppingList(req, res);
     });
     // 更新购物清单项状态
-    svr.Patch(R"(/api/inventory/shopping-list/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Patch(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.updateShoppingListItem(req, res);
     });
     // 批量添加购物清单项
-    svr.Post("/api/inventory/shopping-list/items/batch", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/inventory/shopping-lists/(\d+)/items/batch)", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.batchAddShoppingItems(req, res);
+    });
+    // 导出购物清单
+    svr.Get(R"(/api/inventory/shopping-lists/(\d+)/export)", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.exportShoppingList(req, res);
     });
 
     // ============================================================
@@ -244,6 +337,18 @@ void Router::setupRoutes(httplib::Server& svr) {
     });
     svr.Post("/api/admin/notifications", [this](const httplib::Request& req, httplib::Response& res) {
         adminHandler_.sendNotification(req, res);
+    });
+    // 运营数据统计
+    svr.Get("/api/admin/statistics", [this](const httplib::Request& req, httplib::Response& res) {
+        adminHandler_.getStatistics(req, res);
+    });
+    // 管理员操作日志
+    svr.Get("/api/admin/logs", [this](const httplib::Request& req, httplib::Response& res) {
+        adminHandler_.getAdminLogs(req, res);
+    });
+    // 全局用户行为日志
+    svr.Get("/api/admin/activity-logs", [this](const httplib::Request& req, httplib::Response& res) {
+        adminHandler_.getActivityLogs(req, res);
     });
 
     // ============================================================

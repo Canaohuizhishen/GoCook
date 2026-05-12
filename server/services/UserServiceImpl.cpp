@@ -13,7 +13,7 @@
 using namespace gocook::models;
 using namespace gocook::services;
 
-std::string UserServiceImpl::generateToken(int userId, const std::string& username) {
+std::string UserServiceImpl::generateToken(int userId, const std::string& username, const std::string& role) {
     // 设置 Token 过期时间为 7 天后
     auto now = std::chrono::system_clock::now();
     auto exp = now + std::chrono::hours(24 * 7);
@@ -23,6 +23,7 @@ std::string UserServiceImpl::generateToken(int userId, const std::string& userna
                      .set_type("JWS")                                        // 类型
                      .set_payload_claim("userId", jwt::claim(std::to_string(userId))) // 用户ID
                      .set_payload_claim("username", jwt::claim(username))   // 用户名
+                     .set_payload_claim("role", jwt::claim(role))           // 用户角色
                      .set_issued_at(now)                                     // 签发时间
                      .set_expires_at(exp)                                    // 过期时间
                      .sign(jwt::algorithm::hs256{jwt_secret});               // 使用 HMAC-SHA256 签名
@@ -98,7 +99,7 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
     try {
         pqxx::work txn(db_.getConn());
         pqxx::result result = txn.exec_params(
-            "SELECT id, password_hash FROM users WHERE username = $1",
+            "SELECT id, password_hash, role FROM users WHERE username = $1",
             request.username);
 
         if (result.empty()) {
@@ -107,6 +108,7 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
 
         int userId = result[0]["id"].as<int>();
         std::string storedHash = result[0]["password_hash"].as<std::string>();
+        std::string role = result[0]["role"].as<std::string>();   // 读取用户角色
 
         if (!validatePassword(request.password, storedHash)) {
             throw ServiceException("Invalid username or password");
@@ -115,7 +117,7 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
         LoginResponse resp;
         resp.user_id = userId;
         resp.username = request.username;
-        resp.token = generateToken(userId, request.username);
+        resp.token = generateToken(userId, request.username, role);
         return resp;
     } catch (const std::exception& e) {
         throw ServiceException(std::string("Database error: ") + e.what());

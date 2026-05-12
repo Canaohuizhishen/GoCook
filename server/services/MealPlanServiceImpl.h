@@ -21,10 +21,11 @@ public:
         const std::string& startDate,
         const std::string& endDate,
         int page, int size) override;
-    gocook::models::MealPlanCalendar getMealPlanDetail(
+    gocook::models::PagedCalendarDays getMealPlanDetail(
         int userId,
         const std::string& startDate,
-        const std::string& endDate) override;
+        const std::string& endDate,
+        int page, int size) override;
     void updateMealPlan(int userId, int planId,
                         const gocook::models::MealPlanRequest& updates) override;
     void deleteMealPlan(int userId, int planId) override;

@@ -32,6 +32,7 @@ namespace gocook::models {
     struct RegisterRequest {
         std::string username;
         std::string password;
+        std::string email;          // 必填，用于密码找回
     };
 
     /// 登录请求
@@ -56,6 +57,7 @@ namespace gocook::models {
     struct TokenInfo {
         int userId = 0;
         std::string username;
+        std::string role;       // 用户角色：user, moderator, super_admin
         bool valid = false;
     };
 
@@ -66,26 +68,28 @@ namespace gocook::models {
     /// 用户公开资料
     struct UserProfile {
         int id = 0;
-        std::string username;
+        std::string username;           // 登录凭证，不可更改
+        std::string display_name;       // 显示名（昵称），可更改
         std::string email;
-        std::string phone;          // 服务端脱敏后的手机号（如 138****1234），前端直接展示
+        std::string phone;
         std::string avatar_url;
+        bool preferences_complete = false; // 核心偏好/健康信息是否已填写
         std::string created_at;
     };
 
     /// 更新用户个人资料请求
     struct UpdateProfileRequest {
-        std::optional<std::string> username;
+        std::optional<std::string> display_name;
         std::optional<std::string> avatar_url;
-        std::optional<std::string> email;
-        std::optional<std::string> phone;   // 新增字段，对齐 API 3.2 节
+        std::optional<int>         avatar_id;      // 头像上传返回的资源标识
+        std::optional<std::string> email;          // 新增：联系邮箱
+        std::optional<std::string> phone;          // 新增：联系电话
     };
 
-    /// 用户饮食偏好
+    /// 用户饮食偏好（v2.8 统一禁忌字段为 dislikes）
     struct UserPreferences {
         std::vector<std::string> likes;
-        std::vector<std::string> dislikes;
-        std::vector<std::string> allergies;
+        std::vector<std::string> dislikes;      // 饮食禁忌（过敏、宗教禁忌等）
         std::string health_goal;
     };
 
@@ -110,13 +114,50 @@ namespace gocook::models {
         std::vector<AvoidanceItem> suggested_avoidances;
     };
 
+    /// 头像上传响应
+    struct AvatarUploadResponse {
+        int avatar_id = 0;
+        std::string avatar_url;
+    };
+
     /// 收藏菜谱项
     struct FavoriteItem {
         int id = 0;
         std::string name;
         std::string description;
         std::string image_url;
+        std::string group_name;         // 所属分组名，默认"默认收藏夹"
+        bool is_public = true;          // 是否公开可见
         std::string favorited_at;
+    };
+
+    /// 收藏分组摘要
+    struct FavoriteGroup {
+        int id = 0;
+        std::string name;
+        int sort_order = 0;
+        int count = 0;
+    };
+
+    /// 创建收藏分组请求
+    struct CreateGroupRequest {
+        std::string name;
+    };
+
+    /// 更新收藏分组请求
+    struct UpdateGroupRequest {
+        std::string name;
+    };
+
+    /// 更新收藏项属性请求
+    struct UpdateFavoriteRequest {
+        std::optional<int> group_id;
+        std::optional<bool> is_public;
+    };
+
+    /// 批量删除收藏请求
+    struct BatchDeleteFavoritesRequest {
+        std::vector<int> favorite_ids;
     };
 
     // ==============================================
@@ -151,8 +192,14 @@ namespace gocook::models {
         std::string name;
         std::string description;
         std::string image_url;
+        std::string cooking_method;     // 烹饪技法（炒、炖、蒸等）
+        std::string flavor;             // 口味（清淡、麻辣等）
+        std::string ingredient_type;    // 食材类型（荤、素等）
         int prep_time_minutes = 0;
         int cook_time_minutes = 0;
+        int calories = 0;               // 总热量
+        int view_count = 0;             // 浏览量（按用户日去重）
+        double avg_rating = 0.0;        // 平均评分
         std::vector<std::string> tags;
         int author_id = 0;
         std::string author_name;
@@ -164,8 +211,12 @@ namespace gocook::models {
         std::string name;
         std::string description;
         std::string image_url;
+        std::string cooking_method;
+        std::string flavor;
         int prep_time_minutes = 0;
         int cook_time_minutes = 0;
+        int view_count = 0;
+        double avg_rating = 0.0;
         std::vector<Ingredient> ingredients;
         std::vector<CookingStep> steps;
         Nutrition nutrition;
@@ -210,6 +261,9 @@ namespace gocook::models {
         std::vector<CookingStep> steps;
         std::optional<Nutrition> nutrition;
         std::vector<std::string> tags;
+        std::optional<std::string> cooking_method;
+        std::optional<std::string> flavor;
+        std::optional<std::string> ingredient_type;
     };
 
     /// 菜谱投稿响应体（POST /api/recipes）
@@ -240,7 +294,7 @@ namespace gocook::models {
     /// 缺失食材（含建议用量）
     struct MissingIngredient {
         std::string name;
-        double suggested_quantity = 0.0;
+        double quantity = 0.0;   // 修正字段名，与 API 契约一致
         std::string unit;
     };
 
@@ -256,13 +310,39 @@ namespace gocook::models {
         MatchStatus match_status;
     };
 
+    /// 营养报告食材明细（API 4.15）
+    struct NutritionBreakdownItem {
+        std::string name;
+        double calories = 0.0;
+        double protein_g = 0.0;   // 修正：对齐 API 字段名
+        double fat_g = 0.0;
+        double carbs_g = 0.0;
+    };
+
+    /// 独立营养报告（API 4.15）
+    struct NutritionReport {
+        int recipe_id = 0;
+        std::string recipe_name;
+        struct PerServing {
+            double calories = 0.0;
+            double protein_g = 0.0;   // 修正：对齐 API 字段名
+            double fat_g = 0.0;
+            double carbs_g = 0.0;
+            double fiber_g = 0.0;      // 新增：膳食纤维（克）
+            double sodium_mg = 0.0;    // 新增：钠（毫克）
+            double vitamin_c_mg = 0.0; // 新增：维生素C（毫克）
+        } per_serving;
+        std::vector<NutritionBreakdownItem> ingredients_breakdown;
+        std::string health_notes;
+    };
+
     // ==============================================
     // 库存与购物清单
     // ==============================================
 
     /// 库存项
     struct InventoryItem {
-        int id = 0;                     // 新增 id 字段，对齐 API 5.1 节，用于删除等操作
+        int id = 0;
         std::string ingredient_name;
         double quantity = 0.0;
         std::string unit;
@@ -282,17 +362,32 @@ namespace gocook::models {
     struct ShoppingListItem {
         int id = 0;
         std::string ingredient_name;
-        double required_quantity = 0.0;
-        double inventory_quantity = 0.0;   // 新增字段，对齐 API 5.4 节，表示库存已有数量
+        double required_quantity = 0.0;  // 新增：膳食计划/菜谱总共需要的食材数量
+        double inventory_quantity = 0.0;
         double to_buy_quantity = 0.0;
         std::string unit;
         bool checked = false;
     };
 
-    /// 完整的购物清单响应
+    /// 完整的购物清单详情
     struct ShoppingList {
         int id = 0;
+        std::string name;
         std::vector<ShoppingListItem> items;
+    };
+
+    /// 购物清单摘要（列表项）
+    struct ShoppingListSummary {
+        int id = 0;
+        std::string name;
+        int item_count = 0;
+        std::string created_at;
+    };
+
+    /// 创建购物清单请求
+    struct CreateShoppingListRequest {
+        std::string name;
+        std::optional<std::string> plan_id;     // 修正：API 可能传递字符串类型的 plan_id
     };
 
     /// 更新购物清单项请求
@@ -304,7 +399,7 @@ namespace gocook::models {
     struct BatchShoppingItem {
         std::string ingredient_name;
         double quantity = 0.0;
-        std::string unit;
+        std::string unit;    // 新增：单位
     };
 
     /// 批量添加购物清单项响应
@@ -338,7 +433,7 @@ namespace gocook::models {
         std::optional<MealPlanSummary> breakfast;
         std::optional<MealPlanSummary> lunch;
         std::optional<MealPlanSummary> dinner;
-        std::optional<MealPlanSummary> snack;   // 可选用于零食
+        std::optional<MealPlanSummary> snack;   // 新增：零食/加餐
     };
 
     /// 日历视图单日信息
@@ -346,11 +441,6 @@ namespace gocook::models {
         std::string date;
         DailyMealDetails meals;
         Nutrition daily_total;
-    };
-
-    /// 日历视图响应
-    struct MealPlanCalendar {
-        std::vector<CalendarDay> days;
     };
 
     /// 营养趋势: 对比项
@@ -393,6 +483,38 @@ namespace gocook::models {
     };
 
     // ==============================================
+    // 通知中心（API 3.12）
+    // ==============================================
+
+    /// 通知项
+    struct NotificationItem {
+        int id = 0;
+        std::string title;
+        std::string content;
+        std::string type;               // "system", "review", "interaction"
+        std::string sub_type;           // 用于 interaction 的细分
+        bool is_read = false;
+        int related_id = 0;
+        std::string trigger_user_name;
+        std::string created_at;
+    };
+
+    // ==============================================
+    // 我的评论项（API 3.14）
+    // ==============================================
+
+    /// 用户自己的评论摘要
+    struct UserRatingItem {
+        int rating_id = 0;
+        int recipe_id = 0;
+        std::string recipe_name;
+        int rating = 0;
+        std::string comment;
+        std::string created_at;
+        std::string updated_at;
+    };
+
+    // ==============================================
     // 管理员相关
     // ==============================================
 
@@ -401,7 +523,7 @@ namespace gocook::models {
         int id = 0;
         std::string username;
         std::string email;
-        std::string role;           // "user", "admin"
+        std::string role;           // "user", "moderator", "super_admin"
         std::string status;         // "active", "frozen"
         std::string created_at;
     };
@@ -429,6 +551,7 @@ namespace gocook::models {
     struct PendingRecipeItem {
         int id = 0;
         std::string name;
+        int author_id = 0;
         std::string author_name;
         std::string submitted_at;
         std::string status;         // "pending"
@@ -484,6 +607,63 @@ namespace gocook::models {
         int estimated_recipients = 0;
     };
 
+    /// 库存分类（用于统计分布）
+    struct InventoryCategory {
+        std::string name;
+        int count = 0;
+    };
+
+    /// 运营数据统计（API 7.8）
+    struct StatisticsData {
+        int total_users = 0;
+        int active_users_7d = 0;
+        int total_recipes = 0;
+        int pending_reviews = 0;
+        int new_recipes_week = 0;
+        int new_comments_week = 0;
+        struct Growth {
+            int new_users_week = 0;
+            double new_users_week_growth = 0.0;
+            double new_recipes_week_growth = 0.0;
+            double active_users_7d_growth = 0.0;
+        } growth;
+        struct TopRecipe {
+            int id = 0;
+            std::string name;
+            int view_count = 0;
+        };
+        std::vector<TopRecipe> top_recipes;
+        struct InventoryDistribution {
+            std::vector<InventoryCategory> categories; // 对齐 API：包含 categories 数组的对象
+        } inventory_distribution;
+    };
+
+    /// 管理员操作日志项（API 7.9）
+    struct AdminLogItem {
+        int id = 0;
+        int operator_id = 0;
+        std::string operator_name;
+        std::string type;
+        std::string action;
+        int target_id = 0;
+        std::string target_name;
+        std::string detail;
+        std::string result;
+        std::string created_at;
+    };
+
+    /// 用户行为日志项（API 7.10）
+    struct UserActivityLogItem {
+        int id = 0;
+        int user_id = 0;
+        std::string username;
+        std::string action;
+        std::string target_type;
+        int target_id = 0;
+        std::string detail;
+        std::string created_at;
+    };
+
     // ==============================================
     // 分页通用包装（模板）
     // ==============================================
@@ -495,16 +675,25 @@ namespace gocook::models {
         Pagination pagination;
     };
 
-    // ---- 常见具体分页类型（方便使用，也可直接使用模板） ----
+    // ---- 常见具体分页类型 ----
     using PagedRecipes         = PagedResult<RecipeSummary>;
-    using PagedRecommendedRecipes = PagedResult<RecommendedRecipe>;
     using PagedFavorites       = PagedResult<FavoriteItem>;
     using PagedInventory       = PagedResult<InventoryItem>;
     using PagedRatings         = PagedResult<RecipeRating>;
     using PagedAnnouncements   = PagedResult<AnnouncementItem>;
-    using PagedMyRecipes       = PagedResult<MyRecipeStatus>;   // 投稿列表
+    using PagedMyRecipes       = PagedResult<MyRecipeStatus>;
     using PagedUsers           = PagedResult<AdminUser>;
     using PagedMealPlans       = PagedResult<MealPlanSummary>;
-    using PagedPendingRecipes  = PagedResult<PendingRecipeItem>; // 待审核菜谱列表
+    using PagedCalendarDays    = PagedResult<CalendarDay>;
+    using PagedPendingRecipes  = PagedResult<PendingRecipeItem>;
+    using PagedNotifications   = PagedResult<NotificationItem>;
+    using PagedUserRatings     = PagedResult<UserRatingItem>;
+    using PagedAdminLogs       = PagedResult<AdminLogItem>;
+    using PagedActivityLogs    = PagedResult<UserActivityLogItem>;
+
+    /// 智能推荐分页响应，包含健康过滤标记（API 4.2）
+    struct PagedRecommendedRecipes : public PagedResult<RecommendedRecipe> {
+        bool health_filter_applied = false;
+    };
 
 } // namespace gocook::models

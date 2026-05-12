@@ -21,10 +21,11 @@ MealPlansResponse MealPlanServiceImpl::getMealPlans(
     throw ServiceException("Not implemented");
 }
 
-MealPlanCalendar MealPlanServiceImpl::getMealPlanDetail(
+PagedCalendarDays MealPlanServiceImpl::getMealPlanDetail(
     int userId,
     const std::string& startDate,
-    const std::string& endDate)
+    const std::string& endDate,
+    int page, int size)
 {
     throw ServiceException("Not implemented");
 }

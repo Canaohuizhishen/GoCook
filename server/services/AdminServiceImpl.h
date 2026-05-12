@@ -30,6 +30,21 @@ public:
     gocook::models::NotificationResponse sendNotification(
         const gocook::models::NotificationRequest& notification) override;
 
+    // ---------- 统计与日志 ----------
+    gocook::models::StatisticsData getStatistics() override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+    gocook::models::PagedAdminLogs getAdminLogs(int page, int size,
+                                                const std::string& type = "",
+                                                int userId = 0) override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+    gocook::models::PagedActivityLogs getActivityLogs(int page, int size,
+                                                      int userId = 0,
+                                                      const std::string& action = "") override {
+        throw gocook::services::ServiceException("Not implemented");
+    }
+
 private:
     DBConnection& db_;
 };

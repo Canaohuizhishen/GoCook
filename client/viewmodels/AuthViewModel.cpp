@@ -49,17 +49,21 @@ void AuthViewModel::login(const QString &username, const QString &password)
 }
 
 // 注册实现（使用 GoCookApi 抽象接口的 registerUser 方法）
-void AuthViewModel::registerUser(const QString &username, const QString &password)
+void AuthViewModel::registerUser(const QString &username,
+                                 const QString &password,
+                                 const QString &email)
 {
     gocook::models::RegisterRequest req;
     req.username = username.toStdString();
     req.password = password.toStdString();
+    req.email    = email.toStdString();   // 补充 email 字段
 
     m_api->registerUser(req, [this](bool success, const std::string &error) {
         if (success) {
             emit registerSuccess();
         } else {
-            emit registerFailed(QString::fromStdString(error.empty() ? "Unknown error" : error));
+            emit registerFailed(QString::fromStdString(
+                error.empty() ? "Unknown error" : error));
         }
     });
 }
