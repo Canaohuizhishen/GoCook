@@ -356,7 +356,7 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
             QJsonObject obj = doc.object();
             gocook::models::LoginResponse resp;
             resp.token = obj["token"].toString().toStdString();
-            resp.user_id = obj["user_id"].toInt();
+            resp.user_id = obj["userId"].toInt();
             resp.username = obj["username"].toString().toStdString();
             callback(true, resp, "");
         } else {
