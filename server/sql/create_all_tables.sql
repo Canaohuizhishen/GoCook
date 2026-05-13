@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     display_name TEXT,
-    email TEXT,
+    email TEXT UNIQUE,
     phone TEXT,
     avatar_url TEXT,
     preferences_complete BOOLEAN DEFAULT FALSE,

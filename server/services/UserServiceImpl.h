@@ -20,9 +20,7 @@ public:
                        const std::string& newPassword) override {
         throw gocook::services::ServiceException("Not implemented", 501);
     }
-    gocook::models::UserProfile getCurrentUser(int userId) override {
-        throw gocook::services::ServiceException("Not implemented", 501);
-    }
+    gocook::models::UserProfile getCurrentUser(int userId) override;
     gocook::models::UserProfile updateProfile(int userId,
                                               const gocook::models::UpdateProfileRequest& profile) override {
         throw gocook::services::ServiceException("Not implemented", 501);

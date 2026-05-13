@@ -83,10 +83,15 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     try {
         pqxx::work txn(db_.getConn());
 
-        pqxx::result check = txn.exec_params(
+        pqxx::result userCheck = txn.exec_params(
             "SELECT id FROM users WHERE username = $1", request.username);
-        if (!check.empty()) {
-            throw ServiceException("Username already exists", 409);
+        if (!userCheck.empty()) {
+            throw ServiceException("用户名已存在", 409);
+        }
+        pqxx::result emailCheck = txn.exec_params(
+            "SELECT id FROM users WHERE email = $1", request.email);
+        if (!emailCheck.empty()) {
+            throw ServiceException("邮箱已被注册", 409);
         }
 
         std::string hashed = hashPassword(request.password);
@@ -123,6 +128,30 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
         resp.username = request.username;
         resp.token = generateToken(userId, request.username, role);
         return resp;
+    } catch (const std::exception& e) {
+        throw ServiceException(std::string("Database error: ") + e.what());
+    }
+}
+
+UserProfile UserServiceImpl::getCurrentUser(int userId) {
+    try {
+        pqxx::work txn(db_.getConn());
+        pqxx::result r = txn.exec_params(
+            "SELECT id, username, display_name, email, phone, avatar_url, "
+            "preferences_complete, created_at FROM users WHERE id = $1", userId);
+        if (r.empty()) {
+            throw ServiceException("用户不存在", 404);
+        }
+        UserProfile u;
+        u.id = r[0]["id"].as<int>();
+        u.username = r[0]["username"].c_str();
+        u.display_name = r[0]["display_name"].as<std::string>("");
+        u.email = r[0]["email"].as<std::string>("");
+        u.phone = r[0]["phone"].as<std::string>("");
+        u.avatar_url = r[0]["avatar_url"].as<std::string>("");
+        u.preferences_complete = r[0]["preferences_complete"].as<bool>();
+        u.created_at = r[0]["created_at"].as<std::string>("");
+        return u;
     } catch (const std::exception& e) {
         throw ServiceException(std::string("Database error: ") + e.what());
     }

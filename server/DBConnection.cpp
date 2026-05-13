@@ -22,5 +22,8 @@ bool DBConnection::connect()
 
 pqxx::connection& DBConnection::getConn()
 {
+    if (!conn_) {
+        throw std::runtime_error("Database not connected. Call connect() first.");
+    }
     return *conn_;
 }

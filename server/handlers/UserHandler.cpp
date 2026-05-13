@@ -165,7 +165,7 @@ void UserHandler::loginUser(const httplib::Request& req, httplib::Response& res)
         res.status = 200;
         res.body = json{
             {"token", loginResp.token},
-            {"userId", loginResp.user_id},
+            {"user_id", loginResp.user_id},
             {"username", loginResp.username}
         }.dump();
     } catch (const gocook::services::ServiceException& e) {

@@ -151,107 +151,46 @@ QNetworkReply* HttpGoCookApi::sendRequestInternal(QNetworkAccessManager::Operati
     return reply;
 }
 
-// 统一发送 HTTP 请求的实现（QJSValue 回调版本），retryCount 用于重试控制
+// 统一发送 HTTP 请求的实现（QJSValue 回调版本），委托给 std::function 版本
 void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 const QString &endpoint,
                                 const QVariantMap &data,
                                 const QJSValue &callback,
                                 int retryCount)
 {
-    QNetworkReply *reply = sendRequestInternal(op, endpoint, data);
-
-    //reply 空指针检查
-    if (!reply) {
-        // 如果有可调用的 QML 回调，传入失败信息
-        if (callback.isCallable()) {
-            QJSValueList args;
-            args << false << "Failed to create network request" << QJSValue();
-            QJSValue(callback).call(args);
-        }
-        // 发射网络错误信号
-        emit networkError("Failed to create network request");
-        return;
-    }
-
-    // 连接请求完成信号
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, op, endpoint, data, retryCount]() {
-        // 请求完成后自动删除 reply 对象
-        reply->deleteLater();
-
-        // 获取 HTTP 状态码
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        // 如果是 401，发射未授权信号，并触发抽象层回调
-        if (statusCode == 401) {
-            emit unauthorized();
-            invokeUnauthorizedHandler();
-        }
-
-        // 如果有网络错误，发射错误信号并回调失败
-        if (reply->error() != QNetworkReply::NoError) {
-            // 检查是否需要重试：仅对 GET 操作，且重试计数未达上限
-            if (op == QNetworkAccessManager::GetOperation && retryCount < m_maxRetries) {
-                // 延迟后重试，递增重试计数
-                QTimer::singleShot(m_retryDelay, this, [this, op, endpoint, data, callback, retryCount]() {
-                    sendRequest(op, endpoint, data, callback, retryCount + 1);
-                });
-                return;
-            }
-
-            emit networkError(reply->errorString());
-            if (callback.isCallable()) {
-                QJSValueList args;
-                args << false << reply->errorString() << QJSValue();
-                QJSValue(callback).call(args);
-            }
-            return;
-        }
-
-        // 读取响应数据
-        QByteArray responseData = reply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        // 判断是否成功（2xx 状态码）
-        bool success = (statusCode >= 200 && statusCode < 300);
-
-        // 执行 QML 回调
-        if (callback.isCallable()) {
-            // 获取 HttpGoCookApi 关联的 JS 引擎
-            QJSEngine *engine = qjsEngine(this);
-            QJSValue jsResponse;
-            if (engine) {
-                // 将 JSON 转换为脚本值
-                if (doc.isObject()) {
-                    jsResponse = engine->toScriptValue(doc.object().toVariantMap());
-                } else if (doc.isArray()) {
-                    QJsonArray array = doc.array();
-                    jsResponse = engine->newArray(array.size());
-                    for (int i = 0; i < array.size(); ++i) {
-                        QJsonValue value = array[i];
-                        if (value.isObject()) {
-                            jsResponse.setProperty(i, engine->toScriptValue(value.toObject().toVariantMap()));
-                        } else if (value.isArray()) {
-                            // 若数组中嵌套数组，递归处理（可根据需要扩展）
-                            jsResponse.setProperty(i, engine->toScriptValue(value.toArray().toVariantList()));
-                        } else {
-                            jsResponse.setProperty(i, engine->toScriptValue(value.toVariant()));
-                        }
+    auto wrapped = [this, callback](bool success, const QString&, const QJsonDocument& doc) {
+        if (!callback.isCallable()) return;
+        QJSEngine *engine = qjsEngine(this);
+        QJSValue jsResponse;
+        if (engine) {
+            if (doc.isObject()) {
+                jsResponse = engine->toScriptValue(doc.object().toVariantMap());
+            } else if (doc.isArray()) {
+                QJsonArray array = doc.array();
+                jsResponse = engine->newArray(array.size());
+                for (int i = 0; i < array.size(); ++i) {
+                    QJsonValue value = array[i];
+                    if (value.isObject()) {
+                        jsResponse.setProperty(i, engine->toScriptValue(value.toObject().toVariantMap()));
+                    } else if (value.isArray()) {
+                        jsResponse.setProperty(i, engine->toScriptValue(value.toArray().toVariantList()));
+                    } else {
+                        jsResponse.setProperty(i, engine->toScriptValue(value.toVariant()));
                     }
-                } else {
-                    jsResponse = engine->newObject();
                 }
             } else {
-                // 无引擎时的后备：传递 null，QML 侧需自行判空
-                jsResponse = QJSValue(QJSValue::NullValue);
+                jsResponse = engine->newObject();
             }
-
-            // 构建回调参数列表
-            QJSValueList args;
-            args << success;
-            args << (success ? QString() : QString::fromUtf8(responseData));
-            args << jsResponse;
-            // 调用 QML 传入的回调函数
-            QJSValue(callback).call(args);
+        } else {
+            jsResponse = QJSValue(QJSValue::NullValue);
         }
-    });
+        QJSValueList args;
+        args << success;
+        args << (success ? QString() : QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+        args << jsResponse;
+        QJSValue(callback).call(args);
+    };
+    sendRequest(op, endpoint, data, wrapped, retryCount);
 }
 
 // 统一发送 HTTP 请求的实现（std::function 回调版本），retryCount 用于重试控制
@@ -357,7 +296,7 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
             QJsonObject obj = doc.object();
             gocook::models::LoginResponse resp;
             resp.token = obj["token"].toString().toStdString();
-            resp.user_id = obj["userId"].toInt();
+            resp.user_id = obj["user_id"].toInt();
             resp.username = obj["username"].toString().toStdString();
             callback(true, resp, "");
         } else {
@@ -384,7 +323,23 @@ void HttpGoCookApi::resetPassword(const std::string& token,
 
 // ======================= 用户相关 =======================
 void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
-    if (callback) callback(false, gocook::models::UserProfile{}, "Not implemented");
+    get("/api/users/me", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::UserProfile{}, errorStr.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::UserProfile profile;
+        profile.id = obj["id"].toInt();
+        profile.username = obj["username"].toString().toStdString();
+        profile.display_name = obj["display_name"].toString().toStdString();
+        profile.email = obj["email"].toString().toStdString();
+        profile.phone = obj["phone"].toString().toStdString();
+        profile.avatar_url = obj["avatar_url"].toString().toStdString();
+        profile.preferences_complete = obj["preferences_complete"].toBool();
+        profile.created_at = obj["created_at"].toString().toStdString();
+        callback(true, profile, "");
+    });
 }
 
 void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& profile,

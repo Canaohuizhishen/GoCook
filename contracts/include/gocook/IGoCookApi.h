@@ -815,27 +815,4 @@ public:
      */
     virtual std::string authToken() const = 0;
 
-    // ---------- 未授权回调（替代直接依赖具体实现类的信号） ----------
-    /**
-     * @brief 注册未授权回调
-     *
-     * 当 API 实现检测到 401 未授权响应时，应调用此回调。
-     * AuthManager 通过此机制获知需要自动登出，而无需知道具体实现类型。
-     */
-    void setUnauthorizedHandler(std::function<void()> handler) {
-        m_unauthorizedHandler = std::move(handler);
-    }
-
-protected:
-    /**
-     * @brief 供子类调用，触发未授权回调
-     */
-    void invokeUnauthorizedHandler() {
-        if (m_unauthorizedHandler) {
-            m_unauthorizedHandler();
-        }
-    }
-
-private:
-    std::function<void()> m_unauthorizedHandler;
 };

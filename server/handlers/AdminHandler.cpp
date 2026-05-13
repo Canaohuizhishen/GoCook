@@ -69,16 +69,22 @@ AdminHandler::AdminHandler(gocook::services::IAdminService& service,
                            AuthMiddleware& auth)
     : service_(service), auth_(auth) {}
 
-void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res) {
+bool AdminHandler::requireRole(const httplib::Request& req, httplib::Response& res,
+                                const std::vector<std::string>& allowedRoles) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
         setErrorResponse(res, 401, "无效的访问令牌");
-        return;
+        return false;
     }
-    if (info.role != "super_admin") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
+    for (const auto& role : allowedRoles) {
+        if (info.role == role) return true;
     }
+    setErrorResponse(res, 403, "权限不足");
+    return false;
+}
+
+void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res) {
+    if (!requireRole(req, res, {"super_admin"})) return;
     try {
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
@@ -95,15 +101,7 @@ void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res)
 }
 
 void AdminHandler::createUser(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin"})) return;
     try {
         json reqJson = json::parse(req.body);
         CreateUserRequest request;
@@ -122,15 +120,7 @@ void AdminHandler::createUser(const httplib::Request& req, httplib::Response& re
 }
 
 void AdminHandler::updateUser(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin"})) return;
     try {
         int userId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -148,15 +138,7 @@ void AdminHandler::updateUser(const httplib::Request& req, httplib::Response& re
 }
 
 void AdminHandler::setUserStatus(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin"})) return;
     try {
         int userId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -173,15 +155,7 @@ void AdminHandler::setUserStatus(const httplib::Request& req, httplib::Response&
 }
 
 void AdminHandler::deleteUser(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin"})) return;
     try {
         int userId = std::stoi(req.matches[1]);
         service_.deleteUser(userId);
@@ -195,15 +169,7 @@ void AdminHandler::deleteUser(const httplib::Request& req, httplib::Response& re
 }
 
 void AdminHandler::getPendingRecipes(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
@@ -218,15 +184,7 @@ void AdminHandler::getPendingRecipes(const httplib::Request& req, httplib::Respo
 }
 
 void AdminHandler::approveRecipe(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         service_.approveRecipe(recipeId);
@@ -240,15 +198,7 @@ void AdminHandler::approveRecipe(const httplib::Request& req, httplib::Response&
 }
 
 void AdminHandler::rejectRecipe(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -265,15 +215,7 @@ void AdminHandler::rejectRecipe(const httplib::Request& req, httplib::Response& 
 }
 
 void AdminHandler::batchReviewRecipes(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         json reqJson = json::parse(req.body);
         BatchReviewRequest request;
@@ -291,15 +233,7 @@ void AdminHandler::batchReviewRecipes(const httplib::Request& req, httplib::Resp
 }
 
 void AdminHandler::publishAnnouncement(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         json reqJson = json::parse(req.body);
         AnnouncementRequest request;
@@ -316,15 +250,7 @@ void AdminHandler::publishAnnouncement(const httplib::Request& req, httplib::Res
 }
 
 void AdminHandler::sendNotification(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         json reqJson = json::parse(req.body);
         NotificationRequest request;
@@ -345,15 +271,7 @@ void AdminHandler::sendNotification(const httplib::Request& req, httplib::Respon
 }
 
 void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         auto stats = service_.getStatistics();
 
@@ -406,15 +324,7 @@ void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response&
 }
 
 void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
@@ -452,15 +362,7 @@ void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& 
 }
 
 void AdminHandler::getActivityLogs(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    if (info.role != "super_admin" && info.role != "moderator") {
-        setErrorResponse(res, 403, "权限不足");
-        return;
-    }
+    if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
