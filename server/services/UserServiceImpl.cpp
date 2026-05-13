@@ -6,6 +6,7 @@
 #include <random>
 #include <cstring>
 #include "bcrypt/crypt_blowfish.h"   // 基于 Blowfish 算法的安全密码哈希（Openwall bcrypt 实现）
+#include <openssl/crypto.h>          // 提供 CRYPTO_memcmp 恒定时间比较
 
 // bcrypt 输出缓冲区安全大小（实际输出约 60 字节）
 #define BCRYPT_OUTPUT_SIZE 128
@@ -65,12 +66,15 @@ bool UserServiceImpl::validatePassword(const std::string& plain, const std::stri
     if (!result) {
         return false;
     }
-    // 常量时间比较，防止时序攻击
-    int diff = 0;
-    for (size_t i = 0; i < hash.size(); ++i) {
-        diff |= (static_cast<unsigned char>(result[i]) ^ static_cast<unsigned char>(hash[i]));
+
+    // bcrypt 哈希串长度固定（约 60 字符），先比较长度
+    size_t result_len = std::strlen(result);
+    if (hash.size() != result_len) {
+        return false;
     }
-    return diff == 0;
+
+    // 使用 OpenSSL 提供的恒定时间比较函数，彻底消除时序攻击风险
+    return CRYPTO_memcmp(hash.data(), result, result_len) == 0;
 }
 
 // ------------------ IUserService 接口实现 ------------------

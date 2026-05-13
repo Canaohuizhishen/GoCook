@@ -1,5 +1,6 @@
 #include "auth_middleware.h"
 #include <iostream>
+#include <chrono>   // 用于检查 Token 过期时间
 
 using namespace gocook::models;
 
@@ -24,7 +25,18 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
                             .with_issuer("GoCook");
         verifier.verify(decoded);
 
-        // 5. 提取负荷中的用户信息
+        // 5. 显式检查过期时间（jwt-cpp 内部已验证，此处防御性再查）
+        if (decoded.has_expires_at()) {
+            auto exp_time = decoded.get_expires_at();
+            if (std::chrono::system_clock::now() > exp_time) {
+                throw std::runtime_error("token expired");
+            }
+        } else {
+            // 没有 exp 字段的 Token 视为非法
+            throw std::runtime_error("token missing expiration");
+        }
+
+        // 6. 提取负荷中的用户信息
         info.userId = std::stoi(decoded.get_payload_claim("userId").as_string());
         info.username = decoded.get_payload_claim("username").as_string();
         info.role = decoded.get_payload_claim("role").as_string();   // 提取角色

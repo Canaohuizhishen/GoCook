@@ -1,6 +1,7 @@
 #include "AnnouncementHandler.h"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include "../common/ErrorHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -43,10 +44,8 @@ void AnnouncementHandler::getAnnouncements(const httplib::Request& req, httplib:
         res.status = 200;
         res.body = resp.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }

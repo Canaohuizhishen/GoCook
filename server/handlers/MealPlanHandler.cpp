@@ -1,5 +1,6 @@
 #include "MealPlanHandler.h"
 #include <nlohmann/json.hpp>
+#include "../common/ErrorHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -116,8 +117,7 @@ MealPlanHandler::MealPlanHandler(gocook::services::IMealPlanService& service,
 void MealPlanHandler::createMealPlan(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -130,19 +130,16 @@ void MealPlanHandler::createMealPlan(const httplib::Request& req, httplib::Respo
         res.status = 201;
         res.body = json{{"plan_id", planId}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void MealPlanHandler::getMealPlans(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -154,19 +151,16 @@ void MealPlanHandler::getMealPlans(const httplib::Request& req, httplib::Respons
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void MealPlanHandler::getMealPlanDetail(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -178,19 +172,16 @@ void MealPlanHandler::getMealPlanDetail(const httplib::Request& req, httplib::Re
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void MealPlanHandler::updateMealPlan(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -202,42 +193,36 @@ void MealPlanHandler::updateMealPlan(const httplib::Request& req, httplib::Respo
         if (reqJson.contains("meal_type")) updates.meal_type = reqJson["meal_type"];
         service_.updateMealPlan(info.userId, planId, updates);
         res.status = 200;
-        res.body = json{{"message", "Meal plan updated"}}.dump();
+        res.body = json{{"message", "膳食计划已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void MealPlanHandler::deleteMealPlan(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         int planId = std::stoi(req.matches[1]);
         service_.deleteMealPlan(info.userId, planId);
         res.status = 200;
-        res.body = json{{"message", "Meal plan deleted"}}.dump();
+        res.body = json{{"message", "膳食计划已删除"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void MealPlanHandler::getNutritionTrend(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -247,10 +232,8 @@ void MealPlanHandler::getNutritionTrend(const httplib::Request& req, httplib::Re
         res.status = 200;
         res.body = toJson(trend).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
