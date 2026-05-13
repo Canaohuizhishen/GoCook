@@ -303,10 +303,7 @@ void RecipeHandler::getRecipeDetail(const httplib::Request& req, httplib::Respon
         res.status = 200;
         res.body = response.dump();
     } catch (const ServiceException& e) {
-        int code = 500;
-        std::string msg = e.what();
-        if (msg.find("not found") != std::string::npos || msg.find("不存在") != std::string::npos) code = 404;
-        setErrorResponse(res, code, "请求的资源不存在");
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
         handleStandardException(e, res);
     }
@@ -461,10 +458,7 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
         res.status = 200;
         res.body = json{{"message", "Recipe updated"}}.dump();
     } catch (const ServiceException& e) {
-        int code = 500;
-        std::string msg = e.what();
-        if (msg.find("仅可编辑") != std::string::npos) code = 403;
-        setErrorResponse(res, code, msg);
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
         handleStandardException(e, res);
     }

@@ -106,7 +106,7 @@ void InventoryServiceImpl::deleteInventoryItem(int userId, int itemId) {
             "DELETE FROM inventory WHERE id = $1 AND user_id = $2",
             itemId, userId);
         if (res.affected_rows() == 0) {
-            throw ServiceException("Item not found or not owned by user");
+            throw ServiceException("Item not found or not owned by user", 404);
         }
         txn.commit();
     } catch (const std::exception& e) {

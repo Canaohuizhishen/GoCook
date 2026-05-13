@@ -11,7 +11,11 @@ namespace gocook::services {
     // 自定义业务异常，由 Handler 转换为 HTTP 状态码
     class ServiceException : public std::runtime_error {
     public:
-        using std::runtime_error::runtime_error;
+        ServiceException(const std::string& msg, int statusCode = 500)
+            : std::runtime_error(msg), statusCode_(statusCode) {}
+        int statusCode() const { return statusCode_; }
+    private:
+        int statusCode_;
     };
 
     // ======================== 菜谱服务接口 ========================

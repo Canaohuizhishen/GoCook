@@ -1,5 +1,6 @@
 #include "HttpGoCookApi.h"
 #include <QUrl>
+#include <QUrlQuery>
 #include <QNetworkRequest>
 #include <QJsonArray>
 #include <QJSValue>
@@ -369,8 +370,7 @@ void HttpGoCookApi::forgotPassword(const std::string& email,
                                    SuccessCallback callback)
 {
     Q_UNUSED(email);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::resetPassword(const std::string& token,
@@ -379,8 +379,7 @@ void HttpGoCookApi::resetPassword(const std::string& token,
 {
     Q_UNUSED(token);
     Q_UNUSED(newPassword);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 // ======================= 用户相关 =======================
@@ -414,8 +413,7 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
                                  AvatarUploadCallback callback)
 {
     Q_UNUSED(filePath);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "Not implemented");
 }
 
 void HttpGoCookApi::changePassword(const std::string& currentPassword,
@@ -424,14 +422,12 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
 {
     Q_UNUSED(currentPassword);
     Q_UNUSED(newPassword);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::deleteAccount(SuccessCallback callback)
 {
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::getFavorites(int page, int size,
@@ -443,16 +439,14 @@ void HttpGoCookApi::getFavorites(int page, int size,
 
 void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback)
 {
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, std::vector<gocook::models::FavoriteGroup>{}, "Not implemented");
 }
 
 void HttpGoCookApi::createFavoriteGroup(const gocook::models::CreateGroupRequest& request,
                                         FavoriteGroupCallback callback)
 {
     Q_UNUSED(request);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::FavoriteGroup{}, "Not implemented");
 }
 
 void HttpGoCookApi::updateFavoriteGroup(int groupId,
@@ -461,16 +455,14 @@ void HttpGoCookApi::updateFavoriteGroup(int groupId,
 {
     Q_UNUSED(groupId);
     Q_UNUSED(request);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::deleteFavoriteGroup(int groupId,
                                         SuccessCallback callback)
 {
     Q_UNUSED(groupId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::updateFavoriteItem(int favoriteId,
@@ -479,16 +471,14 @@ void HttpGoCookApi::updateFavoriteItem(int favoriteId,
 {
     Q_UNUSED(favoriteId);
     Q_UNUSED(request);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::batchDeleteFavorites(const gocook::models::BatchDeleteFavoritesRequest& request,
                                          SuccessCallback callback)
 {
     Q_UNUSED(request);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::getNotifications(int page, int size,
@@ -498,30 +488,26 @@ void HttpGoCookApi::getNotifications(int page, int size,
     Q_UNUSED(page);
     Q_UNUSED(size);
     Q_UNUSED(type);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::PagedNotifications{}, "Not implemented");
 }
 
 void HttpGoCookApi::markNotificationRead(int notificationId,
                                          SuccessCallback callback)
 {
     Q_UNUSED(notificationId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
 {
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::deleteNotification(int notificationId,
-                                       SuccessCallback callback)
+                                        SuccessCallback callback)
 {
     Q_UNUSED(notificationId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 // ======================= 菜谱相关 =======================
@@ -574,14 +560,12 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
         }
     }
 
-    QString query;
-    for (auto it = params.begin(); it != params.end(); ++it) {
-        if (!query.isEmpty()) query += "&";
-        query += it.key() + "=" + QUrl::toPercentEncoding(it.value().toString());
-    }
+    QUrlQuery query;
+    for (auto it = params.begin(); it != params.end(); ++it)
+        query.addQueryItem(it.key(), it.value().toString());
     QString endpoint = "/api/recipes/public";
     if (!query.isEmpty())
-        endpoint += "?" + query;
+        endpoint += "?" + query.toString(QUrl::FullyEncoded);
 
     get(endpoint, [callback](bool success, const QString &errorMsg, const QJsonDocument &doc) {
         if (!success) {
@@ -675,40 +659,36 @@ void HttpGoCookApi::rateRecipe(int recipeId,
 }
 
 void HttpGoCookApi::updateRating(int recipeId, int ratingId,
-                                 const gocook::models::RateRecipeRequest& request,
-                                 SuccessCallback callback)
+                                  const gocook::models::RateRecipeRequest& request,
+                                  SuccessCallback callback)
 {
     Q_UNUSED(recipeId);
     Q_UNUSED(ratingId);
     Q_UNUSED(request);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
-                                 SuccessCallback callback)
+                                  SuccessCallback callback)
 {
     Q_UNUSED(recipeId);
     Q_UNUSED(ratingId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::getMyRatings(int page, int size,
-                                 PagedUserRatingsCallback callback)
+                                  PagedUserRatingsCallback callback)
 {
     Q_UNUSED(page);
     Q_UNUSED(size);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::PagedUserRatings{}, "Not implemented");
 }
 
 void HttpGoCookApi::getRecipeNutrition(int recipeId,
-                                       NutritionReportCallback callback)
+                                        NutritionReportCallback callback)
 {
     Q_UNUSED(recipeId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::NutritionReport{}, "Not implemented");
 }
 
 // ======================= 库存管理 =======================
@@ -733,32 +713,28 @@ void HttpGoCookApi::deleteInventoryItem(int itemId,
 // ======================= 购物清单 / 膳食计划 =======================
 void HttpGoCookApi::getShoppingLists(ShoppingListsCallback callback)
 {
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, std::vector<gocook::models::ShoppingListSummary>{}, "Not implemented");
 }
 
 void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListRequest& request,
-                                       ShoppingListCallback callback)
+                                        ShoppingListCallback callback)
 {
     Q_UNUSED(request);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::ShoppingList{}, "Not implemented");
 }
 
 void HttpGoCookApi::getShoppingListDetail(int listId,
-                                          ShoppingListCallback callback)
+                                           ShoppingListCallback callback)
 {
     Q_UNUSED(listId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::ShoppingList{}, "Not implemented");
 }
 
 void HttpGoCookApi::deleteShoppingList(int listId,
-                                       SuccessCallback callback)
+                                        SuccessCallback callback)
 {
     Q_UNUSED(listId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "Not implemented");
 }
 
 void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
@@ -776,13 +752,12 @@ void HttpGoCookApi::batchAddShoppingItems(int listId,
 }
 
 void HttpGoCookApi::exportShoppingList(int listId,
-                                       const std::string& format,
-                                       std::function<void(bool, const std::string&, const std::string&)> callback)
+                                        const std::string& format,
+                                        std::function<void(bool, const std::string&, const std::string&)> callback)
 {
     Q_UNUSED(listId);
     Q_UNUSED(format);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, "", "Not implemented");
 }
 
 // ======================= 膳食计划 =======================
@@ -908,34 +883,31 @@ void HttpGoCookApi::sendNotification(const gocook::models::NotificationRequest& 
 
 void HttpGoCookApi::getStatistics(StatisticsCallback callback)
 {
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::StatisticsData{}, "Not implemented");
 }
 
 void HttpGoCookApi::getAdminLogs(int page, int size,
-                                 const std::string& type,
-                                 int userId,
-                                 PagedAdminLogsCallback callback)
+                                  const std::string& type,
+                                  int userId,
+                                  PagedAdminLogsCallback callback)
 {
     Q_UNUSED(page);
     Q_UNUSED(size);
     Q_UNUSED(type);
     Q_UNUSED(userId);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::PagedAdminLogs{}, "Not implemented");
 }
 
 void HttpGoCookApi::getActivityLogs(int page, int size,
-                                    int userId,
-                                    const std::string& action,
-                                    PagedActivityLogsCallback callback)
+                                     int userId,
+                                     const std::string& action,
+                                     PagedActivityLogsCallback callback)
 {
     Q_UNUSED(page);
     Q_UNUSED(size);
     Q_UNUSED(userId);
     Q_UNUSED(action);
-    Q_UNUSED(callback);
-    throw gocook::services::ServiceException("Not implemented");
+    if (callback) callback(false, gocook::models::PagedActivityLogs{}, "Not implemented");
 }
 
 // ======================= 令牌管理 =======================

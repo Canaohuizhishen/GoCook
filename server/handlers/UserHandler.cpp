@@ -143,12 +143,7 @@ void UserHandler::registerUser(const httplib::Request& req, httplib::Response& r
         res.status = 201;
         res.body = json{{"message", "User registered successfully"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        std::string what = e.what();
-        if (what.find("already exists") != std::string::npos) {
-            setErrorResponse(res, 409, "用户名或邮箱已存在");
-        } else {
-            handleStandardException(e, res);
-        }
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
         handleStandardException(e, res);
     }
@@ -269,7 +264,7 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
     }
     try {
         // 实际实现需要 multipart 解析，暂时返回未实现
-        throw gocook::services::ServiceException("Not implemented");
+        throw gocook::services::ServiceException("Not implemented", 501);
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -609,7 +604,7 @@ void UserHandler::getMyRatings(const httplib::Request& req, httplib::Response& r
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
         // 目前 IUserService 没有直接提供 getMyRatings，需要走 IRecipeService，这里暂时抛出未实现
-        throw gocook::services::ServiceException("Not implemented");
+        throw gocook::services::ServiceException("Not implemented", 501);
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
