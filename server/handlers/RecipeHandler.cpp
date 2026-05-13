@@ -187,38 +187,39 @@ static json toJson(const PagedMyRecipes& paged) {
 RecipeHandler::RecipeHandler(IRecipeService& service, AuthMiddleware& auth)
     : service_(service), auth_(auth) {}
 
+nlohmann::json RecipeHandler::parseFilterParams(const httplib::Request& req) {
+    nlohmann::json filters;
+    if (req.has_param("cuisine")) filters["cuisine"] = req.get_param_value("cuisine");
+    if (req.has_param("meal_type")) filters["meal_type"] = req.get_param_value("meal_type");
+    if (req.has_param("flavor")) filters["flavor"] = req.get_param_value("flavor");
+    if (req.has_param("cooking_method")) filters["cooking_method"] = req.get_param_value("cooking_method");
+    if (req.has_param("ingredient_type")) filters["ingredient_type"] = req.get_param_value("ingredient_type");
+    if (req.has_param("difficulty")) filters["difficulty"] = req.get_param_value("difficulty");
+    if (req.has_param("max_time")) filters["max_time"] = std::stoi(req.get_param_value("max_time"));
+    if (req.has_param("min_calories")) filters["min_calories"] = std::stoi(req.get_param_value("min_calories"));
+    if (req.has_param("max_calories")) filters["max_calories"] = std::stoi(req.get_param_value("max_calories"));
+    if (req.has_param("tags")) {
+        std::string tagsParam = req.get_param_value("tags");
+        std::vector<std::string> tagList;
+        std::stringstream ss(tagsParam);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            if (!token.empty()) {
+                tagList.push_back(token);
+            }
+        }
+        filters["tags"] = tagList;
+    }
+    if (req.has_param("sort_by")) filters["sort_by"] = req.get_param_value("sort_by");
+    if (req.has_param("min_rating")) filters["min_rating"] = std::stod(req.get_param_value("min_rating"));
+    return filters;
+}
+
 void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Response& res) {
     try {
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        nlohmann::json filters;
-
-        // 解析契约4.1定义的可选筛选参数
-        if (req.has_param("cuisine")) filters["cuisine"] = req.get_param_value("cuisine");
-        if (req.has_param("meal_type")) filters["meal_type"] = req.get_param_value("meal_type");
-        if (req.has_param("flavor")) filters["flavor"] = req.get_param_value("flavor");
-        if (req.has_param("cooking_method")) filters["cooking_method"] = req.get_param_value("cooking_method");
-        if (req.has_param("ingredient_type")) filters["ingredient_type"] = req.get_param_value("ingredient_type");
-        if (req.has_param("difficulty")) filters["difficulty"] = req.get_param_value("difficulty");
-        if (req.has_param("max_time")) filters["max_time"] = std::stoi(req.get_param_value("max_time"));
-        if (req.has_param("min_calories")) filters["min_calories"] = std::stoi(req.get_param_value("min_calories"));
-        if (req.has_param("max_calories")) filters["max_calories"] = std::stoi(req.get_param_value("max_calories"));
-        if (req.has_param("tags")) {
-            std::string tagsParam = req.get_param_value("tags");
-            std::vector<std::string> tagList;
-            std::stringstream ss(tagsParam);
-            std::string token;
-            while (std::getline(ss, token, ',')) {
-                if (!token.empty()) {
-                    tagList.push_back(token);
-                }
-            }
-            filters["tags"] = tagList;
-        }
-        if (req.has_param("sort_by")) filters["sort_by"] = req.get_param_value("sort_by");
-        if (req.has_param("min_rating")) filters["min_rating"] = std::stod(req.get_param_value("min_rating"));
-
-        auto result = service_.getPublicRecipes(page, size, filters);
+        auto result = service_.getPublicRecipes(page, size, parseFilterParams(req));
         json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -235,32 +236,7 @@ void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response
         std::string keyword = req.get_param_value("keyword");
         int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
         int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        nlohmann::json filters;
-        if (req.has_param("cuisine")) filters["cuisine"] = req.get_param_value("cuisine");
-        if (req.has_param("meal_type")) filters["meal_type"] = req.get_param_value("meal_type");
-        if (req.has_param("flavor")) filters["flavor"] = req.get_param_value("flavor");
-        if (req.has_param("cooking_method")) filters["cooking_method"] = req.get_param_value("cooking_method");
-        if (req.has_param("ingredient_type")) filters["ingredient_type"] = req.get_param_value("ingredient_type");
-        if (req.has_param("difficulty")) filters["difficulty"] = req.get_param_value("difficulty");
-        if (req.has_param("max_time")) filters["max_time"] = std::stoi(req.get_param_value("max_time"));
-        if (req.has_param("min_calories")) filters["min_calories"] = std::stoi(req.get_param_value("min_calories"));
-        if (req.has_param("max_calories")) filters["max_calories"] = std::stoi(req.get_param_value("max_calories"));
-        if (req.has_param("tags")) {
-            std::string tagsParam = req.get_param_value("tags");
-            std::vector<std::string> tagList;
-            std::stringstream ss(tagsParam);
-            std::string token;
-            while (std::getline(ss, token, ',')) {
-                if (!token.empty()) {
-                    tagList.push_back(token);
-                }
-            }
-            filters["tags"] = tagList;
-        }
-        if (req.has_param("sort_by")) filters["sort_by"] = req.get_param_value("sort_by");
-        if (req.has_param("min_rating")) filters["min_rating"] = std::stod(req.get_param_value("min_rating"));
-
-        auto result = service_.searchRecipes(keyword, page, size, filters);
+        auto result = service_.searchRecipes(keyword, page, size, parseFilterParams(req));
         json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;

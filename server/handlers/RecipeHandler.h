@@ -39,6 +39,7 @@ public:
     void rateRecipe(const httplib::Request& req, httplib::Response& res);
 
 private:
+    nlohmann::json parseFilterParams(const httplib::Request& req);
     gocook::services::IRecipeService& service_;
     AuthMiddleware& auth_;
 };

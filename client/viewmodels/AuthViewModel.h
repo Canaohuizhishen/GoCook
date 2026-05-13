@@ -1,7 +1,7 @@
 #pragma once
 
 #include <QObject>
-#include <gocook/IGoCookApi.h>
+#include "HttpGoCookApi.h"
 #include "LocalDatabase.h"
 
 /**
@@ -22,7 +22,7 @@ class AuthViewModel : public QObject
 
 public:
     // 构造函数
-    explicit AuthViewModel(IGoCookApi *api, QObject *parent = nullptr);
+    explicit AuthViewModel(HttpGoCookApi *api, QObject *parent = nullptr);
 
     // 获取登录状态
     bool loggedIn() const { return m_loggedIn; }
@@ -62,8 +62,8 @@ private:
     // 内部方法：设置登录状态并更新相关属性
     void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "", const QString &token = "");
 
-    // API 抽象接口指针
-    IGoCookApi *m_api;
+    // API 实现指针
+    HttpGoCookApi *m_api;
     // 本地数据库单例
     LocalDatabase *m_db;
     // 登录状态标志

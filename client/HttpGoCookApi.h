@@ -260,6 +260,18 @@ public:
     void setAuthToken(const std::string& token) override;
     std::string authToken() const override;
 
+    // 注册未授权回调（响应 401 时自动触发）
+    void setUnauthorizedHandler(std::function<void()> handler) {
+        m_unauthorizedHandler = std::move(handler);
+    }
+
+    // 供子类/自身调用，触发未授权回调
+    void invokeUnauthorizedHandler() {
+        if (m_unauthorizedHandler) {
+            m_unauthorizedHandler();
+        }
+    }
+
 signals:
     // 基础 URL 变更信号
     void baseUrlChanged();
@@ -302,4 +314,6 @@ private:
     int m_maxRetries = 0;
     // 重试间隔（毫秒）
     int m_retryDelay = 1000;
+    // 未授权回调
+    std::function<void()> m_unauthorizedHandler;
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vector>
 #include <httplib/httplib.h>
 #include <gocook/IServices.h>
 #include "../auth_middleware.h"
@@ -32,6 +33,8 @@ public:
     void getActivityLogs(const httplib::Request& req, httplib::Response& res);
 
 private:
+    bool requireRole(const httplib::Request& req, httplib::Response& res,
+                     const std::vector<std::string>& allowedRoles);
     gocook::services::IAdminService& service_;
     AuthMiddleware& auth_;
 };

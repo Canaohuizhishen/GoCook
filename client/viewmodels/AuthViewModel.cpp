@@ -7,7 +7,7 @@
 #include <QNetworkReply>
 #include "HttpGoCookApi.h"
 
-AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent)
+AuthViewModel::AuthViewModel(HttpGoCookApi *api, QObject *parent)
     : QObject(parent)
     , m_api(api)
     , m_db(LocalDatabase::instance())
@@ -88,7 +88,19 @@ void AuthViewModel::checkAutoLogin()
     if (!user.isEmpty()) {
         QString token = user["token"].toString();
         m_api->setAuthToken(token.toStdString());
-        setLoggedIn(true, user["id"].toInt(), user["username"].toString(), token);
+        m_api->getCurrentUser([this](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
+            Q_UNUSED(profile)
+            if (success) {
+                QVariantMap u = m_db->getUser();
+                setLoggedIn(true, u["id"].toInt(), u["username"].toString(), u["token"].toString());
+            } else {
+                m_db->clearUser();
+                m_api->setAuthToken("");
+                if (m_loggedIn) {
+                    setLoggedIn(false, 0, "", "");
+                }
+            }
+        });
     }
 }
 
