@@ -86,7 +86,7 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
         pqxx::result check = txn.exec_params(
             "SELECT id FROM users WHERE username = $1", request.username);
         if (!check.empty()) {
-            throw ServiceException("Username already exists");
+            throw ServiceException("Username already exists", 409);
         }
 
         std::string hashed = hashPassword(request.password);
@@ -107,7 +107,7 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
             request.username);
 
         if (result.empty()) {
-            throw ServiceException("Invalid username or password");
+            throw ServiceException("Invalid username or password", 401);
         }
 
         int userId = result[0]["id"].as<int>();
@@ -115,7 +115,7 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
         std::string role = result[0]["role"].as<std::string>();   // 读取用户角色
 
         if (!validatePassword(request.password, storedHash)) {
-            throw ServiceException("Invalid username or password");
+            throw ServiceException("Invalid username or password", 401);
         }
 
         LoginResponse resp;
