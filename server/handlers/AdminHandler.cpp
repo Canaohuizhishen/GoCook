@@ -1,5 +1,6 @@
 #include "AdminHandler.h"
 #include <nlohmann/json.hpp>
+#include "../common/ErrorHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -71,13 +72,11 @@ AdminHandler::AdminHandler(gocook::services::IAdminService& service,
 void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -89,24 +88,20 @@ void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res)
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::createUser(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -118,26 +113,22 @@ void AdminHandler::createUser(const httplib::Request& req, httplib::Response& re
         request.role = reqJson.value("role", "user");
         service_.createUser(request);
         res.status = 201;
-        res.body = json{{"message", "User created"}}.dump();
+        res.body = json{{"message", "用户已创建"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::updateUser(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -148,26 +139,22 @@ void AdminHandler::updateUser(const httplib::Request& req, httplib::Response& re
         if (reqJson.contains("role")) updates.role = reqJson["role"];
         service_.updateUser(userId, updates);
         res.status = 200;
-        res.body = json{{"message", "User updated"}}.dump();
+        res.body = json{{"message", "用户已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::setUserStatus(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -177,26 +164,22 @@ void AdminHandler::setUserStatus(const httplib::Request& req, httplib::Response&
         request.status = reqJson.at("status");
         service_.setUserStatus(userId, request);
         res.status = 200;
-        res.body = json{{"message", "User status updated"}}.dump();
+        res.body = json{{"message", "用户状态已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::deleteUser(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -205,24 +188,20 @@ void AdminHandler::deleteUser(const httplib::Request& req, httplib::Response& re
         res.status = 204;
         res.body.clear();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::getPendingRecipes(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -232,50 +211,42 @@ void AdminHandler::getPendingRecipes(const httplib::Request& req, httplib::Respo
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::approveRecipe(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
         int recipeId = std::stoi(req.matches[1]);
         service_.approveRecipe(recipeId);
         res.status = 200;
-        res.body = json{{"message", "Recipe approved"}}.dump();
+        res.body = json{{"message", "菜谱已审核通过"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::rejectRecipe(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -285,26 +256,22 @@ void AdminHandler::rejectRecipe(const httplib::Request& req, httplib::Response& 
         request.reason = reqJson.at("reason");
         service_.rejectRecipe(recipeId, request);
         res.status = 200;
-        res.body = json{{"message", "Recipe rejected"}}.dump();
+        res.body = json{{"message", "菜谱已拒绝"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::batchReviewRecipes(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -317,24 +284,20 @@ void AdminHandler::batchReviewRecipes(const httplib::Request& req, httplib::Resp
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::publishAnnouncement(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -344,26 +307,22 @@ void AdminHandler::publishAnnouncement(const httplib::Request& req, httplib::Res
         request.content = reqJson.at("content");
         service_.publishAnnouncement(request);
         res.status = 201;
-        res.body = json{{"message", "Announcement published"}}.dump();
+        res.body = json{{"message", "公告已发布"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::sendNotification(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -379,24 +338,20 @@ void AdminHandler::sendNotification(const httplib::Request& req, httplib::Respon
         res.status = 201;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -444,24 +399,20 @@ void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response&
         res.status = 200;
         res.body = resp.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -494,24 +445,20 @@ void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& 
         res.status = 200;
         res.body = resp.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void AdminHandler::getActivityLogs(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (info.role != "super_admin" && info.role != "moderator") {
-        res.status = 403;
-        res.body = json{{"error", "权限不足"}}.dump();
+        setErrorResponse(res, 403, "权限不足");
         return;
     }
     try {
@@ -541,10 +488,8 @@ void AdminHandler::getActivityLogs(const httplib::Request& req, httplib::Respons
         res.status = 200;
         res.body = resp.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }

@@ -1,5 +1,6 @@
 #include "UserHandler.h"
 #include <optional>
+#include "../common/ErrorHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -129,8 +130,7 @@ void UserHandler::registerUser(const httplib::Request& req, httplib::Response& r
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("username") || !reqJson.contains("password") || !reqJson.contains("email")) {
-            res.status = 400;
-            res.body = json{{"error", "Missing required fields"}}.dump();
+            setErrorResponse(res, 400, "缺少必填字段");
             return;
         }
         RegisterRequest request;
@@ -145,14 +145,12 @@ void UserHandler::registerUser(const httplib::Request& req, httplib::Response& r
     } catch (const gocook::services::ServiceException& e) {
         std::string what = e.what();
         if (what.find("already exists") != std::string::npos) {
-            res.status = 409;
+            setErrorResponse(res, 409, "用户名或邮箱已存在");
         } else {
-            res.status = 500;
+            handleStandardException(e, res);
         }
-        res.body = json{{"error", e.what()}}.dump();
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -160,8 +158,7 @@ void UserHandler::loginUser(const httplib::Request& req, httplib::Response& res)
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("username") || !reqJson.contains("password")) {
-            res.status = 400;
-            res.body = json{{"error", "Missing username or password"}}.dump();
+            setErrorResponse(res, 400, "缺少用户名或密码");
             return;
         }
         LoginRequest request;
@@ -177,11 +174,9 @@ void UserHandler::loginUser(const httplib::Request& req, httplib::Response& res)
             {"username", loginResp.username}
         }.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 401;
-        res.body = json{{"error", e.what()}}.dump();
+        setErrorResponse(res, 401, "用户名或密码错误");
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -190,8 +185,7 @@ void UserHandler::forgotPassword(const httplib::Request& req, httplib::Response&
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("email")) {
-            res.status = 400;
-            res.body = json{{"error", "Missing email field"}}.dump();
+            setErrorResponse(res, 400, "缺少邮箱字段");
             return;
         }
         std::string email = reqJson["email"];
@@ -199,11 +193,9 @@ void UserHandler::forgotPassword(const httplib::Request& req, httplib::Response&
         res.status = 200;
         res.body = json{{"message", "若该邮箱已注册，您将收到一封重置密码的邮件"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -212,29 +204,25 @@ void UserHandler::resetPassword(const httplib::Request& req, httplib::Response& 
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("token") || !reqJson.contains("new_password")) {
-            res.status = 400;
-            res.body = json{{"error", "Missing token or new_password"}}.dump();
+            setErrorResponse(res, 400, "缺少令牌或新密码");
             return;
         }
         std::string token = reqJson["token"];
         std::string newPassword = reqJson["new_password"];
         service_.resetPassword(token, newPassword);
         res.status = 200;
-        res.body = json{{"message", "Password reset successfully"}}.dump();
+        res.body = json{{"message", "密码重置成功"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 400;  // token 无效等
-        res.body = json{{"error", e.what()}}.dump();
+        setErrorResponse(res, 400, "令牌无效或已过期");
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::getCurrentUser(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -242,19 +230,16 @@ void UserHandler::getCurrentUser(const httplib::Request& req, httplib::Response&
         res.status = 200;
         res.body = toJson(user).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -269,11 +254,9 @@ void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& 
         res.status = 200;
         res.body = toJson(updated).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -281,19 +264,16 @@ void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& 
 void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         // 实际实现需要 multipart 解析，暂时返回未实现
         throw gocook::services::ServiceException("Not implemented");
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -301,28 +281,24 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
 void UserHandler::changePassword(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("current_password") || !reqJson.contains("new_password")) {
-            res.status = 400;
-            res.body = json{{"error", "Missing current_password or new_password"}}.dump();
+            setErrorResponse(res, 400, "缺少当前密码或新密码");
             return;
         }
         std::string current = reqJson["current_password"];
         std::string newPwd = reqJson["new_password"];
         service_.changePassword(info.userId, current, newPwd);
         res.status = 200;
-        res.body = json{{"message", "Password changed"}}.dump();
+        res.body = json{{"message", "密码修改成功"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -330,28 +306,24 @@ void UserHandler::changePassword(const httplib::Request& req, httplib::Response&
 void UserHandler::deleteAccount(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         service_.deleteAccount(info.userId);
         res.status = 200;
-        res.body = json{{"message", "Account deactivated successfully"}}.dump();
+        res.body = json{{"message", "账户已注销"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::getPreferences(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -359,19 +331,16 @@ void UserHandler::getPreferences(const httplib::Request& req, httplib::Response&
         res.status = 200;
         res.body = toJson(prefs).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::updatePreferences(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -382,21 +351,18 @@ void UserHandler::updatePreferences(const httplib::Request& req, httplib::Respon
         if (reqJson.contains("health_goal")) prefs.health_goal = reqJson["health_goal"].get<std::string>();
         service_.updatePreferences(info.userId, prefs);
         res.status = 200;
-        res.body = json{{"message", "Preferences updated"}}.dump();
+        res.body = json{{"message", "偏好已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::updateHealthProfile(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -409,19 +375,16 @@ void UserHandler::updateHealthProfile(const httplib::Request& req, httplib::Resp
         res.status = 200;
         res.body = toJson(respData).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::getFavorites(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -432,11 +395,9 @@ void UserHandler::getFavorites(const httplib::Request& req, httplib::Response& r
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -445,8 +406,7 @@ void UserHandler::getFavorites(const httplib::Request& req, httplib::Response& r
 void UserHandler::getFavoriteGroups(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -456,19 +416,16 @@ void UserHandler::getFavoriteGroups(const httplib::Request& req, httplib::Respon
         res.status = 200;
         res.body = arr.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::createFavoriteGroup(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -479,19 +436,16 @@ void UserHandler::createFavoriteGroup(const httplib::Request& req, httplib::Resp
         res.status = 201;
         res.body = toJson(group).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::updateFavoriteGroup(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -501,42 +455,36 @@ void UserHandler::updateFavoriteGroup(const httplib::Request& req, httplib::Resp
         request.name = reqJson.at("name");
         service_.updateFavoriteGroup(info.userId, groupId, request);
         res.status = 200;
-        res.body = json{{"message", "Group updated"}}.dump();
+        res.body = json{{"message", "分组已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::deleteFavoriteGroup(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         int groupId = std::stoi(req.matches[1]);
         service_.deleteFavoriteGroup(info.userId, groupId);
         res.status = 200;
-        res.body = json{{"message", "Group deleted"}}.dump();
+        res.body = json{{"message", "分组已删除"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::updateFavoriteItem(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -547,21 +495,18 @@ void UserHandler::updateFavoriteItem(const httplib::Request& req, httplib::Respo
         if (reqJson.contains("is_public")) request.is_public = reqJson["is_public"].get<bool>();
         service_.updateFavoriteItem(info.userId, favoriteId, request);
         res.status = 200;
-        res.body = json{{"message", "Favorite updated"}}.dump();
+        res.body = json{{"message", "收藏项已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::batchDeleteFavorites(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -570,13 +515,11 @@ void UserHandler::batchDeleteFavorites(const httplib::Request& req, httplib::Res
         request.favorite_ids = reqJson.at("favorite_ids").get<std::vector<int>>();
         service_.batchDeleteFavorites(info.userId, request);
         res.status = 200;
-        res.body = json{{"message", "Successfully deleted"}}.dump();
+        res.body = json{{"message", "批量删除成功"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -585,8 +528,7 @@ void UserHandler::batchDeleteFavorites(const httplib::Request& req, httplib::Res
 void UserHandler::getNotifications(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -597,73 +539,62 @@ void UserHandler::getNotifications(const httplib::Request& req, httplib::Respons
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::markNotificationRead(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         int id = std::stoi(req.matches[1]);
         service_.markNotificationRead(info.userId, id);
         res.status = 200;
-        res.body = json{{"message", "Marked as read"}}.dump();
+        res.body = json{{"message", "已标记为已读"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::markAllNotificationsRead(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         service_.markAllNotificationsRead(info.userId);
         res.status = 200;
-        res.body = json{{"message", "All marked as read"}}.dump();
+        res.body = json{{"message", "全部已标记为已读"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void UserHandler::deleteNotification(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         int id = std::stoi(req.matches[1]);
         service_.deleteNotification(info.userId, id);
         res.status = 200;
-        res.body = json{{"message", "Notification deleted"}}.dump();
+        res.body = json{{"message", "通知已删除"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -671,8 +602,7 @@ void UserHandler::deleteNotification(const httplib::Request& req, httplib::Respo
 void UserHandler::getMyRatings(const httplib::Request& req, httplib::Response& res) {
     auto info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -681,10 +611,8 @@ void UserHandler::getMyRatings(const httplib::Request& req, httplib::Response& r
         // 目前 IUserService 没有直接提供 getMyRatings，需要走 IRecipeService，这里暂时抛出未实现
         throw gocook::services::ServiceException("Not implemented");
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }

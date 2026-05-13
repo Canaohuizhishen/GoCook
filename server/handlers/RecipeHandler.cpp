@@ -5,6 +5,7 @@
 #include <optional>
 #include <sstream>
 #include <vector>
+#include "../common/ErrorHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::services;
@@ -223,11 +224,9 @@ void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Respo
         res.status = 200;
         res.body = response.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -267,11 +266,9 @@ void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response
         res.status = 200;
         res.body = response.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -291,11 +288,9 @@ void RecipeHandler::getRecommendedRecipes(const httplib::Request& req, httplib::
         res.status = 200;
         res.body = response.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -311,11 +306,9 @@ void RecipeHandler::getRecipeDetail(const httplib::Request& req, httplib::Respon
         int code = 500;
         std::string msg = e.what();
         if (msg.find("not found") != std::string::npos || msg.find("不存在") != std::string::npos) code = 404;
-        res.status = code;
-        res.body = json{{"error", msg}}.dump();
+        setErrorResponse(res, code, "请求的资源不存在");
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -329,11 +322,9 @@ void RecipeHandler::getRecipeVideos(const httplib::Request& req, httplib::Respon
         res.status = 200;
         res.body = arr.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -348,11 +339,9 @@ void RecipeHandler::getRecipeRatings(const httplib::Request& req, httplib::Respo
         res.status = 200;
         res.body = response.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -405,11 +394,9 @@ void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response&
         res.status = 201;
         res.body = json{{"id", respData.id}, {"status", respData.status}}.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -430,11 +417,9 @@ void RecipeHandler::getMySubmittedRecipes(const httplib::Request& req, httplib::
         res.status = 200;
         res.body = response.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -479,11 +464,9 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
         int code = 500;
         std::string msg = e.what();
         if (msg.find("仅可编辑") != std::string::npos) code = 403;
-        res.status = code;
-        res.body = json{{"error", msg}}.dump();
+        setErrorResponse(res, code, msg);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -507,11 +490,9 @@ void RecipeHandler::toggleFavorite(const httplib::Request& req, httplib::Respons
         res.status = 200;
         res.body = json{{"message", "Favorite toggled"}}.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -537,11 +518,9 @@ void RecipeHandler::rateRecipe(const httplib::Request& req, httplib::Response& r
         res.status = 201;
         res.body = json{{"message", "Rating submitted"}}.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -576,11 +555,9 @@ void RecipeHandler::getRecipeNutrition(const httplib::Request& req, httplib::Res
         res.status = 200;
         res.body = respJson.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -602,11 +579,9 @@ void RecipeHandler::updateRating(const httplib::Request& req, httplib::Response&
         res.status = 200;
         res.body = json{{"message", "Rating updated"}}.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -624,10 +599,8 @@ void RecipeHandler::deleteRating(const httplib::Request& req, httplib::Response&
         res.status = 200;
         res.body = json{{"message", "Rating deleted"}}.dump();
     } catch (const ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }

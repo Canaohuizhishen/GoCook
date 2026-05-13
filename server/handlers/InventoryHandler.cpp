@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <stdexcept>
+#include "../common/ErrorHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -79,8 +80,7 @@ InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
 void InventoryHandler::getInventory(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
@@ -97,26 +97,22 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
         res.status = 200;
         res.body = resp.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("ingredient_name") || !reqJson.contains("quantity") || !reqJson.contains("unit")) {
-            res.status = 400;
-            res.body = json{{"error", "Missing required fields: ingredient_name, quantity, unit"}}.dump();
+            setErrorResponse(res, 400, "缺少必填字段: ingredient_name, quantity, unit");
             return;
         }
         UpsertInventoryRequest item;
@@ -130,32 +126,27 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
         res.status = 200;
         res.body = json{{"message", "Inventory updated successfully"}, {"id", newId}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     if (req.matches.size() < 2) {
-        res.status = 400;
-        res.body = json{{"error", "Missing item_id in path"}}.dump();
+        setErrorResponse(res, 400, "缺少 item_id 路径参数");
         return;
     }
     int itemId;
     try {
         itemId = std::stoi(req.matches[1]);
     } catch (...) {
-        res.status = 400;
-        res.body = json{{"error", "Invalid item_id"}}.dump();
+        setErrorResponse(res, 400, "item_id 格式无效");
         return;
     }
     try {
@@ -163,11 +154,9 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
         res.status = 200;
         res.body = json{{"message", "Inventory item deleted"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
@@ -176,8 +165,7 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
 void InventoryHandler::getShoppingLists(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -188,19 +176,16 @@ void InventoryHandler::getShoppingLists(const httplib::Request& req, httplib::Re
         res.status = 200;
         res.body = arr.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::createShoppingList(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -214,19 +199,16 @@ void InventoryHandler::createShoppingList(const httplib::Request& req, httplib::
         res.status = 201;
         res.body = toJson(list).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::getShoppingListDetail(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -235,40 +217,34 @@ void InventoryHandler::getShoppingListDetail(const httplib::Request& req, httpli
         res.status = 200;
         res.body = toJson(list).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::deleteShoppingList(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
         int listId = std::stoi(req.matches[1]);
         service_.deleteShoppingList(info.userId, listId);
         res.status = 200;
-        res.body = json{{"message", "Shopping list deleted"}}.dump();
+        res.body = json{{"message", "购物清单已删除"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -280,21 +256,18 @@ void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httpl
         if (reqJson.contains("checked")) request.checked = reqJson["checked"].get<bool>();
         service_.updateShoppingListItem(info.userId, listId, itemId, request);
         res.status = 200;
-        res.body = json{{"message", "Item updated"}}.dump();
+        res.body = json{{"message", "清单项已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -312,19 +285,16 @@ void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httpli
         res.status = 201;
         res.body = toJson(response).dump();
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
 
 void InventoryHandler::exportShoppingList(const httplib::Request& req, httplib::Response& res) {
     TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
+        setErrorResponse(res, 401, "无效的访问令牌");
         return;
     }
     try {
@@ -339,10 +309,8 @@ void InventoryHandler::exportShoppingList(const httplib::Request& req, httplib::
         res.status = 200;
         res.body = content;
     } catch (const gocook::services::ServiceException& e) {
-        res.status = 500;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     } catch (const std::exception& e) {
-        res.status = 400;
-        res.body = json{{"error", e.what()}}.dump();
+        handleStandardException(e, res);
     }
 }
