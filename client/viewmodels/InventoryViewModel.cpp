@@ -80,6 +80,12 @@ void InventoryViewModel::addItem(const QString& name, double quantity,
     });
 }
 
+void InventoryViewModel::updateItem(int /*itemId*/, const QString& name, double quantity,
+                                     const QString& unit, const QString& expiryDate)
+{
+    addItem(name, quantity, unit, expiryDate);
+}
+
 void InventoryViewModel::deleteItem(int itemId)
 {
     m_deletingId = itemId;

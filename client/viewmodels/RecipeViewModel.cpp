@@ -29,17 +29,26 @@ void RecipeViewModel::refresh()
     emit recipesChanged();
     m_hasMore = false;
     emit hasMoreChanged();
-    loadPublicRecipes(1, m_pageSize);
+
+    if (m_currentMode == LoadMode::Recommended)
+        loadRecommendedRecipes(1, m_pageSize);
+    else
+        loadPublicRecipes(1, m_pageSize);
 }
 
 void RecipeViewModel::loadNextPage()
 {
     if (m_isLoading || !m_hasMore) return;
-    loadPublicRecipes(m_currentPage + 1, m_pageSize);
+
+    if (m_currentMode == LoadMode::Recommended)
+        loadRecommendedRecipes(m_currentPage + 1, m_pageSize);
+    else
+        loadPublicRecipes(m_currentPage + 1, m_pageSize);
 }
 
 void RecipeViewModel::loadPublicRecipes(int page, int size)
 {
+    m_currentMode = LoadMode::Public;
     m_isLoading = true;
     emit isLoadingChanged();
 
@@ -75,6 +84,7 @@ void RecipeViewModel::loadPublicRecipes(int page, int size)
 
 void RecipeViewModel::loadRecommendedRecipes(int page, int size)
 {
+    m_currentMode = LoadMode::Recommended;
     m_isLoading = true;
     emit isLoadingChanged();
 

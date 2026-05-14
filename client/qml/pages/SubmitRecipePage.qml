@@ -74,7 +74,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("\U0001F96C 食材")
+                text: qsTr("🥬 食材")
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
@@ -122,7 +122,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("\U0001F373 步骤")
+                text: qsTr("🍳 步骤")
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium

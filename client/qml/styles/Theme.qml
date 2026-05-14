@@ -2,6 +2,20 @@ pragma Singleton
 import QtQuick
 
 QtObject {
+    // ========== 主题模式 ==========
+    readonly property int themeModeSystem: 0
+    readonly property int themeModeLight: 1
+    readonly property int themeModeDark: 2
+
+    property int themeMode: 0
+
+    readonly property bool systemIsDark: Qt.styleHints.colorScheme === Qt.Dark
+
+    readonly property bool isDarkMode:
+        themeMode === themeModeDark ? true :
+        themeMode === themeModeLight ? false :
+        systemIsDark
+
     // ========== 颜色系统 ==========
     // 主色调（橙色系，代表食欲与温暖）
     readonly property color primaryColor: "#FF6B35"
@@ -9,22 +23,21 @@ QtObject {
     readonly property color primaryDarkColor: "#E55A2B"
 
     // 辅助色
-    readonly property color accentColor: "#4CAF50"      // 绿色，代表健康
+    readonly property color accentColor: "#4CAF50"
     readonly property color warningColor: "#FFC107"
     readonly property color errorColor: "#F44336"
 
-    // 中性色（文字与背景）
-    readonly property color textPrimary: "#212121"
-    readonly property color textSecondary: "#757575"
-    readonly property color textHint: "#9E9E9E"
-    readonly property color dividerColor: "#E0E0E0"
-    readonly property color backgroundColor: "#F5F5F5"
-    readonly property color cardBackground: "#FFFFFF"
+    // 中性色（文字与背景，根据主题切换）
+    readonly property color textPrimary: isDarkMode ? "#E0E0E0" : "#212121"
+    readonly property color textSecondary: isDarkMode ? "#A0A0A0" : "#757575"
+    readonly property color textHint: isDarkMode ? "#707070" : "#9E9E9E"
+    readonly property color dividerColor: isDarkMode ? "#3A3A3A" : "#E0E0E0"
+    readonly property color backgroundColor: isDarkMode ? "#121212" : "#F5F5F5"
+    readonly property color cardBackground: isDarkMode ? "#1E1E1E" : "#FFFFFF"
 
     // ========== 字体系统 ==========
     readonly property string fontFamily: "Microsoft YaHei, PingFang SC, Helvetica Neue, Arial, sans-serif"
 
-    // 字体大小（基于 16px 基准）
     readonly property int fontSizeH1: 24
     readonly property int fontSizeH2: 20
     readonly property int fontSizeH3: 18
@@ -32,7 +45,6 @@ QtObject {
     readonly property int fontSizeCaption: 13
     readonly property int fontSizeSmall: 12
 
-    // 字体粗细
     readonly property int fontWeightLight: Font.Light
     readonly property int fontWeightNormal: Font.Normal
     readonly property int fontWeightMedium: Font.Medium

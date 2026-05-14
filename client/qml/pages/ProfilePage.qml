@@ -53,8 +53,69 @@ Page {
 
         Item { Layout.fillHeight: true }
 
+        // 主题切换
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingXSmall
+            visible: authViewModel.loggedIn
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Theme.dividerColor
+            }
+
+            Text {
+                text: qsTr("主题模式")
+                font { family: Theme.fontFamily; pixelSize: Theme.fontSizeBody; weight: Theme.fontWeightBold }
+                color: Theme.textPrimary
+                Layout.topMargin: Theme.spacingSmall
+            }
+
+            RadioButton {
+                text: qsTr("跟随系统")
+                checked: Theme.themeMode === Theme.themeModeSystem
+                onClicked: Theme.themeMode = Theme.themeModeSystem
+                Layout.fillWidth: true
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: Theme.textPrimary
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: parent.indicator.width + parent.spacing
+                }
+            }
+            RadioButton {
+                text: qsTr("浅色")
+                checked: Theme.themeMode === Theme.themeModeLight
+                onClicked: Theme.themeMode = Theme.themeModeLight
+                Layout.fillWidth: true
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: Theme.textPrimary
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: parent.indicator.width + parent.spacing
+                }
+            }
+            RadioButton {
+                text: qsTr("深色")
+                checked: Theme.themeMode === Theme.themeModeDark
+                onClicked: Theme.themeMode = Theme.themeModeDark
+                Layout.fillWidth: true
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: Theme.textPrimary
+                    verticalAlignment: Text.AlignVCenter
+                    leftPadding: parent.indicator.width + parent.spacing
+                }
+            }
+        }
+
         CustomButton {
             Layout.fillWidth: true
+            Layout.topMargin: Theme.spacingMedium
             buttonText: qsTr("退出登录")
             buttonType: CustomButton.ButtonType.Secondary
             visible: authViewModel.loggedIn

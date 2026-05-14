@@ -46,6 +46,9 @@ signals:
     void submitFailed(const QString& error);
 
 private:
+    enum class LoadMode { Public, Recommended };
+    LoadMode m_currentMode = LoadMode::Public;
+
     void setHealthFilterApplied(bool applied);
 
     IGoCookApi *m_api;
