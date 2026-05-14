@@ -165,6 +165,13 @@ namespace DataMapper {
         return item;
     }
 
+    QVariantMap toMap(const gocook::models::SubmitRecipeResponse& resp) {
+        QVariantMap map;
+        map["id"]     = resp.id;
+        map["status"] = QString::fromStdString(resp.status);
+        return map;
+    }
+
     // ---------- 营养报告相关（v2.8 新增） ----------
 
     QVariantMap toMap(const gocook::models::NutritionBreakdownItem& item)
