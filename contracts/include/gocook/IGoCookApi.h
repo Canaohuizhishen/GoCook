@@ -815,4 +815,9 @@ public:
      */
     virtual std::string authToken() const = 0;
 
+    /**
+     * @brief 设置 401 未授权回调（由前端 ViewModel 注入）
+     */
+    virtual void setUnauthorizedHandler(std::function<void()> handler) = 0;
+
 };

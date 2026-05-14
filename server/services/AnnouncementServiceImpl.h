@@ -1,21 +1,12 @@
 #pragma once
 
 #include <gocook/IServices.h>
-#include "../ConnectionPool.h"
+#include <gocook/IAnnouncementRepository.h>
+#include <memory>
 
-/**
- * @brief 系统公告服务实现类
- *
- * 实现 IAnnouncementService 抽象接口，当前版本仅提供骨架。
- * 后续将在此类中实现数据库交互逻辑。
- */
 class AnnouncementServiceImpl : public gocook::services::IAnnouncementService {
 public:
-    /**
-     * @brief 构造函数，注入数据库连接
-     * @param db 数据库连接池引用
-     */
-    explicit AnnouncementServiceImpl(ConnectionPool& db);
+    explicit AnnouncementServiceImpl(std::unique_ptr<gocook::repository::IAnnouncementRepository> announcementRepo);
 
     /**
      * @brief 获取系统公告列表（分页）
@@ -27,5 +18,5 @@ public:
     gocook::models::PagedAnnouncements getAnnouncements(int page, int size) override;
 
 private:
-    ConnectionPool& db_;  ///< 数据库连接池引用
+    std::unique_ptr<gocook::repository::IAnnouncementRepository> announcementRepo_;
 };
