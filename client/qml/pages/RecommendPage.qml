@@ -1,11 +1,15 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import client.styles
 import "../components"
 
 Page {
+    id: recommendPage
     title: qsTr("推荐")
+
+    signal recipeClicked(int recipeId)
 
     Component.onCompleted: {
         recipeVM.loadPublicRecipes()
@@ -44,13 +48,13 @@ Page {
                 recipeName: modelData.name
                 recipeDescription: modelData.description
                 imageSource: modelData.imageUrl || ""
-                prepTime: modelData.prepTime + "分钟"
-                cookTime: modelData.cookTime + "分钟"
+                prepTime: modelData.prepTime + qsTr("分钟")
+                cookTime: modelData.cookTime + qsTr("分钟")
                 tags: modelData.tags || []
                 isFavorite: modelData.isFavorite || false
 
                 onClicked: {
-                    console.log("Clicked recipe:", modelData.id)
+                    recommendPage.recipeClicked(modelData.id)
                 }
 
                 onFavoriteClicked: {

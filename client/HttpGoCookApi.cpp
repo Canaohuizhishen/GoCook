@@ -567,8 +567,61 @@ void HttpGoCookApi::searchRecipes(const std::string& keyword,
 
 void HttpGoCookApi::getRecipeDetail(int recipeId,
                                     RecipeDetailCallback callback) {
-    Q_UNUSED(recipeId);
-    if (callback) callback(false, gocook::models::RecipeDetail{}, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1").arg(recipeId);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::RecipeDetail{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::RecipeDetail detail;
+        detail.id = obj["id"].toInt();
+        detail.name = obj["name"].toString().toStdString();
+        detail.description = obj["description"].toString().toStdString();
+        detail.image_url = obj["image_url"].toString().toStdString();
+        detail.cooking_method = obj["cooking_method"].toString().toStdString();
+        detail.flavor = obj["flavor"].toString().toStdString();
+        detail.prep_time_minutes = obj["prep_time_minutes"].toInt();
+        detail.cook_time_minutes = obj["cook_time_minutes"].toInt();
+        detail.view_count = obj["view_count"].toInt();
+        detail.avg_rating = obj["avg_rating"].toDouble();
+        if (obj.contains("ingredients") && obj["ingredients"].isArray()) {
+            for (const auto& val : obj["ingredients"].toArray()) {
+                QJsonObject ingObj = val.toObject();
+                gocook::models::Ingredient ing;
+                ing.name = ingObj["name"].toString().toStdString();
+                ing.quantity = ingObj["quantity"].toDouble();
+                ing.unit = ingObj["unit"].toString().toStdString();
+                detail.ingredients.push_back(ing);
+            }
+        }
+        if (obj.contains("steps") && obj["steps"].isArray()) {
+            for (const auto& val : obj["steps"].toArray()) {
+                QJsonObject stepObj = val.toObject();
+                gocook::models::CookingStep step;
+                step.order = stepObj["order"].toInt();
+                step.description = stepObj["description"].toString().toStdString();
+                if (stepObj.contains("duration"))
+                    step.duration = stepObj["duration"].toInt();
+                detail.steps.push_back(step);
+            }
+        }
+        if (obj.contains("nutrition") && obj["nutrition"].isObject()) {
+            QJsonObject nut = obj["nutrition"].toObject();
+            detail.nutrition.calories = nut["calories"].toDouble();
+            detail.nutrition.protein = nut["protein"].toDouble();
+            detail.nutrition.fat = nut["fat"].toDouble();
+            detail.nutrition.carbs = nut["carbs"].toDouble();
+        }
+        if (obj.contains("tags") && obj["tags"].isArray()) {
+            for (const auto& val : obj["tags"].toArray())
+                detail.tags.push_back(val.toString().toStdString());
+        }
+        detail.author_id = obj["author_id"].toInt();
+        detail.author_name = obj["author_name"].toString().toStdString();
+        detail.created_at = obj["created_at"].toString().toStdString();
+        callback(true, detail, "");
+    });
 }
 
 void HttpGoCookApi::getRecipeVideos(int recipeId,
@@ -585,8 +638,66 @@ void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,
 
 void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
                                  SubmitRecipeCallback callback) {
-    Q_UNUSED(recipeData);
-    if (callback) callback(false, gocook::models::SubmitRecipeResponse{}, "Not implemented");
+    QVariantMap data;
+    data["name"] = QString::fromStdString(recipeData.name);
+    data["description"] = QString::fromStdString(recipeData.description);
+    data["image_url"] = QString::fromStdString(recipeData.image_url);
+
+    QVariantList ingredients;
+    for (const auto& ing : recipeData.ingredients) {
+        QVariantMap ingMap;
+        ingMap["name"] = QString::fromStdString(ing.name);
+        ingMap["quantity"] = ing.quantity;
+        ingMap["unit"] = QString::fromStdString(ing.unit);
+        ingredients.append(ingMap);
+    }
+    data["ingredients"] = ingredients;
+
+    QVariantList steps;
+    for (const auto& s : recipeData.steps) {
+        QVariantMap stepMap;
+        stepMap["order"] = s.order;
+        stepMap["description"] = QString::fromStdString(s.description);
+        if (s.duration.has_value())
+            stepMap["duration"] = s.duration.value();
+        steps.append(stepMap);
+    }
+    data["steps"] = steps;
+
+    if (recipeData.nutrition.has_value()) {
+        QVariantMap nutMap;
+        nutMap["calories"] = recipeData.nutrition->calories;
+        nutMap["protein"] = recipeData.nutrition->protein;
+        nutMap["fat"] = recipeData.nutrition->fat;
+        nutMap["carbs"] = recipeData.nutrition->carbs;
+        data["nutrition"] = nutMap;
+    }
+
+    if (!recipeData.tags.empty()) {
+        QStringList tagList;
+        for (const auto& t : recipeData.tags)
+            tagList << QString::fromStdString(t);
+        data["tags"] = tagList;
+    }
+
+    if (recipeData.cooking_method.has_value())
+        data["cooking_method"] = QString::fromStdString(recipeData.cooking_method.value());
+    if (recipeData.flavor.has_value())
+        data["flavor"] = QString::fromStdString(recipeData.flavor.value());
+    if (recipeData.ingredient_type.has_value())
+        data["ingredient_type"] = QString::fromStdString(recipeData.ingredient_type.value());
+
+    post("/api/recipes", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::SubmitRecipeResponse{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::SubmitRecipeResponse resp;
+        resp.id = obj["id"].toInt();
+        resp.status = obj["status"].toString().toStdString();
+        callback(true, resp, "");
+    });
 }
 
 void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
@@ -654,20 +765,68 @@ void HttpGoCookApi::getRecipeNutrition(int recipeId,
 // ======================= 库存管理 =======================
 void HttpGoCookApi::getInventory(int page, int size,
                                  PagedInventoryCallback callback) {
-    Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedInventory{}, "Not implemented");
+    QUrlQuery query;
+    query.addQueryItem("page", QString::number(page));
+    query.addQueryItem("size", QString::number(size));
+    QString endpoint = "/api/inventory?" + query.toString(QUrl::FullyEncoded);
+
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::PagedInventory{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject root = doc.object();
+        gocook::models::PagedInventory result;
+        if (root.contains("pagination") && root["pagination"].isObject()) {
+            QJsonObject pag = root["pagination"].toObject();
+            result.pagination.page = pag["page"].toInt();
+            result.pagination.size = pag["size"].toInt();
+            result.pagination.total = pag["total"].toInt();
+            result.pagination.total_pages = pag["total_pages"].toInt();
+        }
+        if (root.contains("data") && root["data"].isArray()) {
+            for (const auto& val : root["data"].toArray()) {
+                QJsonObject obj = val.toObject();
+                gocook::models::InventoryItem item;
+                item.id = obj["id"].toInt();
+                item.ingredient_name = obj["ingredient_name"].toString().toStdString();
+                item.quantity = obj["quantity"].toDouble();
+                item.unit = obj["unit"].toString().toStdString();
+                if (obj.contains("expiry_date") && !obj["expiry_date"].isNull())
+                    item.expiry_date = obj["expiry_date"].toString().toStdString();
+                item.added_at = obj["added_at"].toString().toStdString();
+                result.data.push_back(item);
+            }
+        }
+        callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest& item,
                                     IntCallback callback) {
-    Q_UNUSED(item);
-    if (callback) callback(false, 0, "Not implemented");
+    QVariantMap data;
+    data["ingredient_name"] = QString::fromStdString(item.ingredient_name);
+    data["quantity"] = item.quantity;
+    data["unit"] = QString::fromStdString(item.unit);
+    if (item.expiry_date.has_value())
+        data["expiry_date"] = QString::fromStdString(item.expiry_date.value());
+
+    post("/api/inventory", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, 0, errorMsg.toStdString());
+            return;
+        }
+        int id = doc.object()["id"].toInt();
+        callback(true, id, "");
+    });
 }
 
 void HttpGoCookApi::deleteInventoryItem(int itemId,
                                         SuccessCallback callback) {
-    Q_UNUSED(itemId);
-    if (callback) callback(false, "Not implemented");
+    QString endpoint = QString("/api/inventory/%1").arg(itemId);
+    deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        callback(success, success ? "" : errorMsg.toStdString());
+    });
 }
 
 // ======================= 购物清单 / 膳食计划 =======================

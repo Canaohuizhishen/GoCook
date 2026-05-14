@@ -15,16 +15,17 @@ PagedRecipes RecipeServiceImpl::searchRecipes(const std::string&, int, int, cons
 PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int, int, int) {
     throw ServiceException("Not implemented", 501);
 }
-RecipeDetail RecipeServiceImpl::getRecipeDetail(int) {
-    throw ServiceException("Not implemented", 501);
+RecipeDetail RecipeServiceImpl::getRecipeDetail(int recipeId) {
+    return recipeRepo_->findById(recipeId);
+}
+
+SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int userId, const SubmitRecipeRequest& data) {
+    return recipeRepo_->create(userId, data);
 }
 std::vector<RecipeVideo> RecipeServiceImpl::getRecipeVideos(int) {
     throw ServiceException("Not implemented", 501);
 }
 PagedRatings RecipeServiceImpl::getRecipeRatings(int, int, int) {
-    throw ServiceException("Not implemented", 501);
-}
-SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int, const SubmitRecipeRequest&) {
     throw ServiceException("Not implemented", 501);
 }
 PagedMyRecipes RecipeServiceImpl::getMySubmittedRecipes(int, int, int, const std::string&) {

@@ -10,7 +10,6 @@ ApplicationWindow {
     height: 700
     title: qsTr("GoCook")
 
-    // 全局状态：从 C++ AuthViewModel 读取登录状态
     property bool isLoggedIn: authViewModel.loggedIn
     property bool isLoading: authViewModel.initialLoading
 
@@ -28,12 +27,32 @@ ApplicationWindow {
 
     Component {
         id: homePage
-        HomePage { }
+        HomePage {
+            onShowDetailRequest: (recipeId) => {
+                stackView.push(recipeDetailPage, {recipeId: recipeId})
+            }
+            onShowSubmitRequest: () => {
+                stackView.push(submitRecipePage)
+            }
+        }
+    }
+
+    Component {
+        id: recipeDetailPage
+        RecipeDetailPage {
+            property var _stackView: stackView
+        }
+    }
+
+    Component {
+        id: submitRecipePage
+        SubmitRecipePage {
+            property var _stackView: stackView
+        }
     }
 
     Component {
         id: loadingComponent
-        // 应用启动时的过渡页，在自动登录检查完成前避免闪现登录页
         Item {
             anchors.fill: parent
             Text {
