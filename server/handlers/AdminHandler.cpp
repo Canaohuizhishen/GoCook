@@ -1,13 +1,12 @@
 #include "AdminHandler.h"
 #include <nlohmann/json.hpp>
 #include "../common/ErrorHelper.h"
+#include "../common/PaginationHelper.h"
+#include "../common/SerializationHelper.h"
+#include "../common/AuthHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
-
-static json toJson(const Pagination& pag) {
-    return {{"page", pag.page}, {"size", pag.size}, {"total", pag.total}, {"total_pages", pag.total_pages}};
-}
 
 static json toJson(const AdminUser& user) {
     return {
@@ -71,11 +70,8 @@ AdminHandler::AdminHandler(gocook::services::IAdminService& service,
 
 bool AdminHandler::requireRole(const httplib::Request& req, httplib::Response& res,
                                 const std::vector<std::string>& allowedRoles) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return false;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return false;
     for (const auto& role : allowedRoles) {
         if (info.role == role) return true;
     }
@@ -86,11 +82,10 @@ bool AdminHandler::requireRole(const httplib::Request& req, httplib::Response& r
 void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res) {
     if (!requireRole(req, res, {"super_admin"})) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
+        auto pp = parsePagination(req, 20);
         nlohmann::json filters;
         if (req.has_param("username")) filters["username"] = req.get_param_value("username");
-        auto result = service_.getUsers(page, size, filters);
+        auto result = service_.getUsers(pp.page, pp.size, filters);
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -171,9 +166,8 @@ void AdminHandler::deleteUser(const httplib::Request& req, httplib::Response& re
 void AdminHandler::getPendingRecipes(const httplib::Request& req, httplib::Response& res) {
     if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        auto result = service_.getPendingRecipes(page, size);
+        auto pp = parsePagination(req, 20);
+        auto result = service_.getPendingRecipes(pp.page, pp.size);
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -326,11 +320,10 @@ void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response&
 void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& res) {
     if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
+        auto pp = parsePagination(req, 20);
         std::string type = req.get_param_value("type");
-        int userId = req.has_param("user_id") ? std::stoi(req.get_param_value("user_id")) : 0;
-        auto result = service_.getAdminLogs(page, size, type, userId);
+        int userId = parseIntParam(req, "user_id", 0);
+        auto result = service_.getAdminLogs(pp.page, pp.size, type, userId);
         // 简单序列化列表
         json resp;
         resp["data"] = json::array();
@@ -364,11 +357,10 @@ void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& 
 void AdminHandler::getActivityLogs(const httplib::Request& req, httplib::Response& res) {
     if (!requireRole(req, res, {"super_admin", "moderator"})) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        int userId = req.has_param("user_id") ? std::stoi(req.get_param_value("user_id")) : 0;
+        auto pp = parsePagination(req, 20);
+        int userId = parseIntParam(req, "user_id", 0);
         std::string action = req.get_param_value("action");
-        auto result = service_.getActivityLogs(page, size, userId, action);
+        auto result = service_.getActivityLogs(pp.page, pp.size, userId, action);
         json resp;
         resp["data"] = json::array();
         for (const auto& log : result.data) {

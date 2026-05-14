@@ -1,6 +1,6 @@
 #include "Router.h"
 
-Router::Router(DBConnection& db,
+Router::Router(ConnectionPool& db,
                RecipeHandler& recipeHandler,
                UserHandler& userHandler,
                InventoryHandler& inventoryHandler,
@@ -25,7 +25,7 @@ std::vector<RateLimiter::Rule> Router::createRateLimiterRules()
         // 认证接口：严格限制，每分钟最多 5 次，防止暴力破解
         {"/api/login",    seconds(60), 5},
         {"/api/register", seconds(60), 5},
-        // 管理后台所有接口：每分钟 30 次（管理员操作频率较低，但安全要求更高）
+        {"/api/password", seconds(60), 3},  // 密码重置为安全敏感路径，限额更低
         {"/api/admin",    seconds(60), 30},
         // 其他所有 API 接口：每分钟 60 次（适合普通用户正常使用）
         {"/api",          seconds(60), 60}
@@ -357,7 +357,8 @@ void Router::setupRoutes(httplib::Server& svr) {
     // 库存公开测试接口
     svr.Get("/api/inventory/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
-            pqxx::work txn(db_.getConn());
+            auto conn = db_.getConnection();
+            pqxx::work txn(*conn);
             // 参数化查询避免注入
             pqxx::result userRes = txn.exec_params(
                 "SELECT id FROM users WHERE username = $1", "testuser");
@@ -399,19 +400,14 @@ void Router::setupRoutes(httplib::Server& svr) {
     // 用户公开测试接口
     svr.Get("/api/users/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
-            pqxx::work txn(db_.getConn());
-            // 无拼接的查询
-            pqxx::result rows = txn.exec("SELECT id, username, password_hash, created_at FROM users ORDER BY id");
+            auto conn = db_.getConnection();
+            pqxx::work txn(*conn);
+            pqxx::result rows = txn.exec("SELECT id, username, created_at FROM users ORDER BY id");
             json users = json::array();
             for (const auto& row : rows) {
                 json u;
                 u["id"] = row["id"].as<int>();
                 u["username"] = row["username"].c_str();
-                // 输出密码哈希
-                if (!row["password_hash"].is_null())
-                    u["password_hash"] = row["password_hash"].c_str();
-                else
-                    u["password_hash"] = nullptr;
                 u["created_at"] = row["created_at"].c_str();
                 users.push_back(u);
             }

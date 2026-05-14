@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <random>
 #include <cstring>
+#include <iostream>
 #include "bcrypt/crypt_blowfish.h"   // 基于 Blowfish 算法的安全密码哈希（Openwall bcrypt 实现）
 #include <openssl/crypto.h>          // 提供 CRYPTO_memcmp 恒定时间比较
 
@@ -27,7 +28,7 @@ std::string UserServiceImpl::generateToken(int userId, const std::string& userna
                      .set_payload_claim("role", jwt::claim(role))           // 用户角色
                      .set_issued_at(now)                                     // 签发时间
                      .set_expires_at(exp)                                    // 过期时间
-                     .sign(jwt::algorithm::hs256{jwt_secret});               // 使用 HMAC-SHA256 签名
+                     .sign(jwt::algorithm::hs256{jwt_secret_});               // 使用 HMAC-SHA256 签名
 
     return token;
 }
@@ -81,7 +82,8 @@ bool UserServiceImpl::validatePassword(const std::string& plain, const std::stri
 
 void UserServiceImpl::registerUser(const RegisterRequest& request) {
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
 
         pqxx::result userCheck = txn.exec_params(
             "SELECT id FROM users WHERE username = $1", request.username);
@@ -99,14 +101,18 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
             "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)",
             request.username, hashed, request.email);
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;  // 业务异常原样上抛，不重包装
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
 }
 
 LoginResponse UserServiceImpl::login(const LoginRequest& request) {
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
         pqxx::result result = txn.exec_params(
             "SELECT id, password_hash, role FROM users WHERE username = $1",
             request.username);
@@ -128,14 +134,18 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
         resp.username = request.username;
         resp.token = generateToken(userId, request.username, role);
         return resp;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
 }
 
 UserProfile UserServiceImpl::getCurrentUser(int userId) {
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
         pqxx::result r = txn.exec_params(
             "SELECT id, username, display_name, email, phone, avatar_url, "
             "preferences_complete, created_at FROM users WHERE id = $1", userId);
@@ -152,7 +162,10 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
         u.preferences_complete = r[0]["preferences_complete"].as<bool>();
         u.created_at = r[0]["created_at"].as<std::string>("");
         return u;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
 }

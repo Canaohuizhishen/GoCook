@@ -1,6 +1,7 @@
 #include "RecipeViewModel.h"
 #include <DataMapper.h>
 #include <QDebug>
+#include <QPointer>
 
 RecipeViewModel::RecipeViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
@@ -23,31 +24,24 @@ void RecipeViewModel::loadPublicRecipes(int page, int size)
     emit isLoadingChanged();
 
     m_api->getPublicRecipes(page, size, {},
-                            [this](bool success, const gocook::models::PagedRecipes& data, const std::string& error) {
+                            [self = QPointer<RecipeViewModel>(this)](bool success, const gocook::models::PagedRecipes& data, const std::string& error) {
+                                if (!self) return;
                                 if (!success) {
-                                    emit errorOccurred(QString::fromStdString(error));
-                                    m_isLoading = false;
-                                    emit isLoadingChanged();
+                                    emit self->errorOccurred(QString::fromStdString(error));
+                                    self->m_isLoading = false;
+                                    emit self->isLoadingChanged();
                                     return;
                                 }
 
-                                m_recipes.clear();
+                                self->m_recipes.clear();
                                 for (const auto& recipe : data.data) {
-                                    // 使用统一映射函数，替代手工逐字段赋值
                                     auto item = DataMapper::toMap(recipe);
-                                    // 补充 API v2.7 新增的属性字段，保持 QML 侧驼峰命名
-                                    item["cookingMethod"]  = QString::fromStdString(recipe.cooking_method);
-                                    item["flavor"]         = QString::fromStdString(recipe.flavor);
-                                    item["ingredientType"] = QString::fromStdString(recipe.ingredient_type);
-                                    item["calories"]       = recipe.calories;
-                                    item["viewCount"]      = recipe.view_count;
-                                    item["avgRating"]      = recipe.avg_rating;
-                                    m_recipes.append(item);
+                                    self->m_recipes.append(item);
                                 }
 
-                                emit recipesChanged();
-                                m_isLoading = false;
-                                emit isLoadingChanged();
+                                emit self->recipesChanged();
+                                self->m_isLoading = false;
+                                emit self->isLoadingChanged();
                             });
 }
 
@@ -57,33 +51,25 @@ void RecipeViewModel::loadRecommendedRecipes(int page, int size)
     emit isLoadingChanged();
 
     m_api->getRecommendedRecipes(page, size,
-                                 [this](bool success, const gocook::models::PagedRecommendedRecipes& data, const std::string& error) {
+                                 [self = QPointer<RecipeViewModel>(this)](bool success, const gocook::models::PagedRecommendedRecipes& data, const std::string& error) {
+                                     if (!self) return;
                                      if (!success) {
-                                         emit errorOccurred(QString::fromStdString(error));
-                                         m_isLoading = false;
-                                         emit isLoadingChanged();
+                                         emit self->errorOccurred(QString::fromStdString(error));
+                                         self->m_isLoading = false;
+                                         emit self->isLoadingChanged();
                                          return;
                                      }
 
-                                     // 更新健康过滤标志
-                                     setHealthFilterApplied(data.health_filter_applied);
+                                     self->setHealthFilterApplied(data.health_filter_applied);
 
-                                     m_recipes.clear();
+                                     self->m_recipes.clear();
                                      for (const auto& recipe : data.data) {
-                                         // 使用推荐菜谱映射（含 match_score / match_status），然后补充基础字段
                                          auto item = DataMapper::toMap(recipe);
-                                         // 补充菜谱基础属性，对齐 API v2.7/v2.8，确保字段齐全
-                                         item["cookingMethod"]  = QString::fromStdString(recipe.cooking_method);
-                                         item["flavor"]         = QString::fromStdString(recipe.flavor);
-                                         item["ingredientType"] = QString::fromStdString(recipe.ingredient_type);
-                                         item["calories"]       = recipe.calories;
-                                         item["viewCount"]      = recipe.view_count;
-                                         item["avgRating"]      = recipe.avg_rating;
-                                         m_recipes.append(item);
+                                         self->m_recipes.append(item);
                                      }
 
-                                     emit recipesChanged();
-                                     m_isLoading = false;
-                                     emit isLoadingChanged();
+                                     emit self->recipesChanged();
+                                     self->m_isLoading = false;
+                                     emit self->isLoadingChanged();
                                  });
 }

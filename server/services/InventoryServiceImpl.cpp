@@ -1,5 +1,6 @@
 #include "InventoryServiceImpl.h"
 #include <pqxx/pqxx>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -11,7 +12,8 @@ using namespace gocook::services;
 PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size) {
     PagedInventory result;
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
 
         // 计算总条数，使用参数化查询
         pqxx::result countRes = txn.exec_params(
@@ -46,15 +48,19 @@ PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size
         result.pagination.total_pages = (total + size - 1) / size;
 
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
     return result;
 }
 
 int InventoryServiceImpl::upsertInventory(int userId, const UpsertInventoryRequest& item) {
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
 
         // 检查冲突，参数化查询
         pqxx::result existing = txn.exec_params(
@@ -93,14 +99,18 @@ int InventoryServiceImpl::upsertInventory(int userId, const UpsertInventoryReque
                 return res[0][0].as<int>();
             }
         }
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
 }
 
 void InventoryServiceImpl::deleteInventoryItem(int userId, int itemId) {
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
         // 仅允许删除自己的库存项，参数化查询
         auto res = txn.exec_params(
             "DELETE FROM inventory WHERE id = $1 AND user_id = $2",
@@ -109,7 +119,10 @@ void InventoryServiceImpl::deleteInventoryItem(int userId, int itemId) {
             throw ServiceException("Item not found or not owned by user", 404);
         }
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
 }

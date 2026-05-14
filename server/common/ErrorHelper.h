@@ -38,6 +38,7 @@ inline void handleStandardException(const std::exception &e, httplib::Response &
         case 400: msg = se->what(); break;   // 原文：具体参数错误
         case 403: msg = se->what(); break;   // 原文："仅可编辑未审核的菜谱"
         case 401: msg = "身份验证失败"; break;
+        case 501: msg = "功能暂未实现"; break;
         default:  msg = "服务器内部错误，请稍后重试"; code = 500; break;
     }
     setErrorResponse(res, code, msg);

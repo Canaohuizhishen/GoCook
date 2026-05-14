@@ -4,8 +4,8 @@
 
 using namespace std::chrono;
 
-RateLimiter::RateLimiter(std::vector<Rule> rules, std::chrono::seconds cleanupInterval)
-    : rules_(std::move(rules)), cleanupInterval_(cleanupInterval)
+RateLimiter::RateLimiter(std::vector<Rule> rules, std::chrono::seconds cleanupInterval, size_t maxRecords)
+    : rules_(std::move(rules)), cleanupInterval_(cleanupInterval), maxRecords_(maxRecords)
 {
     // 启动后台清理线程
     cleanupThread_ = std::thread([this] { cleanupLoop(); });
@@ -37,8 +37,8 @@ bool RateLimiter::isAllowed(const std::string& ip, const std::string& path)
     }
 
     if (static_cast<int>(timestamps.size()) >= maxRequests) {
-        ++rejectedCount_; // 记录拒绝次数
-        return false;     // 触发限流
+        ++rejectedCount_;
+        return false;
     }
 
     timestamps.push_back(now);
@@ -72,9 +72,7 @@ void RateLimiter::cleanupLoop()
     while (running_) {
         {
             std::unique_lock lock(cvMutex_);
-            // 可被析构函数通知提前结束的定时等待
             if (cv_.wait_for(lock, cleanupInterval_) == std::cv_status::no_timeout) {
-                // 被唤醒，检查是否应该退出
                 if (!running_) break;
             }
         }
@@ -82,41 +80,42 @@ void RateLimiter::cleanupLoop()
 
         try {
             auto now = steady_clock::now();
-
-            // 计算所有规则中最大的窗口，任何超出此窗口的记录均可安全删除
+            // 取所有规则中最大的时间窗口作为清理阈值
             auto maxWindowIt = std::max_element(rules_.begin(), rules_.end(),
                                                 [](const Rule& a, const Rule& b) { return a.windowSize < b.windowSize; });
             auto threshold = now - (maxWindowIt != rules_.end() ? maxWindowIt->windowSize : seconds(60));
 
-            // 阶段1：在共享锁内只收集需要检查的 key（尽可能快，不阻塞 isAllowed 读操作）
-            std::vector<std::string> keysToCheck;
-            {
-                std::shared_lock lock(mutex_);
-                keysToCheck.reserve(records_.size());
-                for (const auto& pair : records_) {
-                    keysToCheck.push_back(pair.first);
+            // 单次持锁遍历，统一完成过期条目清理与容量上限裁剪
+            std::unique_lock lock(mutex_);
+            for (auto it = records_.begin(); it != records_.end(); ) {
+                auto& timestamps = it->second;
+                auto eraseIt = std::upper_bound(timestamps.begin(), timestamps.end(), threshold);
+                if (eraseIt != timestamps.begin()) {
+                    timestamps.erase(timestamps.begin(), eraseIt);
+                }
+                if (timestamps.empty()) {
+                    it = records_.erase(it);
+                } else {
+                    ++it;
                 }
             }
 
-            // 阶段2：逐个 key 处理，每次加锁时间很短，不影响其他请求
-            for (const auto& key : keysToCheck) {
-                std::unique_lock lock(mutex_);
-                auto it = records_.find(key);
-                if (it != records_.end()) {
-                    auto& timestamps = it->second;
-                    // 使用二分查找定位过期记录的分界点
-                    auto eraseIt = std::upper_bound(timestamps.begin(), timestamps.end(), threshold);
-                    if (eraseIt != timestamps.begin()) {
-                        timestamps.erase(timestamps.begin(), eraseIt);
-                    }
-                    if (timestamps.empty()) {
-                        records_.erase(it);
+            // 若记录表仍超容，按最久远时间戳逐条驱逐
+            while (records_.size() > maxRecords_) {
+                auto oldest = records_.begin();
+                for (auto it = records_.begin(); it != records_.end(); ++it) {
+                    if (it->second.empty()) continue;
+                    if (oldest->second.empty() || it->second.front() < oldest->second.front()) {
+                        oldest = it;
                     }
                 }
-                // 锁在这里自动释放，给其他线程执行 isAllowed 的机会
+                if (oldest != records_.end() && !oldest->second.empty()) {
+                    records_.erase(oldest);
+                } else {
+                    break;
+                }
             }
         } catch (const std::exception& e) {
-            // 生产环境应接入日志系统，此处保留标准错误输出作为示意
             std::cerr << "RateLimiter cleanup error: " << e.what() << std::endl;
         } catch (...) {
             std::cerr << "RateLimiter cleanup unknown error" << std::endl;

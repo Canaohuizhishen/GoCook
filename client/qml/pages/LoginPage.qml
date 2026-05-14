@@ -78,16 +78,19 @@ Page {
         Connections {
             target: authViewModel
             function onLoginFailed(error) {
+                errorLabel.color = "red"
                 errorLabel.text = error
             }
             function onRegisterFailed(error) {
+                errorLabel.color = "red"
                 errorLabel.text = error
             }
             function onRegisterSuccess() {
+                errorLabel.color = "green"  // 成功消息用绿色与错误红色区分
                 errorLabel.text = "注册成功，请登录"
             }
             function onLoginSuccess() {
-                errorLabel.text = "" // 清空错误提示
+                errorLabel.text = ""
             }
         }
     }

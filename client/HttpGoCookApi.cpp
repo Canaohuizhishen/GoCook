@@ -7,6 +7,7 @@
 #include <QJSEngine>
 #include <QtQml/QQmlEngine>
 #include <QTimer>
+#include <QPointer>
 #include <gocook/IServices.h>
 
 // 构造函数
@@ -209,26 +210,31 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
         return;
     }
 
-    // 连接请求完成信号
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, op, endpoint, data, retryCount]() {
-        // 请求完成后自动删除 reply 对象
-        reply->deleteLater();
+    // 连接请求完成信号，QPointer 守卫防止对象销毁后 λ 访问已释放内存
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, op, endpoint, data, retryCount, self = QPointer<HttpGoCookApi>(this)]() {
+        if (!self) return;
 
-        // 获取 HTTP 状态码
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        // 如果是 401，发射未授权信号，并触发抽象层回调
+        // 401 时仍要读取响应体并通过 callback 返回错误信息
         if (statusCode == 401) {
             emit unauthorized();
             invokeUnauthorizedHandler();
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            reply->deleteLater();
+            if (callback) {
+                callback(false, QString::fromUtf8(responseData), doc);
+            }
+            return;
         }
 
-        // 如果有网络错误，发射错误信号并回调失败
         if (reply->error() != QNetworkReply::NoError) {
-            // 检查是否需要重试：仅对 GET 操作，且重试计数未达上限
             if (op == QNetworkAccessManager::GetOperation && retryCount < m_maxRetries) {
-                QTimer::singleShot(m_retryDelay, this, [this, op, endpoint, data, callback, retryCount]() {
-                    sendRequest(op, endpoint, data, callback, retryCount + 1);
+                QTimer::singleShot(m_retryDelay, this, [self, op, endpoint, data, callback, retryCount]() {
+                    if (!self) return;
+                    self->sendRequest(op, endpoint, data, callback, retryCount + 1);
                 });
+                reply->deleteLater();
                 return;
             }
 
@@ -236,19 +242,18 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
             if (callback) {
                 callback(false, reply->errorString(), QJsonDocument());
             }
+            reply->deleteLater();
             return;
         }
 
-        // 读取响应数据
         QByteArray responseData = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        // 判断是否成功（2xx 状态码）
         bool success = (statusCode >= 200 && statusCode < 300);
 
-        // 调用 C++ 回调
         if (callback) {
             callback(success, success ? QString() : QString::fromUtf8(responseData), doc);
         }
+        reply->deleteLater();
     });
 }
 

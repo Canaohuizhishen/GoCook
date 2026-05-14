@@ -4,7 +4,7 @@
 using namespace gocook::services;
 using namespace gocook::models;
 
-MealPlanServiceImpl::MealPlanServiceImpl(DBConnection& db) : db_(db) {}
+MealPlanServiceImpl::MealPlanServiceImpl(ConnectionPool& db) : db_(db) {}
 
 int MealPlanServiceImpl::createMealPlan(int userId,
                                         const MealPlanRequest& planData)

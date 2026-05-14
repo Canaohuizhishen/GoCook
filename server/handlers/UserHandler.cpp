@@ -1,6 +1,9 @@
 #include "UserHandler.h"
 #include <optional>
 #include "../common/ErrorHelper.h"
+#include "../common/PaginationHelper.h"
+#include "../common/SerializationHelper.h"
+#include "../common/AuthHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -57,15 +60,6 @@ static json toJson(const FavoriteGroup& group) {
         {"name", group.name},
         {"sort_order", group.sort_order},
         {"count", group.count}
-    };
-}
-
-static json toJson(const Pagination& pag) {
-    return {
-        {"page", pag.page},
-        {"size", pag.size},
-        {"total", pag.total},
-        {"total_pages", pag.total_pages}
     };
 }
 
@@ -215,11 +209,8 @@ void UserHandler::resetPassword(const httplib::Request& req, httplib::Response& 
 }
 
 void UserHandler::getCurrentUser(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         auto user = service_.getCurrentUser(info.userId);
         res.status = 200;
@@ -232,11 +223,8 @@ void UserHandler::getCurrentUser(const httplib::Request& req, httplib::Response&
 }
 
 void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         UpdateProfileRequest profile;
@@ -257,11 +245,8 @@ void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& 
 
 // 头像上传（需认证）
 void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         // 实际实现需要 multipart 解析，暂时返回未实现
         throw gocook::services::ServiceException("Not implemented", 501);
@@ -274,11 +259,8 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
 
 // 修改密码（需认证）
 void UserHandler::changePassword(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("current_password") || !reqJson.contains("new_password")) {
@@ -299,11 +281,8 @@ void UserHandler::changePassword(const httplib::Request& req, httplib::Response&
 
 // 注销账户（需认证）
 void UserHandler::deleteAccount(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         service_.deleteAccount(info.userId);
         res.status = 200;
@@ -316,11 +295,8 @@ void UserHandler::deleteAccount(const httplib::Request& req, httplib::Response& 
 }
 
 void UserHandler::getPreferences(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         auto prefs = service_.getPreferences(info.userId);
         res.status = 200;
@@ -333,11 +309,8 @@ void UserHandler::getPreferences(const httplib::Request& req, httplib::Response&
 }
 
 void UserHandler::updatePreferences(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         UserPreferences prefs;
@@ -355,11 +328,8 @@ void UserHandler::updatePreferences(const httplib::Request& req, httplib::Respon
 }
 
 void UserHandler::updateHealthProfile(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         HealthProfileRequest health;
@@ -377,16 +347,12 @@ void UserHandler::updateHealthProfile(const httplib::Request& req, httplib::Resp
 }
 
 void UserHandler::getFavorites(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
+        auto pp = parsePagination(req, 20);
         std::string group = req.get_param_value("group"); // may be empty
-        auto result = service_.getFavorites(info.userId, page, size, group);
+        auto result = service_.getFavorites(info.userId, pp.page, pp.size, group);
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -399,11 +365,8 @@ void UserHandler::getFavorites(const httplib::Request& req, httplib::Response& r
 // ========== 收藏分组管理 ==========
 
 void UserHandler::getFavoriteGroups(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         auto groups = service_.getFavoriteGroups(info.userId);
         json arr = json::array();
@@ -418,11 +381,8 @@ void UserHandler::getFavoriteGroups(const httplib::Request& req, httplib::Respon
 }
 
 void UserHandler::createFavoriteGroup(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         CreateGroupRequest request;
@@ -438,11 +398,8 @@ void UserHandler::createFavoriteGroup(const httplib::Request& req, httplib::Resp
 }
 
 void UserHandler::updateFavoriteGroup(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int groupId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -459,11 +416,8 @@ void UserHandler::updateFavoriteGroup(const httplib::Request& req, httplib::Resp
 }
 
 void UserHandler::deleteFavoriteGroup(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int groupId = std::stoi(req.matches[1]);
         service_.deleteFavoriteGroup(info.userId, groupId);
@@ -477,11 +431,8 @@ void UserHandler::deleteFavoriteGroup(const httplib::Request& req, httplib::Resp
 }
 
 void UserHandler::updateFavoriteItem(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int favoriteId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -499,11 +450,8 @@ void UserHandler::updateFavoriteItem(const httplib::Request& req, httplib::Respo
 }
 
 void UserHandler::batchDeleteFavorites(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         BatchDeleteFavoritesRequest request;
@@ -521,16 +469,12 @@ void UserHandler::batchDeleteFavorites(const httplib::Request& req, httplib::Res
 // ========== 通知中心 ==========
 
 void UserHandler::getNotifications(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
+        auto pp = parsePagination(req, 20);
         std::string type = req.get_param_value("type"); // may be empty
-        auto result = service_.getNotifications(info.userId, page, size, type);
+        auto result = service_.getNotifications(info.userId, pp.page, pp.size, type);
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -541,11 +485,8 @@ void UserHandler::getNotifications(const httplib::Request& req, httplib::Respons
 }
 
 void UserHandler::markNotificationRead(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int id = std::stoi(req.matches[1]);
         service_.markNotificationRead(info.userId, id);
@@ -559,11 +500,8 @@ void UserHandler::markNotificationRead(const httplib::Request& req, httplib::Res
 }
 
 void UserHandler::markAllNotificationsRead(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         service_.markAllNotificationsRead(info.userId);
         res.status = 200;
@@ -576,11 +514,8 @@ void UserHandler::markAllNotificationsRead(const httplib::Request& req, httplib:
 }
 
 void UserHandler::deleteNotification(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int id = std::stoi(req.matches[1]);
         service_.deleteNotification(info.userId, id);
@@ -595,14 +530,10 @@ void UserHandler::deleteNotification(const httplib::Request& req, httplib::Respo
 
 // 我的评论列表
 void UserHandler::getMyRatings(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
+        auto pp = parsePagination(req, 20);
         // 目前 IUserService 没有直接提供 getMyRatings，需要走 IRecipeService，这里暂时抛出未实现
         throw gocook::services::ServiceException("Not implemented", 501);
     } catch (const gocook::services::ServiceException& e) {

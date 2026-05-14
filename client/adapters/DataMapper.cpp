@@ -82,14 +82,19 @@ namespace DataMapper {
         item["imageUrl"]    = QString::fromStdString(recipe.image_url);
         item["prepTime"]    = recipe.prep_time_minutes;
         item["cookTime"]    = recipe.cook_time_minutes;
+        // v2.7+ 新增的菜谱属性字段
+        item["cookingMethod"]  = QString::fromStdString(recipe.cooking_method);
+        item["flavor"]         = QString::fromStdString(recipe.flavor);
+        item["ingredientType"] = QString::fromStdString(recipe.ingredient_type);
+        item["calories"]       = recipe.calories;
+        item["viewCount"]      = recipe.view_count;
+        item["avgRating"]      = recipe.avg_rating;
 
-        // 转换 tags
         QStringList tagList;
         for (const auto& t : recipe.tags)
             tagList << QString::fromStdString(t);
         item["tags"] = tagList;
 
-        // 作者信息
         item["authorId"]   = recipe.author_id;
         item["authorName"] = QString::fromStdString(recipe.author_name);
 
@@ -176,8 +181,8 @@ namespace DataMapper {
     QVariantMap toMap(const gocook::models::NutritionReport& report)
     {
         QVariantMap map;
-        map["recipe_id"]   = report.recipe_id;
-        map["recipe_name"] = QString::fromStdString(report.recipe_name);
+        map["recipeId"]   = report.recipe_id;
+        map["recipeName"] = QString::fromStdString(report.recipe_name);
 
         QVariantMap perServing;
         perServing["calories"]    = report.per_serving.calories;
@@ -275,10 +280,10 @@ namespace DataMapper {
         map["title"]            = QString::fromStdString(item.title);
         map["content"]          = QString::fromStdString(item.content);
         map["type"]             = QString::fromStdString(item.type);
-        map["sub_type"]         = QString::fromStdString(item.sub_type);
+        map["subType"]         = QString::fromStdString(item.sub_type);
         map["is_read"]          = item.is_read;
-        map["related_id"]       = item.related_id;
-        map["trigger_user_name"]= QString::fromStdString(item.trigger_user_name);
+        map["relatedId"]       = item.related_id;
+        map["triggerUserName"]= QString::fromStdString(item.trigger_user_name);
         map["createdAt"]        = QString::fromStdString(item.created_at);
         return map;
     }
@@ -378,7 +383,7 @@ namespace DataMapper {
         QVariantMap map;
         map["date"]        = QString::fromStdString(day.date);
         map["meals"]       = toMap(day.meals);
-        map["daily_total"] = toMap(day.daily_total);
+        map["dailyTotal"] = toMap(day.daily_total);
         return map;
     }
 

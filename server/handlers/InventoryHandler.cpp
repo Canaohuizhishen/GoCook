@@ -3,6 +3,9 @@
 #include <string>
 #include <stdexcept>
 #include "../common/ErrorHelper.h"
+#include "../common/PaginationHelper.h"
+#include "../common/SerializationHelper.h"
+#include "../common/AuthHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -19,15 +22,6 @@ static json toJson(const InventoryItem& item) {
         obj["expiry_date"] = item.expiry_date.value();
     obj["added_at"] = item.added_at;
     return obj;
-}
-
-static json toJson(const Pagination& pag) {
-    return {
-        {"page", pag.page},
-        {"size", pag.size},
-        {"total", pag.total},
-        {"total_pages", pag.total_pages}
-    };
 }
 
 static json toJson(const ShoppingListItem& item) {
@@ -78,16 +72,12 @@ InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
     : service_(service), auth_(auth) {}
 
 void InventoryHandler::getInventory(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
-    int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-    int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 50;
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    auto pp = parsePagination(req, 50);
 
     try {
-        auto paged = service_.getInventory(info.userId, page, size);
+        auto paged = service_.getInventory(info.userId, pp.page, pp.size);
         json resp;
         resp["data"] = json::array();
         for (const auto& item : paged.data)
@@ -104,11 +94,8 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
 }
 
 void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("ingredient_name") || !reqJson.contains("quantity") || !reqJson.contains("unit")) {
@@ -133,11 +120,8 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
 }
 
 void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     if (req.matches.size() < 2) {
         setErrorResponse(res, 400, "缺少 item_id 路径参数");
         return;
@@ -163,11 +147,8 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
 // ========== 购物清单（多清单模型） ==========
 
 void InventoryHandler::getShoppingLists(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         auto lists = service_.getShoppingLists(info.userId);
         json arr = json::array();
@@ -183,11 +164,8 @@ void InventoryHandler::getShoppingLists(const httplib::Request& req, httplib::Re
 }
 
 void InventoryHandler::createShoppingList(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         CreateShoppingListRequest request;
@@ -206,11 +184,8 @@ void InventoryHandler::createShoppingList(const httplib::Request& req, httplib::
 }
 
 void InventoryHandler::getShoppingListDetail(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int listId = std::stoi(req.matches[1]);
         auto list = service_.getShoppingListDetail(info.userId, listId);
@@ -224,11 +199,8 @@ void InventoryHandler::getShoppingListDetail(const httplib::Request& req, httpli
 }
 
 void InventoryHandler::deleteShoppingList(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int listId = std::stoi(req.matches[1]);
         service_.deleteShoppingList(info.userId, listId);
@@ -242,11 +214,8 @@ void InventoryHandler::deleteShoppingList(const httplib::Request& req, httplib::
 }
 
 void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         // 路由: /api/inventory/shopping-lists/:list_id/items/:item_id
         int listId = std::stoi(req.matches[1]);
@@ -265,11 +234,8 @@ void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httpl
 }
 
 void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int listId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);  // 期望是数组
@@ -292,11 +258,8 @@ void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httpli
 }
 
 void InventoryHandler::exportShoppingList(const httplib::Request& req, httplib::Response& res) {
-    TokenInfo info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int listId = std::stoi(req.matches[1]);
         std::string format = req.has_param("format") ? req.get_param_value("format") : "text";

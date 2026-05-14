@@ -15,10 +15,9 @@ class AuthViewModel : public QObject
     Q_OBJECT
     // 是否已登录
     Q_PROPERTY(bool loggedIn READ loggedIn NOTIFY loggedInChanged)
-    // 当前用户名
     Q_PROPERTY(QString username READ username NOTIFY usernameChanged)
-    // 当前用户 ID
     Q_PROPERTY(int userId READ userId NOTIFY userIdChanged)
+    Q_PROPERTY(bool initialLoading READ initialLoading NOTIFY initialLoadingChanged)
 
 public:
     // 构造函数
@@ -26,10 +25,9 @@ public:
 
     // 获取登录状态
     bool loggedIn() const { return m_loggedIn; }
-    // 获取用户名
     QString username() const { return m_username; }
-    // 获取用户 ID
     int userId() const { return m_userId; }
+    bool initialLoading() const { return m_initialLoading; }
 
     // 登录方法，供 QML 调用
     Q_INVOKABLE void login(const QString &username, const QString &password);
@@ -57,10 +55,11 @@ signals:
     void registerFailed(const QString &error);
     // 登出完成信号
     void logoutFinished();
+    void initialLoadingChanged();
 
 private:
     // 内部方法：设置登录状态并更新相关属性
-    void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "", const QString &token = "");
+    void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "");
 
     // API 实现指针
     HttpGoCookApi *m_api;
@@ -68,8 +67,7 @@ private:
     LocalDatabase *m_db;
     // 登录状态标志
     bool m_loggedIn;
-    // 当前用户 ID
     int m_userId;
-    // 当前用户名
     QString m_username;
+    bool m_initialLoading = true;
 };

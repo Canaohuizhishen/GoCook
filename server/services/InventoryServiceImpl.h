@@ -1,11 +1,11 @@
 #pragma once
 
 #include <gocook/IServices.h>
-#include "../DBConnection.h"
+#include "../ConnectionPool.h"
 
 class InventoryServiceImpl : public gocook::services::IInventoryService {
 public:
-    explicit InventoryServiceImpl(DBConnection& db) : db_(db) {}
+    explicit InventoryServiceImpl(ConnectionPool& db) : db_(db) {}
 
     // 已实现的核心方法
     gocook::models::PagedInventory getInventory(int userId, int page, int size) override;
@@ -40,5 +40,5 @@ public:
     }
 
 private:
-    DBConnection& db_;
+    ConnectionPool& db_;
 };

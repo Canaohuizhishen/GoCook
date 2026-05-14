@@ -1,26 +1,19 @@
 #include "RecipeHandler.h"
-#include "../auth_middleware.h"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <optional>
 #include <sstream>
 #include <vector>
 #include "../common/ErrorHelper.h"
+#include "../common/PaginationHelper.h"     // parsePagination 安全分页参数解析
+#include "../common/SerializationHelper.h"  // 统一 toJson(Pagination)
+#include "../common/AuthHelper.h"           // requireAuth 统一认证入口
 
 using json = nlohmann::json;
 using namespace gocook::services;
 using namespace gocook::models;
 
 // ========== 辅助序列化函数 ==========
-
-static json toJson(const Pagination& pag) {
-    return {
-        {"page", pag.page},
-        {"size", pag.size},
-        {"total", pag.total},
-        {"total_pages", pag.total_pages}
-    };
-}
 
 static json toJson(const RecipeSummary& recipe) {
     json item;
@@ -217,9 +210,8 @@ nlohmann::json RecipeHandler::parseFilterParams(const httplib::Request& req) {
 
 void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Response& res) {
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        auto result = service_.getPublicRecipes(page, size, parseFilterParams(req));
+        auto pp = parsePagination(req, 20);
+        auto result = service_.getPublicRecipes(pp.page, pp.size, parseFilterParams(req));
         json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -234,9 +226,8 @@ void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Respo
 void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response& res) {
     try {
         std::string keyword = req.get_param_value("keyword");
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        auto result = service_.searchRecipes(keyword, page, size, parseFilterParams(req));
+        auto pp = parsePagination(req, 20);
+        auto result = service_.searchRecipes(keyword, pp.page, pp.size, parseFilterParams(req));
         json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -249,16 +240,11 @@ void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response
 }
 
 void RecipeHandler::getRecommendedRecipes(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        auto result = service_.getRecommendedRecipes(info.userId, page, size);
+        auto pp = parsePagination(req, 20);
+        auto result = service_.getRecommendedRecipes(info.userId, pp.page, pp.size);
         json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -304,9 +290,8 @@ void RecipeHandler::getRecipeVideos(const httplib::Request& req, httplib::Respon
 void RecipeHandler::getRecipeRatings(const httplib::Request& req, httplib::Response& res) {
     try {
         int recipeId = std::stoi(req.matches[1]);
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 10;
-        auto ratings = service_.getRecipeRatings(recipeId, page, size);
+        auto pp = parsePagination(req, 10);
+        auto ratings = service_.getRecipeRatings(recipeId, pp.page, pp.size);
         json response = toJson(ratings);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -319,12 +304,8 @@ void RecipeHandler::getRecipeRatings(const httplib::Request& req, httplib::Respo
 }
 
 void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         SubmitRecipeRequest request;
@@ -374,17 +355,12 @@ void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response&
 }
 
 void RecipeHandler::getMySubmittedRecipes(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
+        auto pp = parsePagination(req, 20);
         std::string status = req.get_param_value("status"); // may be empty
-        auto result = service_.getMySubmittedRecipes(info.userId, page, size, status);
+        auto result = service_.getMySubmittedRecipes(info.userId, pp.page, pp.size, status);
         json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -397,12 +373,8 @@ void RecipeHandler::getMySubmittedRecipes(const httplib::Request& req, httplib::
 }
 
 void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -441,12 +413,8 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
 }
 
 void RecipeHandler::toggleFavorite(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         std::optional<int> groupId = std::nullopt;
@@ -467,12 +435,8 @@ void RecipeHandler::toggleFavorite(const httplib::Request& req, httplib::Respons
 }
 
 void RecipeHandler::rateRecipe(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -532,12 +496,8 @@ void RecipeHandler::getRecipeNutrition(const httplib::Request& req, httplib::Res
 }
 
 void RecipeHandler::updateRating(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         int ratingId = std::stoi(req.matches[2]);
@@ -556,12 +516,8 @@ void RecipeHandler::updateRating(const httplib::Request& req, httplib::Response&
 }
 
 void RecipeHandler::deleteRating(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        res.status = 401;
-        res.body = json{{"error", "Missing or invalid token"}}.dump();
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int recipeId = std::stoi(req.matches[1]);
         int ratingId = std::stoi(req.matches[2]);

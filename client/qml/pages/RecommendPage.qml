@@ -48,9 +48,18 @@ Page {
     }
 
     Label {
+        id: errorLabel
         anchors.centerIn: parent
-        text: qsTr("网络不可用")
+        text: qsTr("网络不可用")          // 初始兜底文案，后续由 errorOccurred 信号覆盖
         color: Theme.textHint
-        visible: recipeVM.recipes.length === 0 && !loadingIndicator.isLoading
+        visible: recipeVM.recipes.length === 0 && !loadingIndicator.isLoading && errorLabel.text !== ""
+    }
+
+    Connections {
+        target: recipeVM
+        // 接收来自后端的具体错误信息（401 / 500 等）
+        function onErrorOccurred(error) {
+            errorLabel.text = error
+        }
     }
 }
