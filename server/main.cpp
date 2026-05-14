@@ -1,5 +1,10 @@
 #include <httplib/httplib.h>
-#include <iostream>
+#include <csignal>
+#include <atomic>
+#include <thread>
+#include <cstdlib>
+#include "common/Config.h"
+#include "common/Logger.h"
 #include "ConnectionPool.h"
 #include "services/RecipeServiceImpl.h"
 #include "services/UserServiceImpl.h"
@@ -16,22 +21,38 @@
 #include "auth_middleware.h"
 #include "Router.h"
 
+namespace {
+    std::atomic<bool> gRunning{true};
+
+    void signalHandler(int sig) {
+        LOG_INFO("Received signal %d, shutting down...", sig);
+        gRunning = false;
+    }
+}
+
 int main() {
-    std::string connStr = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
-    ConnectionPool db(connStr);
+    try {
+        auto cfg = Config::load();
+    auto url = (cfg.host == "0.0.0.0")
+        ? "http://127.0.0.1:" + std::to_string(cfg.port) + "/"
+        : "http://" + cfg.host + ":" + std::to_string(cfg.port) + "/";
+    LOG_INFO("GoCook server starting on %s", url.c_str());
 
-    std::string secretKey = "GoCook-Project-Secret-Key-Change-Me-In-Production";
-    AuthMiddleware authMiddleware(secretKey);
+    if (!cfg.tlsCertPath.empty()) {
+        LOG_WARN("TLS cert configured but CPPHTTPLIB_OPENSSL_SUPPORT not enabled, "
+                 "falling back to HTTP. Add -DCPPHTTPLIB_OPENSSL_SUPPORT to enable HTTPS.");
+    }
 
-    // 创建 Service 实现，UserService 额外注入 JWT 密钥用于令牌签发
+    ConnectionPool db(cfg.dbConnString, cfg.dbPoolSize);
+    AuthMiddleware authMiddleware(cfg.jwtSecret);
+
     RecipeServiceImpl recipeService(db);
-    UserServiceImpl userService(db, secretKey);
+    UserServiceImpl userService(db, cfg.jwtSecret);
     InventoryServiceImpl inventoryService(db);
     MealPlanServiceImpl mealPlanService(db);
     AnnouncementServiceImpl announcementService(db);
     AdminServiceImpl adminService(db);
 
-    // 创建 Handler，注入服务抽象与认证中间件
     RecipeHandler recipeHandler(recipeService, authMiddleware);
     UserHandler userHandler(userService, authMiddleware);
     InventoryHandler inventoryHandler(inventoryService, authMiddleware);
@@ -39,19 +60,37 @@ int main() {
     AnnouncementHandler announcementHandler(announcementService);
     AdminHandler adminHandler(adminService, authMiddleware);
 
-    // 构造 Router，注入所有 Handler
-    Router router(db,
-                  recipeHandler,
-                  userHandler,
-                  inventoryHandler,
-                  mealPlanHandler,
-                  announcementHandler,
-                  adminHandler);
+    Router router(db, recipeHandler, userHandler, inventoryHandler,
+                  mealPlanHandler, announcementHandler, adminHandler);
 
     httplib::Server svr;
     router.setupRoutes(svr);
 
-    std::cout << "Server started on http://localhost:8080\n";
-    svr.listen("0.0.0.0", 8080);
-    return 0;
+    std::signal(SIGINT, signalHandler);
+    std::signal(SIGTERM, signalHandler);
+
+    std::thread serverThread([&]() {
+        LOG_INFO("Starting HTTP server on %s", url.c_str());
+        svr.listen(cfg.host.c_str(), cfg.port);
+    });
+
+    LOG_INFO("Server is running. Press Ctrl+C to stop.");
+
+    while (gRunning) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    LOG_INFO("Stopping server...");
+    svr.stop();
+    serverThread.join();
+    LOG_INFO("Server stopped gracefully.");
+
+    fflush(stderr);
+    fflush(stdout);
+    _Exit(0);
+    } catch (const std::exception& e) {
+        fprintf(stderr, "FATAL: %s\n", e.what());
+        fflush(stderr);
+        _Exit(1);
+    }
 }

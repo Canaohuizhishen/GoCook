@@ -4,6 +4,7 @@
 #include <QSqlDatabase>
 #include <QVariantMap>
 #include <QVariantList>
+#include <QMutex>
 
 /**
  * @brief 本地 SQLite 数据库管理类（单例）
@@ -35,10 +36,10 @@ public:
     // 获取库存缓存数据
     Q_INVOKABLE QVariantList getInventoryCache() const;
 
-    // 保存菜谱缓存数据
-    Q_INVOKABLE bool saveRecipesCache(const QVariantList &recipes);
-    // 获取菜谱缓存数据
-    Q_INVOKABLE QVariantList getRecipesCache() const;
+    // 保存菜谱详情缓存数据
+    Q_INVOKABLE bool saveRecipeDetailCache(const QVariantList &recipes);
+    // 获取菜谱详情缓存数据
+    Q_INVOKABLE QVariantList getRecipeDetailCache() const;
 
     // 添加一条待处理的离线操作
     Q_INVOKABLE bool addPendingOperation(const QString &operation, const QVariantMap &data);
@@ -59,6 +60,7 @@ private:
 
     // 数据库连接对象
     QSqlDatabase m_db;
+    mutable QMutex m_mutex;
     // 单例静态指针
     static LocalDatabase *m_instance;
 };

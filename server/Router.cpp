@@ -14,7 +14,7 @@ Router::Router(ConnectionPool& db,
     mealPlanHandler_(mealPlanHandler),
     announcementHandler_(announcementHandler),
     adminHandler_(adminHandler),
-    rateLimiter_(createRateLimiterRules())   // 通过工厂函数创建，业务规则外置
+    rateLimiter_(createRateLimiterRules())
 {
 }
 
@@ -22,22 +22,37 @@ std::vector<RateLimiter::Rule> Router::createRateLimiterRules()
 {
     using namespace std::chrono;
     return {
-        // 认证接口：严格限制，每分钟最多 5 次，防止暴力破解
         {"/api/login",    seconds(60), 5},
         {"/api/register", seconds(60), 5},
-        {"/api/password", seconds(60), 3},  // 密码重置为安全敏感路径，限额更低
+        {"/api/password", seconds(60), 3},
         {"/api/admin",    seconds(60), 30},
-        // 其他所有 API 接口：每分钟 60 次（适合普通用户正常使用）
         {"/api",          seconds(60), 60}
     };
 }
 
 void Router::setupRoutes(httplib::Server& svr) {
-    // 注册全局频率限制中间件
+    registerRateLimiter(svr);
+    registerRootRoute(svr);
+    registerAuthRoutes(svr);
+    registerRecipeRoutes(svr);
+    registerUserRoutes(svr);
+    registerInventoryRoutes(svr);
+    registerShoppingListRoutes(svr);
+    registerMealPlanRoutes(svr);
+    registerAnnouncementRoutes(svr);
+    registerAdminRoutes(svr);
+    registerPublicTestRoutes(svr);
+}
+
+// ============================================================
+// 全局频率限制中间件
+// ============================================================
+
+void Router::registerRateLimiter(httplib::Server& svr) {
     svr.set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
         std::string ip = req.remote_addr;
         if (ip.empty()) {
-            ip = "127.0.0.1";   // 本地调试保护
+            ip = "127.0.0.1";
         }
         if (!rateLimiter_.isAllowed(ip, req.path)) {
             res.status = 429;
@@ -46,8 +61,13 @@ void Router::setupRoutes(httplib::Server& svr) {
         }
         return httplib::Server::HandlerResponse::Unhandled;
     });
+}
 
-    // 根路径（公开）
+// ============================================================
+// 根路径（公开）
+// ============================================================
+
+void Router::registerRootRoute(httplib::Server& svr) {
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
         std::string html = R"(
 <!DOCTYPE html>
@@ -68,122 +88,108 @@ void Router::setupRoutes(httplib::Server& svr) {
     )";
         res.set_content(html, "text/html");
     });
+}
 
-    // ============================================================
-    // 用户认证（公开）
-    // ============================================================
+// ============================================================
+// 用户认证（公开）
+// ============================================================
+
+void Router::registerAuthRoutes(httplib::Server& svr) {
     svr.Post("/api/register", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.registerUser(req, res);
     });
     svr.Post("/api/login", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.loginUser(req, res);
     });
-
-    // 忘记密码 / 重置密码（公开）
     svr.Post("/api/password/forgot", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.forgotPassword(req, res);
     });
     svr.Post("/api/password/reset", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.resetPassword(req, res);
     });
+}
 
-    // ============================================================
-    // 菜谱相关（RecipeHandler）
-    // ============================================================
-    // 公开菜谱列表
+// ============================================================
+// 菜谱相关
+// ============================================================
+
+void Router::registerRecipeRoutes(httplib::Server& svr) {
     svr.Get("/api/recipes/public", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipesPublic(req, res);
     });
-    // 搜索菜谱
     svr.Get("/api/recipes/search", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.searchRecipes(req, res);
     });
-    // 智能推荐
     svr.Get("/api/recipes/recommend", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecommendedRecipes(req, res);
     });
-    // 菜谱详情
     svr.Get(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeDetail(req, res);
     });
-    // 菜谱营养报告（v2.8 新增）
     svr.Get(R"(/api/recipes/(\d+)/nutrition)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeNutrition(req, res);
     });
-    // 关联视频
     svr.Get(R"(/api/recipes/(\d+)/videos)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeVideos(req, res);
     });
-    // 评分与评论列表
     svr.Get(R"(/api/recipes/(\d+)/ratings)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeRatings(req, res);
     });
-    // 修改评论
     svr.Put(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.updateRating(req, res);
     });
-    // 删除评论
     svr.Delete(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.deleteRating(req, res);
     });
-    // 投稿新菜谱
     svr.Post("/api/recipes", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.submitRecipe(req, res);
     });
-    // 我的投稿列表
     svr.Get("/api/recipes/my", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getMySubmittedRecipes(req, res);
     });
-    // 编辑未审核菜谱
     svr.Put(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.editRecipe(req, res);
     });
-    // 收藏/取消收藏
     svr.Post(R"(/api/recipes/(\d+)/favorite)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.toggleFavorite(req, res);
     });
-    // 评分与评论
     svr.Post(R"(/api/recipes/(\d+)/rate)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.rateRecipe(req, res);
     });
+}
 
-    // ============================================================
-    // 用户相关（UserHandler，需认证的由 Handler 内部校验）
-    // ============================================================
+// ============================================================
+// 用户相关
+// ============================================================
+
+void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Get("/api/users/me", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getCurrentUser(req, res);
     });
     svr.Put("/api/users/me/profile", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateProfile(req, res);
     });
-    // 头像上传
     svr.Post("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.uploadAvatar(req, res);
     });
-    // 修改密码
     svr.Put("/api/users/me/password", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.changePassword(req, res);
     });
-    // 注销账户
     svr.Delete("/api/users/me", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.deleteAccount(req, res);
     });
-    // 饮食偏好
     svr.Get("/api/users/me/preferences", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getPreferences(req, res);
     });
     svr.Put("/api/users/me/preferences", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updatePreferences(req, res);
     });
-    // 健康指标
     svr.Put("/api/users/me/health-profile", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateHealthProfile(req, res);
     });
-    // 收藏列表
     svr.Get("/api/users/me/favorites", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getFavorites(req, res);
     });
-    // 收藏分组管理
     svr.Get("/api/users/me/favorites/groups", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getFavoriteGroups(req, res);
     });
@@ -196,15 +202,12 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Delete(R"(/api/users/me/favorites/groups/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.deleteFavoriteGroup(req, res);
     });
-    // 更新单个收藏项属性（移动分组/可见性）
     svr.Patch(R"(/api/users/me/favorites/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateFavoriteItem(req, res);
     });
-    // 批量删除收藏
     svr.Delete("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.batchDeleteFavorites(req, res);
     });
-    // 通知中心
     svr.Get("/api/users/me/notifications", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getNotifications(req, res);
     });
@@ -217,62 +220,60 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Delete(R"(/api/users/me/notifications/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.deleteNotification(req, res);
     });
-    // 我的评论列表
     svr.Get("/api/users/me/ratings", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getMyRatings(req, res);
     });
+}
 
-    // ============================================================
-    // 库存管理（InventoryHandler）
-    // ============================================================
-    // 获取库存（需认证）
+// ============================================================
+// 库存管理
+// ============================================================
+
+void Router::registerInventoryRoutes(httplib::Server& svr) {
     svr.Get("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.getInventory(req, res);
     });
-    // 添加/更新库存项
     svr.Post("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.upsertInventory(req, res);
     });
-    // 删除库存项
     svr.Delete(R"(/api/inventory/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.deleteInventory(req, res);
     });
+}
 
-    // ============================================================
-    // 购物清单（多清单模型，需认证）
-    // ============================================================
-    // 获取用户的购物清单列表
+// ============================================================
+// 购物清单
+// ============================================================
+
+void Router::registerShoppingListRoutes(httplib::Server& svr) {
     svr.Get("/api/inventory/shopping-lists", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.getShoppingLists(req, res);
     });
-    // 创建购物清单
     svr.Post("/api/inventory/shopping-lists", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.createShoppingList(req, res);
     });
-    // 获取指定购物清单详情
     svr.Get(R"(/api/inventory/shopping-lists/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.getShoppingListDetail(req, res);
     });
-    // 删除购物清单
     svr.Delete(R"(/api/inventory/shopping-lists/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.deleteShoppingList(req, res);
     });
-    // 更新购物清单项状态
     svr.Patch(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.updateShoppingListItem(req, res);
     });
-    // 批量添加购物清单项
     svr.Post(R"(/api/inventory/shopping-lists/(\d+)/items/batch)", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.batchAddShoppingItems(req, res);
     });
-    // 导出购物清单
     svr.Get(R"(/api/inventory/shopping-lists/(\d+)/export)", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.exportShoppingList(req, res);
     });
+}
 
-    // ============================================================
-    // 膳食计划（MealPlanHandler）
-    // ============================================================
+// ============================================================
+// 膳食计划
+// ============================================================
+
+void Router::registerMealPlanRoutes(httplib::Server& svr) {
     svr.Post("/api/meal-plans", [this](const httplib::Request& req, httplib::Response& res) {
         mealPlanHandler_.createMealPlan(req, res);
     });
@@ -291,17 +292,23 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Get("/api/meal-plans/nutrition-trend", [this](const httplib::Request& req, httplib::Response& res) {
         mealPlanHandler_.getNutritionTrend(req, res);
     });
+}
 
-    // ============================================================
-    // 系统公告（AnnouncementHandler）
-    // ============================================================
+// ============================================================
+// 系统公告
+// ============================================================
+
+void Router::registerAnnouncementRoutes(httplib::Server& svr) {
     svr.Get("/api/announcements", [this](const httplib::Request& req, httplib::Response& res) {
         announcementHandler_.getAnnouncements(req, res);
     });
+}
 
-    // ============================================================
-    // 管理员功能（AdminHandler）
-    // ============================================================
+// ============================================================
+// 管理员功能
+// ============================================================
+
+void Router::registerAdminRoutes(httplib::Server& svr) {
     // 用户管理
     svr.Get("/api/admin/users", [this](const httplib::Request& req, httplib::Response& res) {
         adminHandler_.getUsers(req, res);
@@ -350,16 +357,17 @@ void Router::setupRoutes(httplib::Server& svr) {
     svr.Get("/api/admin/activity-logs", [this](const httplib::Request& req, httplib::Response& res) {
         adminHandler_.getActivityLogs(req, res);
     });
+}
 
-    // ============================================================
-    // 公开测试接口
-    // ============================================================
-    // 库存公开测试接口
+// ============================================================
+// 公开测试接口
+// ============================================================
+
+void Router::registerPublicTestRoutes(httplib::Server& svr) {
     svr.Get("/api/inventory/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
             auto conn = db_.getConnection();
             pqxx::work txn(*conn);
-            // 参数化查询避免注入
             pqxx::result userRes = txn.exec_params(
                 "SELECT id FROM users WHERE username = $1", "testuser");
             if (userRes.empty()) {
@@ -397,7 +405,6 @@ void Router::setupRoutes(httplib::Server& svr) {
         }
     });
 
-    // 用户公开测试接口
     svr.Get("/api/users/public", [this](const httplib::Request& req, httplib::Response& res) {
         try {
             auto conn = db_.getConnection();

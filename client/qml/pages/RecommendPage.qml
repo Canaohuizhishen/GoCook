@@ -18,31 +18,57 @@ Page {
         isLoading: recipeVM.isLoading
     }
 
-    ListView {
-        id: recipeListView
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacingSmall
-        spacing: Theme.spacingSmall
-        clip: true
+        spacing: 0
 
-        model: recipeVM.recipes
+        CustomButton {
+            id: refreshButton
+            Layout.fillWidth: true
+            buttonText: qsTr("刷新")
+            buttonType: CustomButton.ButtonType.Secondary
+            onClicked: recipeVM.refresh()
+        }
 
-        delegate: RecipeCard {
-            width: recipeListView.width
-            recipeName: modelData.name
-            recipeDescription: modelData.description
-            imageSource: modelData.imageUrl || ""
-            prepTime: modelData.prepTime + "分钟"
-            cookTime: modelData.cookTime + "分钟"
-            tags: modelData.tags || []
-            isFavorite: modelData.isFavorite || false
+        ListView {
+            id: recipeListView
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: Theme.spacingSmall
+            clip: true
 
-            onClicked: {
-                console.log("Clicked recipe:", modelData.id)
+            model: recipeVM.recipes
+
+            delegate: RecipeCard {
+                width: recipeListView.width
+                recipeName: modelData.name
+                recipeDescription: modelData.description
+                imageSource: modelData.imageUrl || ""
+                prepTime: modelData.prepTime + "分钟"
+                cookTime: modelData.cookTime + "分钟"
+                tags: modelData.tags || []
+                isFavorite: modelData.isFavorite || false
+
+                onClicked: {
+                    console.log("Clicked recipe:", modelData.id)
+                }
+
+                onFavoriteClicked: {
+                    console.log("Toggle favorite for:", modelData.id)
+                }
             }
 
-            onFavoriteClicked: {
-                console.log("Toggle favorite for:", modelData.id)
+            footer: Item {
+                width: recipeListView.width
+                height: recipeVM.hasMore ? 50 : 0
+                visible: recipeVM.hasMore
+
+                CustomButton {
+                    anchors.centerIn: parent
+                    buttonText: qsTr("加载更多")
+                    buttonType: CustomButton.ButtonType.Secondary
+                    onClicked: recipeVM.loadNextPage()
+                }
             }
         }
     }
@@ -50,14 +76,13 @@ Page {
     Label {
         id: errorLabel
         anchors.centerIn: parent
-        text: qsTr("网络不可用")          // 初始兜底文案，后续由 errorOccurred 信号覆盖
+        text: ""
         color: Theme.textHint
         visible: recipeVM.recipes.length === 0 && !loadingIndicator.isLoading && errorLabel.text !== ""
     }
 
     Connections {
         target: recipeVM
-        // 接收来自后端的具体错误信息（401 / 500 等）
         function onErrorOccurred(error) {
             errorLabel.text = error
         }

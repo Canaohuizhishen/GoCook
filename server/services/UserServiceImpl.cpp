@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <random>
 #include <cstring>
-#include <iostream>
+#include "../common/Logger.h"
 #include "bcrypt/crypt_blowfish.h"   // 基于 Blowfish 算法的安全密码哈希（Openwall bcrypt 实现）
 #include <openssl/crypto.h>          // 提供 CRYPTO_memcmp 恒定时间比较
 
@@ -104,7 +104,7 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     } catch (const ServiceException&) {
         throw;  // 业务异常原样上抛，不重包装
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -137,7 +137,7 @@ LoginResponse UserServiceImpl::login(const LoginRequest& request) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -165,7 +165,7 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }

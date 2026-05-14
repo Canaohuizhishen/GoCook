@@ -4,68 +4,13 @@
 #include <stdexcept>
 #include "../common/ErrorHelper.h"
 #include "../common/PaginationHelper.h"
-#include "../common/SerializationHelper.h"
+#include "../common/JsonSerializer.h"
+#include "../common/Validation.h"
 #include "../common/AuthHelper.h"
+#include "../common/Logger.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
-
-// ========== 辅助序列化 ==========
-
-static json toJson(const InventoryItem& item) {
-    json obj;
-    obj["id"] = item.id;
-    obj["ingredient_name"] = item.ingredient_name;
-    obj["quantity"] = item.quantity;
-    obj["unit"] = item.unit;
-    if (item.expiry_date.has_value())
-        obj["expiry_date"] = item.expiry_date.value();
-    obj["added_at"] = item.added_at;
-    return obj;
-}
-
-static json toJson(const ShoppingListItem& item) {
-    return {
-        {"id", item.id},
-        {"ingredient_name", item.ingredient_name},
-        {"required_quantity", item.required_quantity},
-        {"inventory_quantity", item.inventory_quantity},
-        {"to_buy_quantity", item.to_buy_quantity},
-        {"unit", item.unit},
-        {"checked", item.checked}
-    };
-}
-
-static json toJson(const ShoppingListSummary& summary) {
-    return {
-        {"id", summary.id},
-        {"name", summary.name},
-        {"item_count", summary.item_count},
-        {"created_at", summary.created_at}
-    };
-}
-
-static json toJson(const ShoppingList& list) {
-    json obj;
-    obj["id"] = list.id;
-    obj["name"] = list.name;
-    json items = json::array();
-    for (const auto& item : list.items)
-        items.push_back(toJson(item));
-    obj["items"] = items;
-    return obj;
-}
-
-static json toJson(const BatchShoppingResponse& resp) {
-    json obj;
-    obj["message"] = resp.message;
-    obj["items"] = json::array();
-    for (const auto& item : resp.items)
-        obj["items"].push_back(toJson(item));
-    return obj;
-}
-
-// ---------- InventoryHandler 实现 ----------
 
 InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
                                    AuthMiddleware& auth)
@@ -78,14 +23,9 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
 
     try {
         auto paged = service_.getInventory(info.userId, pp.page, pp.size);
-        json resp;
-        resp["data"] = json::array();
-        for (const auto& item : paged.data)
-            resp["data"].push_back(toJson(item));
-        resp["pagination"] = toJson(paged.pagination);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = resp.dump();
+        res.body = JsonSerializer::toJson(paged).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -98,10 +38,8 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
     if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
-        if (!reqJson.contains("ingredient_name") || !reqJson.contains("quantity") || !reqJson.contains("unit")) {
-            setErrorResponse(res, 400, "缺少必填字段: ingredient_name, quantity, unit");
-            return;
-        }
+        Validation::validateInventoryRequest(reqJson);
+
         UpsertInventoryRequest item;
         item.ingredient_name = reqJson["ingredient_name"];
         item.quantity = reqJson["quantity"];
@@ -110,7 +48,7 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
             item.expiry_date = reqJson["expiry_date"];
 
         int newId = service_.upsertInventory(info.userId, item);
-        res.status = 200;
+        res.status = 201;
         res.body = json{{"message", "Inventory updated successfully"}, {"id", newId}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
@@ -144,8 +82,6 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
     }
 }
 
-// ========== 购物清单（多清单模型） ==========
-
 void InventoryHandler::getShoppingLists(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
@@ -153,7 +89,7 @@ void InventoryHandler::getShoppingLists(const httplib::Request& req, httplib::Re
         auto lists = service_.getShoppingLists(info.userId);
         json arr = json::array();
         for (const auto& summary : lists)
-            arr.push_back(toJson(summary));
+            arr.push_back(JsonSerializer::toJson(summary));
         res.status = 200;
         res.body = arr.dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -172,10 +108,9 @@ void InventoryHandler::createShoppingList(const httplib::Request& req, httplib::
         request.name = reqJson.at("name");
         if (reqJson.contains("plan_id")) request.plan_id = reqJson["plan_id"].get<std::string>();
         int listId = service_.createShoppingList(info.userId, request);
-        // 返回创建后的详细信息，需要再次获取
         auto list = service_.getShoppingListDetail(info.userId, listId);
         res.status = 201;
-        res.body = toJson(list).dump();
+        res.body = JsonSerializer::toJson(list).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -190,7 +125,7 @@ void InventoryHandler::getShoppingListDetail(const httplib::Request& req, httpli
         int listId = std::stoi(req.matches[1]);
         auto list = service_.getShoppingListDetail(info.userId, listId);
         res.status = 200;
-        res.body = toJson(list).dump();
+        res.body = JsonSerializer::toJson(list).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -217,7 +152,6 @@ void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httpl
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
     try {
-        // 路由: /api/inventory/shopping-lists/:list_id/items/:item_id
         int listId = std::stoi(req.matches[1]);
         int itemId = std::stoi(req.matches[2]);
         json reqJson = json::parse(req.body);
@@ -238,7 +172,7 @@ void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httpli
     if (!info.valid) return;
     try {
         int listId = std::stoi(req.matches[1]);
-        json reqJson = json::parse(req.body);  // 期望是数组
+        json reqJson = json::parse(req.body);
         std::vector<BatchShoppingItem> items;
         for (const auto& elem : reqJson) {
             BatchShoppingItem item;
@@ -249,7 +183,7 @@ void InventoryHandler::batchAddShoppingItems(const httplib::Request& req, httpli
         }
         auto response = service_.batchAddShoppingItems(info.userId, listId, items);
         res.status = 201;
-        res.body = toJson(response).dump();
+        res.body = JsonSerializer::toJson(response).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
