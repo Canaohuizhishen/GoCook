@@ -1,50 +1,34 @@
 #include "MealPlanServiceImpl.h"
-#include <stdexcept>
 
 using namespace gocook::services;
 using namespace gocook::models;
 
-MealPlanServiceImpl::MealPlanServiceImpl(ConnectionPool& db) : db_(db) {}
+MealPlanServiceImpl::MealPlanServiceImpl(std::unique_ptr<gocook::repository::IMealPlanRepository> mealPlanRepo)
+    : mealPlanRepo_(std::move(mealPlanRepo)) {}
 
-int MealPlanServiceImpl::createMealPlan(int userId,
-                                        const MealPlanRequest& planData)
-{
+int MealPlanServiceImpl::createMealPlan(int, const MealPlanRequest&) {
     throw ServiceException("Not implemented", 501);
 }
 
-MealPlansResponse MealPlanServiceImpl::getMealPlans(
-    int userId,
-    const std::string& startDate,
-    const std::string& endDate,
-    int page, int size)
-{
+MealPlansResponse MealPlanServiceImpl::getMealPlans(int, const std::string&,
+                                                     const std::string&, int, int) {
     throw ServiceException("Not implemented", 501);
 }
 
-PagedCalendarDays MealPlanServiceImpl::getMealPlanDetail(
-    int userId,
-    const std::string& startDate,
-    const std::string& endDate,
-    int page, int size)
-{
+PagedCalendarDays MealPlanServiceImpl::getMealPlanDetail(int, const std::string&,
+                                                          const std::string&, int, int) {
     throw ServiceException("Not implemented", 501);
 }
 
-void MealPlanServiceImpl::updateMealPlan(int userId, int planId,
-                                         const MealPlanRequest& updates)
-{
+void MealPlanServiceImpl::updateMealPlan(int, int, const MealPlanRequest&) {
     throw ServiceException("Not implemented", 501);
 }
 
-void MealPlanServiceImpl::deleteMealPlan(int userId, int planId)
-{
+void MealPlanServiceImpl::deleteMealPlan(int, int) {
     throw ServiceException("Not implemented", 501);
 }
 
-NutritionTrendResponse MealPlanServiceImpl::getNutritionTrend(
-    int userId,
-    const std::string& startDate,
-    const std::string& endDate)
-{
+NutritionTrendResponse MealPlanServiceImpl::getNutritionTrend(int, const std::string&,
+                                                               const std::string&) {
     throw ServiceException("Not implemented", 501);
 }

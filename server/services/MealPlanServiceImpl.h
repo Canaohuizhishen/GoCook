@@ -1,17 +1,12 @@
 #pragma once
 
 #include <gocook/IServices.h>
-#include "../ConnectionPool.h"
+#include <gocook/IMealPlanRepository.h>
+#include <memory>
 
-/**
- * @brief 膳食计划服务实现
- *
- * 当前所有方法均为骨架，抛出 ServiceException("Not implemented")。
- * 构造函数接收 ConnectionPool& 引用并保存为私有成员。
- */
 class MealPlanServiceImpl : public gocook::services::IMealPlanService {
 public:
-    explicit MealPlanServiceImpl(ConnectionPool& db);
+    explicit MealPlanServiceImpl(std::unique_ptr<gocook::repository::IMealPlanRepository> mealPlanRepo);
 
     // ---------- IMealPlanService 接口实现 ----------
     int createMealPlan(int userId,
@@ -35,5 +30,5 @@ public:
         const std::string& endDate) override;
 
 private:
-    ConnectionPool& db_;
+    std::unique_ptr<gocook::repository::IMealPlanRepository> mealPlanRepo_;
 };

@@ -1,28 +1,20 @@
 #include "AuthViewModel.h"
-#include <QJSValue>
-#include <QUrl>
-#include <QNetworkRequest>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QNetworkReply>
 #include <QPointer>
-#include "HttpGoCookApi.h"
+#include <gocook/IGoCookApi.h>
 
-AuthViewModel::AuthViewModel(HttpGoCookApi *api, QObject *parent)
+AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent)
     , m_api(api)
     , m_db(LocalDatabase::instance())
     , m_loggedIn(false)
     , m_userId(0)
 {
-    // 通过抽象接口注册未授权回调，避免对具体实现类的 dynamic_cast 依赖
     m_api->setUnauthorizedHandler([self = QPointer<AuthViewModel>(this)]() {
         if (!self) return;
         if (self->m_loggedIn) { self->logout(); }
     });
 }
 
-// 登录实现（使用 GoCookApi 抽象接口的 login 方法）
 void AuthViewModel::login(const QString &username, const QString &password)
 {
     gocook::models::LoginRequest req;
@@ -51,7 +43,6 @@ void AuthViewModel::login(const QString &username, const QString &password)
     });
 }
 
-// 注册实现（使用 GoCookApi 抽象接口的 registerUser 方法）
 void AuthViewModel::registerUser(const QString &username,
                                  const QString &password,
                                  const QString &email)
@@ -59,7 +50,7 @@ void AuthViewModel::registerUser(const QString &username,
     gocook::models::RegisterRequest req;
     req.username = username.toStdString();
     req.password = password.toStdString();
-    req.email    = email.toStdString();   // 补充 email 字段
+    req.email    = email.toStdString();
 
     m_api->registerUser(req, [self = QPointer<AuthViewModel>(this)](bool success, const std::string &error) {
         if (!self) return;
@@ -72,27 +63,20 @@ void AuthViewModel::registerUser(const QString &username,
     });
 }
 
-// 登出实现
 void AuthViewModel::logout()
 {
-    // 清除本地用户数据
     m_db->clearUser();
-    // 清除 API 的认证令牌
     m_api->setAuthToken("");
-    // 更新内部登录状态
     setLoggedIn(false, 0, "");
-    // 发射登出完成信号
     emit logoutFinished();
 }
 
-// 自动登录检查
 void AuthViewModel::checkAutoLogin()
 {
     QVariantMap user = m_db->getUser();
     if (!user.isEmpty()) {
         QString token = user["token"].toString();
         m_api->setAuthToken(token.toStdString());
-        // 异步验证本地缓存的令牌是否仍然有效
         m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
             Q_UNUSED(profile)
             if (!self) return;
@@ -107,16 +91,14 @@ void AuthViewModel::checkAutoLogin()
                 }
             }
             self->m_initialLoading = false;
-            emit self->initialLoadingChanged();  // 触发 QML 从加载页切换到登录页或主页
+            emit self->initialLoadingChanged();
         });
     } else {
-        // 本地无缓存令牌，直接结束加载状态
         m_initialLoading = false;
         emit initialLoadingChanged();
     }
 }
 
-// 内部状态更新方法
 void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
 {
     if (m_loggedIn != loggedIn) {

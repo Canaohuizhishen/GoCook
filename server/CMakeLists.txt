@@ -19,6 +19,12 @@ add_executable(server
     Router.h Router.cpp
     auth_middleware.h auth_middleware.cpp
     ../contracts/include/gocook/IServices.h
+    ../contracts/include/gocook/IUserRepository.h
+    ../contracts/include/gocook/IRecipeRepository.h
+    ../contracts/include/gocook/IInventoryRepository.h
+    ../contracts/include/gocook/IMealPlanRepository.h
+    ../contracts/include/gocook/IAnnouncementRepository.h
+    ../contracts/include/gocook/IAdminRepository.h
     services/RecipeServiceImpl.cpp
     services/RecipeServiceImpl.h
     handlers/InventoryHandler.cpp handlers/InventoryHandler.h handlers/RecipeHandler.cpp handlers/RecipeHandler.h handlers/UserHandler.cpp handlers/UserHandler.h
@@ -32,6 +38,12 @@ add_executable(server
     services/MealPlanServiceImpl.h services/MealPlanServiceImpl.cpp
     services/AnnouncementServiceImpl.h services/AnnouncementServiceImpl.cpp
     services/AdminServiceImpl.h services/AdminServiceImpl.cpp
+    repositories/PgUserRepository.h repositories/PgUserRepository.cpp
+    repositories/PgRecipeRepository.h repositories/PgRecipeRepository.cpp
+    repositories/PgInventoryRepository.h repositories/PgInventoryRepository.cpp
+    repositories/PgMealPlanRepository.h repositories/PgMealPlanRepository.cpp
+    repositories/PgAnnouncementRepository.h repositories/PgAnnouncementRepository.cpp
+    repositories/PgAdminRepository.h repositories/PgAdminRepository.cpp
     ../third_party/jwt-cpp/jwt.h
     ../third_party/picojson/picojson.h
     ../third_party/jwt-cpp/base.h
@@ -46,6 +58,8 @@ add_executable(server
     common/Validation.h
     common/Config.h
     common/Logger.h
+    repositories/PgAdminRepository.cpp repositories/PgAdminRepository.h repositories/PgAnnouncementRepository.cpp repositories/PgAnnouncementRepository.h repositories/PgInventoryRepository.cpp repositories/PgInventoryRepository.h repositories/PgMealPlanRepository.cpp repositories/PgMealPlanRepository.h repositories/PgRecipeRepository.cpp repositories/PgRecipeRepository.h repositories/PgUserRepository.cpp repositories/PgUserRepository.h
+    ../contracts/include/gocook/IUserRepository.h ../contracts/include/gocook/IAdminRepository.h ../contracts/include/gocook/IAnnouncementRepository.h ../contracts/include/gocook/IInventoryRepository.h ../contracts/include/gocook/IMealPlanRepository.h ../contracts/include/gocook/IRecipeRepository.h
 )
 
 # 增加头文件查找路径

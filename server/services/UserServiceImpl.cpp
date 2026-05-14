@@ -6,36 +6,32 @@
 #include <random>
 #include <cstring>
 #include "../common/Logger.h"
-#include "bcrypt/crypt_blowfish.h"   // 基于 Blowfish 算法的安全密码哈希（Openwall bcrypt 实现）
-#include <openssl/crypto.h>          // 提供 CRYPTO_memcmp 恒定时间比较
+#include "bcrypt/crypt_blowfish.h"
+#include <openssl/crypto.h>
 
-// bcrypt 输出缓冲区安全大小（实际输出约 60 字节）
 #define BCRYPT_OUTPUT_SIZE 128
 
 using namespace gocook::models;
 using namespace gocook::services;
 
 std::string UserServiceImpl::generateToken(int userId, const std::string& username, const std::string& role) {
-    // 设置 Token 过期时间为 7 天后
     auto now = std::chrono::system_clock::now();
     auto exp = now + std::chrono::hours(24 * 7);
 
     auto token = jwt::create()
-                     .set_issuer("GoCook")                                   // 签发者
-                     .set_type("JWS")                                        // 类型
-                     .set_payload_claim("userId", jwt::claim(std::to_string(userId))) // 用户ID
-                     .set_payload_claim("username", jwt::claim(username))   // 用户名
-                     .set_payload_claim("role", jwt::claim(role))           // 用户角色
-                     .set_issued_at(now)                                     // 签发时间
-                     .set_expires_at(exp)                                    // 过期时间
-                     .sign(jwt::algorithm::hs256{jwt_secret_});               // 使用 HMAC-SHA256 签名
+                     .set_issuer("GoCook")
+                     .set_type("JWS")
+                     .set_payload_claim("userId", jwt::claim(std::to_string(userId)))
+                     .set_payload_claim("username", jwt::claim(username))
+                     .set_payload_claim("role", jwt::claim(role))
+                     .set_issued_at(now)
+                     .set_expires_at(exp)
+                     .sign(jwt::algorithm::hs256{jwt_secret_});
 
     return token;
 }
 
-// 使用 crypt_blowfish 生成盐和哈希
 std::string UserServiceImpl::hashPassword(const std::string& plain) {
-    // 1. 生成 16 字节随机盐值
     char random_bytes[16];
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -44,14 +40,12 @@ std::string UserServiceImpl::hashPassword(const std::string& plain) {
         random_bytes[i] = static_cast<char>(distrib(gen));
     }
 
-    // 2. 调用 _crypt_gensalt_blowfish_rn 生成标准格式的盐串，如 "$2a$10$..."
     char salt[BCRYPT_OUTPUT_SIZE];
     char *salt_result = _crypt_gensalt_blowfish_rn("$2a$", 10, random_bytes, 16, salt, sizeof(salt));
     if (!salt_result) {
         throw ServiceException("Failed to generate password salt");
     }
 
-    // 3. 用 _crypt_blowfish_rn 计算哈希
     char hash[BCRYPT_OUTPUT_SIZE];
     char *hash_result = _crypt_blowfish_rn(plain.c_str(), salt, hash, sizeof(hash));
     if (!hash_result) {
@@ -68,104 +62,111 @@ bool UserServiceImpl::validatePassword(const std::string& plain, const std::stri
         return false;
     }
 
-    // bcrypt 哈希串长度固定（约 60 字符），先比较长度
     size_t result_len = std::strlen(result);
     if (hash.size() != result_len) {
         return false;
     }
 
-    // 使用 OpenSSL 提供的恒定时间比较函数，彻底消除时序攻击风险
     return CRYPTO_memcmp(hash.data(), result, result_len) == 0;
 }
 
-// ------------------ IUserService 接口实现 ------------------
-
 void UserServiceImpl::registerUser(const RegisterRequest& request) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
-        pqxx::result userCheck = txn.exec_params(
-            "SELECT id FROM users WHERE username = $1", request.username);
-        if (!userCheck.empty()) {
-            throw ServiceException("用户名已存在", 409);
-        }
-        pqxx::result emailCheck = txn.exec_params(
-            "SELECT id FROM users WHERE email = $1", request.email);
-        if (!emailCheck.empty()) {
-            throw ServiceException("邮箱已被注册", 409);
-        }
-
-        std::string hashed = hashPassword(request.password);
-        txn.exec_params(
-            "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)",
-            request.username, hashed, request.email);
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;  // 业务异常原样上抛，不重包装
-    } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
+    if (userRepo_->existsByEmail(request.email)) {
+        throw ServiceException("邮箱已被注册", 409);
     }
+
+    auto existing = userRepo_->findByUsername(request.username);
+    if (existing.has_value()) {
+        throw ServiceException("用户名已存在", 409);
+    }
+
+    std::string hashed = hashPassword(request.password);
+    userRepo_->createUser(request.username, hashed, request.email);
 }
 
 LoginResponse UserServiceImpl::login(const LoginRequest& request) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-        pqxx::result result = txn.exec_params(
-            "SELECT id, password_hash, role FROM users WHERE username = $1",
-            request.username);
-
-        if (result.empty()) {
-            throw ServiceException("Invalid username or password", 401);
-        }
-
-        int userId = result[0]["id"].as<int>();
-        std::string storedHash = result[0]["password_hash"].as<std::string>();
-        std::string role = result[0]["role"].as<std::string>();   // 读取用户角色
-
-        if (!validatePassword(request.password, storedHash)) {
-            throw ServiceException("Invalid username or password", 401);
-        }
-
-        LoginResponse resp;
-        resp.user_id = userId;
-        resp.username = request.username;
-        resp.token = generateToken(userId, request.username, role);
-        return resp;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
+    auto authInfo = userRepo_->findByUsername(request.username);
+    if (!authInfo.has_value()) {
+        throw ServiceException("Invalid username or password", 401);
     }
+
+    if (!validatePassword(request.password, authInfo->passwordHash)) {
+        throw ServiceException("Invalid username or password", 401);
+    }
+
+    LoginResponse resp;
+    resp.user_id = authInfo->id;
+    resp.username = authInfo->username;
+    resp.token = generateToken(authInfo->id, authInfo->username, authInfo->role);
+    return resp;
 }
 
 UserProfile UserServiceImpl::getCurrentUser(int userId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-        pqxx::result r = txn.exec_params(
-            "SELECT id, username, display_name, email, phone, avatar_url, "
-            "preferences_complete, created_at FROM users WHERE id = $1", userId);
-        if (r.empty()) {
-            throw ServiceException("用户不存在", 404);
-        }
-        UserProfile u;
-        u.id = r[0]["id"].as<int>();
-        u.username = r[0]["username"].c_str();
-        u.display_name = r[0]["display_name"].as<std::string>("");
-        u.email = r[0]["email"].as<std::string>("");
-        u.phone = r[0]["phone"].as<std::string>("");
-        u.avatar_url = r[0]["avatar_url"].as<std::string>("");
-        u.preferences_complete = r[0]["preferences_complete"].as<bool>();
-        u.created_at = r[0]["created_at"].as<std::string>("");
-        return u;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
     }
+    return *user;
+}
+
+// 以下方法暂时未实现（骨架）
+void UserServiceImpl::requestPasswordReset(const std::string&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::resetPassword(const std::string&, const std::string&) {
+    throw ServiceException("Not implemented", 501);
+}
+UserProfile UserServiceImpl::updateProfile(int, const UpdateProfileRequest&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::changePassword(int, const std::string&, const std::string&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::deleteAccount(int) {
+    throw ServiceException("Not implemented", 501);
+}
+AvatarUploadResponse UserServiceImpl::uploadAvatar(int, const std::string&) {
+    throw ServiceException("Not implemented", 501);
+}
+UserPreferences UserServiceImpl::getPreferences(int) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::updatePreferences(int, const UserPreferences&) {
+    throw ServiceException("Not implemented", 501);
+}
+HealthProfileResponse UserServiceImpl::updateHealthProfile(int, const HealthProfileRequest&) {
+    throw ServiceException("Not implemented", 501);
+}
+PagedFavorites UserServiceImpl::getFavorites(int, int, int, const std::string&) {
+    throw ServiceException("Not implemented", 501);
+}
+std::vector<FavoriteGroup> UserServiceImpl::getFavoriteGroups(int) {
+    throw ServiceException("Not implemented", 501);
+}
+FavoriteGroup UserServiceImpl::createFavoriteGroup(int, const CreateGroupRequest&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::updateFavoriteGroup(int, int, const UpdateGroupRequest&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::deleteFavoriteGroup(int, int) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::updateFavoriteItem(int, int, const UpdateFavoriteRequest&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::batchDeleteFavorites(int, const BatchDeleteFavoritesRequest&) {
+    throw ServiceException("Not implemented", 501);
+}
+PagedNotifications UserServiceImpl::getNotifications(int, int, int, const std::string&) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::markNotificationRead(int, int) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::markAllNotificationsRead(int) {
+    throw ServiceException("Not implemented", 501);
+}
+void UserServiceImpl::deleteNotification(int, int) {
+    throw ServiceException("Not implemented", 501);
 }

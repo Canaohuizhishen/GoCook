@@ -3,9 +3,16 @@
 #include <atomic>
 #include <thread>
 #include <cstdlib>
+#include <memory>
 #include "common/Config.h"
 #include "common/Logger.h"
 #include "ConnectionPool.h"
+#include "repositories/PgUserRepository.h"
+#include "repositories/PgRecipeRepository.h"
+#include "repositories/PgInventoryRepository.h"
+#include "repositories/PgMealPlanRepository.h"
+#include "repositories/PgAnnouncementRepository.h"
+#include "repositories/PgAdminRepository.h"
 #include "services/RecipeServiceImpl.h"
 #include "services/UserServiceImpl.h"
 #include "services/InventoryServiceImpl.h"
@@ -46,12 +53,12 @@ int main() {
     ConnectionPool db(cfg.dbConnString, cfg.dbPoolSize);
     AuthMiddleware authMiddleware(cfg.jwtSecret);
 
-    RecipeServiceImpl recipeService(db);
-    UserServiceImpl userService(db, cfg.jwtSecret);
-    InventoryServiceImpl inventoryService(db);
-    MealPlanServiceImpl mealPlanService(db);
-    AnnouncementServiceImpl announcementService(db);
-    AdminServiceImpl adminService(db);
+    RecipeServiceImpl recipeService(std::make_unique<PgRecipeRepository>(db));
+    UserServiceImpl userService(std::make_unique<PgUserRepository>(db), cfg.jwtSecret);
+    InventoryServiceImpl inventoryService(std::make_unique<PgInventoryRepository>(db));
+    MealPlanServiceImpl mealPlanService(std::make_unique<PgMealPlanRepository>(db));
+    AnnouncementServiceImpl announcementService(std::make_unique<PgAnnouncementRepository>(db));
+    AdminServiceImpl adminService(std::make_unique<PgAdminRepository>(db));
 
     RecipeHandler recipeHandler(recipeService, authMiddleware);
     UserHandler userHandler(userService, authMiddleware);

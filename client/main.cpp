@@ -14,19 +14,19 @@ int main(int argc, char *argv[])
 
     // 注册 Theme 单例
     qmlRegisterSingletonType(
-        QUrl("qrc:/client/qml/styles/Theme.qml"),  // 资源路径
-        "client.styles",                            // 导入 URI
-        1, 0,                                       // 版本号
-        "Theme"                                     // QML 中的类型名
+        QUrl("qrc:/client/qml/styles/Theme.qml"),
+        "client.styles",
+        1, 0,
+        "Theme"
         );
 
-    // 创建具体 API 实现类实例，父对象设为 app 以确保生命周期
+    // 创建具体 API 实现类实例（工厂模式——集中所有具体类实例化）
     HttpGoCookApi *httpApi = new HttpGoCookApi(&app);
 
-    // 通过构造函数注入抽象接口，AuthViewModel 只依赖 GoCookApi 抽象
+    // AuthViewModel 通过抽象接口 IGoCookApi* 注入
     AuthViewModel authViewModel(httpApi);
 
-    // 创建 ViewModel 并注入 API 抽象接口
+    // RecipeViewModel 通过抽象接口 IGoCookApi* 注入
     RecipeViewModel recipeVM(httpApi, &app);
 
     // 暴露给 QML
@@ -45,7 +45,6 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
     engine.load(url);
 
-    // 启动后自动检测登录状态
     authViewModel.checkAutoLogin();
 
     return app.exec();
