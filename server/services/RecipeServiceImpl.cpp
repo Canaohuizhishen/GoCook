@@ -1,5 +1,6 @@
 #include "RecipeServiceImpl.h"
 #include <pqxx/pqxx>
+#include <iostream>
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -42,7 +43,8 @@ PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
                                                  const nlohmann::json& filters) {
     PagedRecipes result;
     try {
-        pqxx::work txn(db_.getConn());
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
@@ -162,8 +164,11 @@ PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
         result.pagination.total_pages = (total + size - 1) / size;
 
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;  // 业务异常原样上抛，不重包装
     } catch (const std::exception& e) {
-        throw ServiceException(std::string("Database error: ") + e.what());
+        std::cerr << "Database error: " << e.what() << std::endl;
+        throw ServiceException("数据库操作失败");
     }
     return result;
 }

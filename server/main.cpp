@@ -1,6 +1,6 @@
 #include <httplib/httplib.h>
 #include <iostream>
-#include "DBConnection.h"
+#include "ConnectionPool.h"
 #include "services/RecipeServiceImpl.h"
 #include "services/UserServiceImpl.h"
 #include "services/InventoryServiceImpl.h"
@@ -18,18 +18,14 @@
 
 int main() {
     std::string connStr = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
-    DBConnection db(connStr);
-    if (!db.connect()) {
-        std::cerr << "Cannot connect to database.\n";
-        return 1;
-    }
+    ConnectionPool db(connStr);
 
-    // 创建认证中间件，后续通过构造函数注入给各 Handler
-    AuthMiddleware authMiddleware("GoCook-Project-Secret-Key-Change-Me-In-Production");
+    std::string secretKey = "GoCook-Project-Secret-Key-Change-Me-In-Production";
+    AuthMiddleware authMiddleware(secretKey);
 
-    // 创建 Service 实现
+    // 创建 Service 实现，UserService 额外注入 JWT 密钥用于令牌签发
     RecipeServiceImpl recipeService(db);
-    UserServiceImpl userService(db);
+    UserServiceImpl userService(db, secretKey);
     InventoryServiceImpl inventoryService(db);
     MealPlanServiceImpl mealPlanService(db);
     AnnouncementServiceImpl announcementService(db);

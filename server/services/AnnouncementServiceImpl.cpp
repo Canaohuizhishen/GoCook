@@ -5,8 +5,8 @@
 using namespace gocook::services;
 using namespace gocook::models;
 
-// 构造函数：保存数据库连接引用
-AnnouncementServiceImpl::AnnouncementServiceImpl(DBConnection& db)
+// 构造函数：保存数据库连接池引用
+AnnouncementServiceImpl::AnnouncementServiceImpl(ConnectionPool& db)
     : db_(db)
 {
 }

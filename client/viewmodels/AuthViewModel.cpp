@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <QPointer>
 #include "HttpGoCookApi.h"
 
 AuthViewModel::AuthViewModel(HttpGoCookApi *api, QObject *parent)
@@ -15,8 +16,9 @@ AuthViewModel::AuthViewModel(HttpGoCookApi *api, QObject *parent)
     , m_userId(0)
 {
     // 通过抽象接口注册未授权回调，避免对具体实现类的 dynamic_cast 依赖
-    m_api->setUnauthorizedHandler([this]() {
-        if (m_loggedIn) { logout(); }
+    m_api->setUnauthorizedHandler([self = QPointer<AuthViewModel>(this)]() {
+        if (!self) return;
+        if (self->m_loggedIn) { self->logout(); }
     });
 }
 
@@ -27,24 +29,25 @@ void AuthViewModel::login(const QString &username, const QString &password)
     req.username = username.toStdString();
     req.password = password.toStdString();
 
-    m_api->login(req, [this, username](bool success,
-                                       const gocook::models::LoginResponse &data,
-                                       const std::string &error) {
+    m_api->login(req, [self = QPointer<AuthViewModel>(this), username](bool success,
+                                        const gocook::models::LoginResponse &data,
+                                        const std::string &error) {
+        if (!self) return;
         if (!success) {
-            emit loginFailed(QString::fromStdString(error.empty() ? "Unknown error" : error));
+            emit self->loginFailed(QString::fromStdString(error.empty() ? "Unknown error" : error));
             return;
         }
         if (data.token.empty() || data.user_id == 0) {
-            emit loginFailed("Login failed: missing token or user_id");
+            emit self->loginFailed("Login failed: missing token or user_id");
             return;
         }
 
         QString token = QString::fromStdString(data.token);
         QString apiUsername = QString::fromStdString(data.username);
-        m_db->saveUser(data.user_id, apiUsername, token);
-        m_api->setAuthToken(data.token);   // 直接传 std::string
-        setLoggedIn(true, data.user_id, apiUsername, token);
-        emit loginSuccess();
+        self->m_db->saveUser(data.user_id, apiUsername, token);
+        self->m_api->setAuthToken(data.token);
+        self->setLoggedIn(true, data.user_id, apiUsername);
+        emit self->loginSuccess();
     });
 }
 
@@ -58,11 +61,12 @@ void AuthViewModel::registerUser(const QString &username,
     req.password = password.toStdString();
     req.email    = email.toStdString();   // 补充 email 字段
 
-    m_api->registerUser(req, [this](bool success, const std::string &error) {
+    m_api->registerUser(req, [self = QPointer<AuthViewModel>(this)](bool success, const std::string &error) {
+        if (!self) return;
         if (success) {
-            emit registerSuccess();
+            emit self->registerSuccess();
         } else {
-            emit registerFailed(QString::fromStdString(
+            emit self->registerFailed(QString::fromStdString(
                 error.empty() ? "Unknown error" : error));
         }
     });
@@ -76,7 +80,7 @@ void AuthViewModel::logout()
     // 清除 API 的认证令牌
     m_api->setAuthToken("");
     // 更新内部登录状态
-    setLoggedIn(false, 0, "", "");
+    setLoggedIn(false, 0, "");
     // 发射登出完成信号
     emit logoutFinished();
 }
@@ -88,37 +92,41 @@ void AuthViewModel::checkAutoLogin()
     if (!user.isEmpty()) {
         QString token = user["token"].toString();
         m_api->setAuthToken(token.toStdString());
-        m_api->getCurrentUser([this](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
+        // 异步验证本地缓存的令牌是否仍然有效
+        m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
             Q_UNUSED(profile)
+            if (!self) return;
             if (success) {
-                QVariantMap u = m_db->getUser();
-                setLoggedIn(true, u["id"].toInt(), u["username"].toString(), u["token"].toString());
+                QVariantMap u = self->m_db->getUser();
+                self->setLoggedIn(true, u["id"].toInt(), u["username"].toString());
             } else {
-                m_db->clearUser();
-                m_api->setAuthToken("");
-                if (m_loggedIn) {
-                    setLoggedIn(false, 0, "", "");
+                self->m_db->clearUser();
+                self->m_api->setAuthToken("");
+                if (self->m_loggedIn) {
+                    self->setLoggedIn(false, 0, "");
                 }
             }
+            self->m_initialLoading = false;
+            emit self->initialLoadingChanged();  // 触发 QML 从加载页切换到登录页或主页
         });
+    } else {
+        // 本地无缓存令牌，直接结束加载状态
+        m_initialLoading = false;
+        emit initialLoadingChanged();
     }
 }
 
 // 内部状态更新方法
-void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username, const QString &token)
+void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
 {
-    Q_UNUSED(token)
-    // 登录状态变化时发射信号
     if (m_loggedIn != loggedIn) {
         m_loggedIn = loggedIn;
         emit loggedInChanged();
     }
-    // 用户 ID 变化时发射信号
     if (m_userId != userId) {
         m_userId = userId;
         emit userIdChanged();
     }
-    // 用户名变化时发射信号
     if (m_username != username) {
         m_username = username;
         emit usernameChanged();

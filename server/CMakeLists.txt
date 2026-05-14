@@ -15,7 +15,7 @@ pkg_check_modules(PQXX REQUIRED libpqxx)
 
 add_executable(server
     main.cpp
-    DBConnection.cpp DBConnection.h
+    ConnectionPool.cpp ConnectionPool.h
     Router.h Router.cpp
     auth_middleware.h auth_middleware.cpp
     ../contracts/include/gocook/IServices.h
@@ -39,6 +39,9 @@ add_executable(server
     ../third_party/bcrypt/crypt_blowfish.c ../third_party/bcrypt/crypt_blowfish.h
     RateLimiter.h RateLimiter.cpp
     common/ErrorHelper.h
+    common/PaginationHelper.h
+    common/AuthHelper.h
+    common/SerializationHelper.h
 )
 
 # 增加头文件查找路径

@@ -33,8 +33,6 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
     engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
-    engine.rootContext()->setContextProperty("HttpGoCookApi", httpApi);
-    engine.rootContext()->setContextProperty("localDB", LocalDatabase::instance());
 
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
     QObject::connect(

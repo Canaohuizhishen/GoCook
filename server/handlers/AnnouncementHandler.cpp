@@ -2,6 +2,8 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include "../common/ErrorHelper.h"
+#include "../common/PaginationHelper.h"
+#include "../common/SerializationHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -15,15 +17,6 @@ static json toJson(const AnnouncementItem& ann) {
     };
 }
 
-static json toJson(const Pagination& pag) {
-    return {
-        {"page", pag.page},
-        {"size", pag.size},
-        {"total", pag.total},
-        {"total_pages", pag.total_pages}
-    };
-}
-
 AnnouncementHandler::AnnouncementHandler(gocook::services::IAnnouncementService& service)
     : service_(service)
 {
@@ -32,9 +25,8 @@ AnnouncementHandler::AnnouncementHandler(gocook::services::IAnnouncementService&
 void AnnouncementHandler::getAnnouncements(const httplib::Request& req, httplib::Response& res)
 {
     try {
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 5;
-        auto paged = service_.getAnnouncements(page, size);
+        auto pp = parsePagination(req, 5);
+        auto paged = service_.getAnnouncements(pp.page, pp.size);
         json resp;
         resp["data"] = json::array();
         for (const auto& ann : paged.data)

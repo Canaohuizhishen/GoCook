@@ -56,17 +56,16 @@ Rectangle {
                 id: recipeImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
-                source: "qrc:/client/resources/images/placeholder.png" // 默认占位图
+                source: modelData.imageUrl || ""
                 asynchronous: true
 
-                // 图片加载失败时显示默认图标
                 Rectangle {
                     anchors.fill: parent
                     color: Theme.dividerColor
-                    visible: recipeImage.status === Image.Error
+                    visible: recipeImage.status === Image.Error || recipeImage.source === ""
                     Text {
                         anchors.centerIn: parent
-                        text: "🍲"
+                        text: "\U0001F372"
                         font.pixelSize: 32
                     }
                 }

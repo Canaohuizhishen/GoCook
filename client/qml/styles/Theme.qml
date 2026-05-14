@@ -51,11 +51,6 @@ QtObject {
     readonly property int radiusLarge: 12
     readonly property int radiusXLarge: 16
 
-    // ========== 阴影效果 ==========
-    readonly property string shadowSmall: "0 2px 4px rgba(0,0,0,0.1)"
-    readonly property string shadowMedium: "0 4px 8px rgba(0,0,0,0.12)"
-    readonly property string shadowLarge: "0 8px 16px rgba(0,0,0,0.16)"
-
     // ========== 动画时长 ==========
     readonly property int durationShort: 150
     readonly property int durationMedium: 300

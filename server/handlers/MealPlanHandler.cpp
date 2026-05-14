@@ -1,6 +1,9 @@
 #include "MealPlanHandler.h"
 #include <nlohmann/json.hpp>
 #include "../common/ErrorHelper.h"
+#include "../common/PaginationHelper.h"
+#include "../common/SerializationHelper.h"
+#include "../common/AuthHelper.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -31,10 +34,6 @@ static json toJson(const MealPlanSummary& plan) {
     obj["recipe"] = toJson(plan.recipe);
     obj["nutrition"] = toJson(plan.nutrition);
     return obj;
-}
-
-static json toJson(const Pagination& pag) {
-    return {{"page", pag.page}, {"size", pag.size}, {"total", pag.total}, {"total_pages", pag.total_pages}};
 }
 
 static json toJson(const MealPlansResponse& resp) {
@@ -115,11 +114,8 @@ MealPlanHandler::MealPlanHandler(gocook::services::IMealPlanService& service,
     : service_(service), auth_(auth) {}
 
 void MealPlanHandler::createMealPlan(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
         MealPlanRequest plan;
@@ -137,17 +133,13 @@ void MealPlanHandler::createMealPlan(const httplib::Request& req, httplib::Respo
 }
 
 void MealPlanHandler::getMealPlans(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         std::string start = req.get_param_value("start_date");
         std::string end = req.get_param_value("end_date");
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 20;
-        auto result = service_.getMealPlans(info.userId, start, end, page, size);
+        auto pp = parsePagination(req, 20);
+        auto result = service_.getMealPlans(info.userId, start, end, pp.page, pp.size);
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -158,17 +150,13 @@ void MealPlanHandler::getMealPlans(const httplib::Request& req, httplib::Respons
 }
 
 void MealPlanHandler::getMealPlanDetail(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         std::string start = req.get_param_value("start_date");
         std::string end = req.get_param_value("end_date");
-        int page = req.has_param("page") ? std::stoi(req.get_param_value("page")) : 1;
-        int size = req.has_param("size") ? std::stoi(req.get_param_value("size")) : 7;
-        auto result = service_.getMealPlanDetail(info.userId, start, end, page, size);
+        auto pp = parsePagination(req, 7);
+        auto result = service_.getMealPlanDetail(info.userId, start, end, pp.page, pp.size);
         res.status = 200;
         res.body = toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -179,11 +167,8 @@ void MealPlanHandler::getMealPlanDetail(const httplib::Request& req, httplib::Re
 }
 
 void MealPlanHandler::updateMealPlan(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int planId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
@@ -202,11 +187,8 @@ void MealPlanHandler::updateMealPlan(const httplib::Request& req, httplib::Respo
 }
 
 void MealPlanHandler::deleteMealPlan(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         int planId = std::stoi(req.matches[1]);
         service_.deleteMealPlan(info.userId, planId);
@@ -220,11 +202,8 @@ void MealPlanHandler::deleteMealPlan(const httplib::Request& req, httplib::Respo
 }
 
 void MealPlanHandler::getNutritionTrend(const httplib::Request& req, httplib::Response& res) {
-    auto info = auth_.authenticate(req.get_header_value("Authorization"));
-    if (!info.valid) {
-        setErrorResponse(res, 401, "无效的访问令牌");
-        return;
-    }
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
     try {
         std::string start = req.get_param_value("start_date");
         std::string end = req.get_param_value("end_date");

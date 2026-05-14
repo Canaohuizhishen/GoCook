@@ -1,10 +1,10 @@
 #pragma once
 #include <gocook/IServices.h>
-#include "../DBConnection.h"
+#include "../ConnectionPool.h"
 
 class RecipeServiceImpl : public gocook::services::IRecipeService {
 public:
-    explicit RecipeServiceImpl(DBConnection& db) : db_(db) {}
+    explicit RecipeServiceImpl(ConnectionPool& db) : db_(db) {}
 
     // 已实现的方法
     gocook::models::PagedRecipes getPublicRecipes(int page, int size,
@@ -79,5 +79,5 @@ public:
     }
 
 private:
-    DBConnection& db_;
+    ConnectionPool& db_;
 };

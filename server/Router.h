@@ -1,7 +1,7 @@
 #pragma once
 
 #include <httplib/httplib.h>
-#include "DBConnection.h"
+#include "ConnectionPool.h"
 #include "handlers/RecipeHandler.h"
 #include "handlers/UserHandler.h"
 #include "handlers/InventoryHandler.h"
@@ -13,7 +13,7 @@
 class Router {
 public:
     // 构造函数接收所有 Handler 的引用
-    Router(DBConnection& db,
+    Router(ConnectionPool& db,
            RecipeHandler& recipeHandler,
            UserHandler& userHandler,
            InventoryHandler& inventoryHandler,
@@ -25,7 +25,7 @@ public:
     void setupRoutes(httplib::Server& svr);
 
 private:
-    DBConnection& db_;
+    ConnectionPool& db_;
     RecipeHandler& recipeHandler_;
     UserHandler& userHandler_;
     InventoryHandler& inventoryHandler_;

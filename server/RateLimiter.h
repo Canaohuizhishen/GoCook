@@ -37,9 +37,11 @@ public:
      * @brief 构造函数
      * @param rules 频率限制规则列表，按添加顺序匹配，第一条匹配的规则生效
      * @param cleanupInterval 后台清理线程的运行间隔（默认 60 秒）
+     * @param maxRecords 记录表最大条目数，超过时后台清理线程会驱逐最久远的条目（默认 10000）
      */
     explicit RateLimiter(std::vector<Rule> rules,
-                         std::chrono::seconds cleanupInterval = std::chrono::seconds(60));
+                         std::chrono::seconds cleanupInterval = std::chrono::seconds(60),
+                         size_t maxRecords = 10000);
 
     ~RateLimiter();
 
@@ -71,6 +73,7 @@ private:
 
     std::vector<Rule> rules_;
     std::chrono::seconds cleanupInterval_;
+    size_t maxRecords_;          ///< 记录表容量上限，防止无界增长
 
     std::atomic<bool> running_{true};
     std::thread cleanupThread_;

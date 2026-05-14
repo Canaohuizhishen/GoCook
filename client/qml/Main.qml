@@ -12,36 +12,54 @@ ApplicationWindow {
 
     // 全局状态：从 C++ AuthViewModel 读取登录状态
     property bool isLoggedIn: authViewModel.loggedIn
+    property bool isLoading: authViewModel.initialLoading
 
-    // 主路由栈
     StackView {
         id: stackView
         anchors.fill: parent
-        // 根据登录状态决定初始页面
-        initialItem: isLoggedIn ? homePage : loginPage
+        initialItem: isLoading ? loadingComponent :
+                     isLoggedIn ? homePage : loginPage
     }
 
-    // 登录页面组件
     Component {
         id: loginPage
         LoginPage { }
     }
 
-    // 主页组件（包含底部导航）
     Component {
         id: homePage
         HomePage { }
     }
 
-    // 监听登录状态变化，自动切换页面
+    Component {
+        id: loadingComponent
+        // 应用启动时的过渡页，在自动登录检查完成前避免闪现登录页
+        Item {
+            anchors.fill: parent
+            Text {
+                anchors.centerIn: parent
+                text: qsTr("加载中...")
+                font.pixelSize: 20
+            }
+        }
+    }
+
     Connections {
         target: authViewModel
+        function onInitialLoadingChanged() {
+            if (!authViewModel.initialLoading) {
+                if (authViewModel.loggedIn) {
+                    stackView.replace(homePage)
+                } else {
+                    stackView.replace(loginPage)
+                }
+            }
+        }
         function onLoggedInChanged() {
+            if (authViewModel.initialLoading) return
             if (authViewModel.loggedIn) {
-                // 登录成功，切换到主页
                 stackView.replace(homePage)
             } else {
-                // 登出，返回登录页
                 stackView.replace(loginPage)
             }
         }

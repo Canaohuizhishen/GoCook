@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gocook/IServices.h>
-#include "../DBConnection.h"
+#include "../ConnectionPool.h"
 
 /**
  * @brief 系统公告服务实现类
@@ -13,9 +13,9 @@ class AnnouncementServiceImpl : public gocook::services::IAnnouncementService {
 public:
     /**
      * @brief 构造函数，注入数据库连接
-     * @param db 数据库连接对象引用
+     * @param db 数据库连接池引用
      */
-    explicit AnnouncementServiceImpl(DBConnection& db);
+    explicit AnnouncementServiceImpl(ConnectionPool& db);
 
     /**
      * @brief 获取系统公告列表（分页）
@@ -27,5 +27,5 @@ public:
     gocook::models::PagedAnnouncements getAnnouncements(int page, int size) override;
 
 private:
-    DBConnection& db_;  ///< 数据库连接引用
+    ConnectionPool& db_;  ///< 数据库连接池引用
 };

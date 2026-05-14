@@ -1,12 +1,18 @@
 #pragma once
 
 #include <gocook/IServices.h>
-#include "../DBConnection.h"
+#include "../ConnectionPool.h"
 #include <string>
 
 class UserServiceImpl : public gocook::services::IUserService {
 public:
-    explicit UserServiceImpl(DBConnection& db) : db_(db) {}
+    /**
+     * @brief 构造函数，注入连接池与 JWT 签名密钥
+     * @param db        数据库连接池引用
+     * @param jwtSecret JWT HS256 签名密钥，需与 AuthMiddleware 使用相同密钥
+     */
+    explicit UserServiceImpl(ConnectionPool& db, const std::string& jwtSecret)
+        : db_(db), jwt_secret_(jwtSecret) {}
 
     // 已实现的核心方法
     void registerUser(const gocook::models::RegisterRequest& request) override;
@@ -89,7 +95,7 @@ public:
     }
 
 private:
-    DBConnection& db_;
+    ConnectionPool& db_;
 
     // 生成 JWT Token
     std::string generateToken(int userId, const std::string& username, const std::string& role);
@@ -100,6 +106,6 @@ private:
     // 使用 bcrypt 验证明文密码与哈希值是否匹配
     bool validatePassword(const std::string& plain, const std::string& hash);
 
-    // JWT 签名密钥，生产环境应从安全配置中读取
-    const std::string jwt_secret = "GoCook-Project-Secret-Key-Change-Me-In-Production";
+    // JWT 签名密钥
+    std::string jwt_secret_;
 };

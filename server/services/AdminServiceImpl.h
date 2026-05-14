@@ -1,11 +1,11 @@
 #pragma once
 
 #include <gocook/IServices.h>   // IAdminService 接口定义
-#include "../DBConnection.h"
+#include "../ConnectionPool.h"
 
 class AdminServiceImpl : public gocook::services::IAdminService {
 public:
-    explicit AdminServiceImpl(DBConnection& db) : db_(db) {}
+    explicit AdminServiceImpl(ConnectionPool& db) : db_(db) {}
 
     // ---------- 用户管理 ----------
     gocook::models::PagedUsers getUsers(int page, int size,
@@ -46,5 +46,5 @@ public:
     }
 
 private:
-    DBConnection& db_;
+    ConnectionPool& db_;
 };
