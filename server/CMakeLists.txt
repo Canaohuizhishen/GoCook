@@ -42,6 +42,10 @@ add_executable(server
     common/PaginationHelper.h
     common/AuthHelper.h
     common/SerializationHelper.h
+    common/JsonSerializer.h common/JsonSerializer.cpp
+    common/Validation.h
+    common/Config.h
+    common/Logger.h
 )
 
 # 增加头文件查找路径

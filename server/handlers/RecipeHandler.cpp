@@ -5,177 +5,14 @@
 #include <sstream>
 #include <vector>
 #include "../common/ErrorHelper.h"
-#include "../common/PaginationHelper.h"     // parsePagination 安全分页参数解析
-#include "../common/SerializationHelper.h"  // 统一 toJson(Pagination)
-#include "../common/AuthHelper.h"           // requireAuth 统一认证入口
+#include "../common/PaginationHelper.h"
+#include "../common/JsonSerializer.h"
+#include "../common/AuthHelper.h"
+#include "../common/Logger.h"
 
 using json = nlohmann::json;
 using namespace gocook::services;
 using namespace gocook::models;
-
-// ========== 辅助序列化函数 ==========
-
-static json toJson(const RecipeSummary& recipe) {
-    json item;
-    item["id"] = recipe.id;
-    item["name"] = recipe.name;
-    item["description"] = recipe.description;
-    item["image_url"] = recipe.image_url;
-    item["cooking_method"] = recipe.cooking_method;
-    item["flavor"] = recipe.flavor;
-    item["ingredient_type"] = recipe.ingredient_type;
-    item["prep_time_minutes"] = recipe.prep_time_minutes;
-    item["cook_time_minutes"] = recipe.cook_time_minutes;
-    item["calories"] = recipe.calories;
-    item["view_count"] = recipe.view_count;
-    item["avg_rating"] = recipe.avg_rating;
-    item["tags"] = recipe.tags;
-    item["author_id"] = recipe.author_id;
-    item["author_name"] = recipe.author_name;
-    return item;
-}
-
-static json toJson(const PagedRecipes& paged) {
-    json resp;
-    resp["data"] = json::array();
-    for (const auto& r : paged.data)
-        resp["data"].push_back(toJson(r));
-    resp["pagination"] = toJson(paged.pagination);
-    return resp;
-}
-
-static json toJson(const RecommendedRecipe& rec) {
-    json item = toJson(static_cast<const RecipeSummary&>(rec));
-    item["match_score"] = rec.match_score;
-    json matchStatus;
-    json available = json::array();
-    for (const auto& ing : rec.match_status.available_ingredients) {
-        json ingJson;
-        ingJson["name"] = ing.name;
-        ingJson["quantity"] = ing.quantity;
-        ingJson["unit"] = ing.unit;
-        available.push_back(ingJson);
-    }
-    matchStatus["available_ingredients"] = available;
-    json missing = json::array();
-    for (const auto& ing : rec.match_status.missing_ingredients) {
-        json ingJson;
-        ingJson["name"] = ing.name;
-        ingJson["quantity"] = ing.quantity;
-        ingJson["unit"] = ing.unit;
-        missing.push_back(ingJson);
-    }
-    matchStatus["missing_ingredients"] = missing;
-    item["match_status"] = matchStatus;
-    return item;
-}
-
-static json toJson(const PagedRecommendedRecipes& paged) {
-    json resp;
-    resp["health_filter_applied"] = paged.health_filter_applied;
-    resp["data"] = json::array();
-    for (const auto& r : paged.data)
-        resp["data"].push_back(toJson(r));
-    resp["pagination"] = toJson(paged.pagination);
-    return resp;
-}
-
-static json toJson(const RecipeDetail& detail) {
-    json item;
-    item["id"] = detail.id;
-    item["name"] = detail.name;
-    item["description"] = detail.description;
-    item["image_url"] = detail.image_url;
-    item["cooking_method"] = detail.cooking_method;
-    item["flavor"] = detail.flavor;
-    item["prep_time_minutes"] = detail.prep_time_minutes;
-    item["cook_time_minutes"] = detail.cook_time_minutes;
-    item["view_count"] = detail.view_count;
-    item["avg_rating"] = detail.avg_rating;
-    json ingredients = json::array();
-    for (const auto& ing : detail.ingredients) {
-        json ingJson;
-        ingJson["name"] = ing.name;
-        ingJson["quantity"] = ing.quantity;
-        ingJson["unit"] = ing.unit;
-        ingredients.push_back(ingJson);
-    }
-    item["ingredients"] = ingredients;
-    json steps = json::array();
-    for (const auto& step : detail.steps) {
-        json stepJson;
-        stepJson["order"] = step.order;
-        stepJson["description"] = step.description;
-        if (step.duration.has_value())
-            stepJson["duration"] = step.duration.value();
-        steps.push_back(stepJson);
-    }
-    item["steps"] = steps;
-    json nutrition;
-    nutrition["calories"] = detail.nutrition.calories;
-    nutrition["protein"] = detail.nutrition.protein;
-    nutrition["fat"] = detail.nutrition.fat;
-    nutrition["carbs"] = detail.nutrition.carbs;
-    item["nutrition"] = nutrition;
-    item["tags"] = detail.tags;
-    item["author_id"] = detail.author_id;
-    item["author_name"] = detail.author_name;
-    item["created_at"] = detail.created_at;
-    return item;
-}
-
-static json toJson(const RecipeVideo& video) {
-    return {
-        {"id", video.id},
-        {"title", video.title},
-        {"platform", video.platform},
-        {"url", video.url},
-        {"thumbnail_url", video.thumbnail_url},
-        {"duration_seconds", video.duration_seconds}
-    };
-}
-
-static json toJson(const RecipeRating& rating) {
-    return {
-        {"id", rating.id},
-        {"user_id", rating.user_id},
-        {"username", rating.username},
-        {"rating", rating.rating},
-        {"comment", rating.comment},
-        {"created_at", rating.created_at}
-    };
-}
-
-static json toJson(const PagedRatings& paged) {
-    json resp;
-    resp["data"] = json::array();
-    for (const auto& r : paged.data)
-        resp["data"].push_back(toJson(r));
-    resp["pagination"] = toJson(paged.pagination);
-    return resp;
-}
-
-static json toJson(const MyRecipeStatus& status) {
-    json item;
-    item["id"] = status.id;
-    item["name"] = status.name;
-    item["status"] = status.status;
-    if (status.reject_reason.has_value())
-        item["reject_reason"] = status.reject_reason.value();
-    item["submitted_at"] = status.submitted_at;
-    return item;
-}
-
-static json toJson(const PagedMyRecipes& paged) {
-    json resp;
-    resp["data"] = json::array();
-    for (const auto& r : paged.data)
-        resp["data"].push_back(toJson(r));
-    resp["pagination"] = toJson(paged.pagination);
-    return resp;
-}
-
-// ========== RecipeHandler 实现 ==========
 
 RecipeHandler::RecipeHandler(IRecipeService& service, AuthMiddleware& auth)
     : service_(service), auth_(auth) {}
@@ -197,9 +34,7 @@ nlohmann::json RecipeHandler::parseFilterParams(const httplib::Request& req) {
         std::stringstream ss(tagsParam);
         std::string token;
         while (std::getline(ss, token, ',')) {
-            if (!token.empty()) {
-                tagList.push_back(token);
-            }
+            if (!token.empty()) tagList.push_back(token);
         }
         filters["tags"] = tagList;
     }
@@ -212,10 +47,9 @@ void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Respo
     try {
         auto pp = parsePagination(req, 20);
         auto result = service_.getPublicRecipes(pp.page, pp.size, parseFilterParams(req));
-        json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = response.dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -228,10 +62,9 @@ void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response
         std::string keyword = req.get_param_value("keyword");
         auto pp = parsePagination(req, 20);
         auto result = service_.searchRecipes(keyword, pp.page, pp.size, parseFilterParams(req));
-        json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = response.dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -245,10 +78,9 @@ void RecipeHandler::getRecommendedRecipes(const httplib::Request& req, httplib::
     try {
         auto pp = parsePagination(req, 20);
         auto result = service_.getRecommendedRecipes(info.userId, pp.page, pp.size);
-        json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = response.dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -260,10 +92,9 @@ void RecipeHandler::getRecipeDetail(const httplib::Request& req, httplib::Respon
     try {
         int recipeId = std::stoi(req.matches[1]);
         auto detail = service_.getRecipeDetail(recipeId);
-        json response = toJson(detail);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = response.dump();
+        res.body = JsonSerializer::toJson(detail).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -276,7 +107,7 @@ void RecipeHandler::getRecipeVideos(const httplib::Request& req, httplib::Respon
         int recipeId = std::stoi(req.matches[1]);
         auto videos = service_.getRecipeVideos(recipeId);
         json arr = json::array();
-        for (const auto& v : videos) arr.push_back(toJson(v));
+        for (const auto& v : videos) arr.push_back(JsonSerializer::toJson(v));
         res.set_header("Content-Type", "application/json");
         res.status = 200;
         res.body = arr.dump();
@@ -292,10 +123,9 @@ void RecipeHandler::getRecipeRatings(const httplib::Request& req, httplib::Respo
         int recipeId = std::stoi(req.matches[1]);
         auto pp = parsePagination(req, 10);
         auto ratings = service_.getRecipeRatings(recipeId, pp.page, pp.size);
-        json response = toJson(ratings);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = response.dump();
+        res.body = JsonSerializer::toJson(ratings).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -359,12 +189,11 @@ void RecipeHandler::getMySubmittedRecipes(const httplib::Request& req, httplib::
     if (!info.valid) return;
     try {
         auto pp = parsePagination(req, 20);
-        std::string status = req.get_param_value("status"); // may be empty
+        std::string status = req.get_param_value("status");
         auto result = service_.getMySubmittedRecipes(info.userId, pp.page, pp.size, status);
-        json response = toJson(result);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = response.dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -382,7 +211,6 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
         if (reqJson.contains("name")) updates.name = reqJson["name"];
         if (reqJson.contains("description")) updates.description = reqJson["description"];
         if (reqJson.contains("image_url")) updates.image_url = reqJson["image_url"];
-        // ingredients, steps, nutrition, tags etc. can be partially set
         if (reqJson.contains("ingredients") && reqJson["ingredients"].is_array()) {
             for (const auto& ingJson : reqJson["ingredients"]) {
                 Ingredient ing;
@@ -462,32 +290,9 @@ void RecipeHandler::getRecipeNutrition(const httplib::Request& req, httplib::Res
     try {
         int recipeId = std::stoi(req.matches[1]);
         auto report = service_.getRecipeNutrition(recipeId);
-        // 序列化 NutritionReport 为 JSON
-        json respJson;
-        respJson["recipe_id"] = report.recipe_id;
-        respJson["recipe_name"] = report.recipe_name;
-        respJson["per_serving"]["calories"] = report.per_serving.calories;
-        respJson["per_serving"]["protein_g"] = report.per_serving.protein_g;
-        respJson["per_serving"]["fat_g"] = report.per_serving.fat_g;
-        respJson["per_serving"]["carbs_g"] = report.per_serving.carbs_g;
-        respJson["per_serving"]["fiber_g"] = report.per_serving.fiber_g;
-        respJson["per_serving"]["sodium_mg"] = report.per_serving.sodium_mg;
-        respJson["per_serving"]["vitamin_c_mg"] = report.per_serving.vitamin_c_mg;
-        json breakdown = json::array();
-        for (const auto& item : report.ingredients_breakdown) {
-            json itemJson;
-            itemJson["name"] = item.name;
-            itemJson["calories"] = item.calories;
-            itemJson["protein_g"] = item.protein_g;
-            itemJson["fat_g"] = item.fat_g;
-            itemJson["carbs_g"] = item.carbs_g;
-            breakdown.push_back(itemJson);
-        }
-        respJson["ingredients_breakdown"] = breakdown;
-        respJson["health_notes"] = report.health_notes;
         res.set_header("Content-Type", "application/json");
         res.status = 200;
-        res.body = respJson.dump();
+        res.body = JsonSerializer::toJson(report).dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

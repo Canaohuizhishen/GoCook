@@ -1,6 +1,6 @@
 #include "RecipeServiceImpl.h"
 #include <pqxx/pqxx>
-#include <iostream>
+#include "../common/Logger.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -119,6 +119,7 @@ PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
             SELECT r.id, r.name, r.description, r.prep_time_minutes,
                    r.cook_time_minutes, r.image_url,
                    array_to_json(r.tags) AS tags_json,
+                   COALESCE((r.nutrition_info->>'calories')::numeric, 0) AS calories,
                    r.author_id,
                    u.username AS author_name, r.cooking_method, r.flavor,
                    r.ingredient_type, r.view_count, r.avg_rating
@@ -139,6 +140,7 @@ PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
                 recipe.image_url = row["image_url"].c_str();
 
             recipe.tags = parseTags(row["tags_json"]);
+            recipe.calories = row["calories"].as<int>(0);
 
             recipe.author_id = row["author_id"].as<int>(0);
             if (!row["author_name"].is_null())
@@ -167,7 +169,7 @@ PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
     } catch (const ServiceException&) {
         throw;  // 业务异常原样上抛，不重包装
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error in getPublicRecipes: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;

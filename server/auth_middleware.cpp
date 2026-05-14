@@ -1,5 +1,5 @@
 #include "auth_middleware.h"
-#include <iostream>
+#include "common/Logger.h"
 #include <chrono>   // 用于检查 Token 过期时间
 
 using namespace gocook::models;
@@ -44,7 +44,7 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
 
     } catch (const std::exception& e) {
         // 验证失败（签名错误、过期、格式不对等）
-        std::cerr << "JWT authentication failed: " << e.what() << std::endl;
+        LOG_ERROR("JWT authentication failed: %s", e.what());
         info.valid = false;
     }
 

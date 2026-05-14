@@ -12,7 +12,6 @@
 
 class Router {
 public:
-    // 构造函数接收所有 Handler 的引用
     Router(ConnectionPool& db,
            RecipeHandler& recipeHandler,
            UserHandler& userHandler,
@@ -21,7 +20,6 @@ public:
            AnnouncementHandler& announcementHandler,
            AdminHandler& adminHandler);
 
-    // 注册所有路由到 server 对象
     void setupRoutes(httplib::Server& svr);
 
 private:
@@ -35,11 +33,17 @@ private:
 
     RateLimiter rateLimiter_;
 
-    /**
-     * @brief 创建限流规则集合的工厂函数
-     *
-     * 所有限流规则集中定义于此，方便统一管理与调整。
-     * @return 规则列表
-     */
     static std::vector<RateLimiter::Rule> createRateLimiterRules();
+
+    void registerRateLimiter(httplib::Server& svr);
+    void registerRootRoute(httplib::Server& svr);
+    void registerAuthRoutes(httplib::Server& svr);
+    void registerRecipeRoutes(httplib::Server& svr);
+    void registerUserRoutes(httplib::Server& svr);
+    void registerInventoryRoutes(httplib::Server& svr);
+    void registerShoppingListRoutes(httplib::Server& svr);
+    void registerMealPlanRoutes(httplib::Server& svr);
+    void registerAnnouncementRoutes(httplib::Server& svr);
+    void registerAdminRoutes(httplib::Server& svr);
+    void registerPublicTestRoutes(httplib::Server& svr);
 };

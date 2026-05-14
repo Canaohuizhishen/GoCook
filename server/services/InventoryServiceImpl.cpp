@@ -1,6 +1,6 @@
 #include "InventoryServiceImpl.h"
 #include <pqxx/pqxx>
-#include <iostream>
+#include "../common/Logger.h"
 #include <stdexcept>
 #include <string>
 
@@ -51,7 +51,7 @@ PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;
@@ -102,7 +102,7 @@ int InventoryServiceImpl::upsertInventory(int userId, const UpsertInventoryReque
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -122,7 +122,7 @@ void InventoryServiceImpl::deleteInventoryItem(int userId, int itemId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        std::cerr << "Database error: " << e.what() << std::endl;
+        LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }

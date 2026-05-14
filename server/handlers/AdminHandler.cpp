@@ -2,67 +2,12 @@
 #include <nlohmann/json.hpp>
 #include "../common/ErrorHelper.h"
 #include "../common/PaginationHelper.h"
-#include "../common/SerializationHelper.h"
+#include "../common/JsonSerializer.h"
 #include "../common/AuthHelper.h"
+#include "../common/Logger.h"
 
 using json = nlohmann::json;
 using namespace gocook::models;
-
-static json toJson(const AdminUser& user) {
-    return {
-        {"id", user.id},
-        {"username", user.username},
-        {"email", user.email},
-        {"role", user.role},
-        {"status", user.status},
-        {"created_at", user.created_at}
-    };
-}
-
-static json toJson(const PagedUsers& paged) {
-    json resp;
-    resp["data"] = json::array();
-    for (const auto& u : paged.data)
-        resp["data"].push_back(toJson(u));
-    resp["pagination"] = toJson(paged.pagination);
-    return resp;
-}
-
-static json toJson(const PendingRecipeItem& item) {
-    return {
-        {"id", item.id},
-        {"name", item.name},
-        {"author_id", item.author_id},
-        {"author_name", item.author_name},
-        {"submitted_at", item.submitted_at},
-        {"status", item.status}
-    };
-}
-
-static json toJson(const PagedPendingRecipes& paged) {
-    json resp;
-    resp["data"] = json::array();
-    for (const auto& r : paged.data)
-        resp["data"].push_back(toJson(r));
-    resp["pagination"] = toJson(paged.pagination);
-    return resp;
-}
-
-static json toJson(const BatchReviewResponse& resp) {
-    return {
-        {"message", resp.message},
-        {"success_count", resp.success_count},
-        {"failed_ids", resp.failed_ids}
-    };
-}
-
-static json toJson(const NotificationResponse& resp) {
-    return {
-        {"notification_id", resp.notification_id},
-        {"status", resp.status},
-        {"estimated_recipients", resp.estimated_recipients}
-    };
-}
 
 AdminHandler::AdminHandler(gocook::services::IAdminService& service,
                            AuthMiddleware& auth)
@@ -87,7 +32,7 @@ void AdminHandler::getUsers(const httplib::Request& req, httplib::Response& res)
         if (req.has_param("username")) filters["username"] = req.get_param_value("username");
         auto result = service_.getUsers(pp.page, pp.size, filters);
         res.status = 200;
-        res.body = toJson(result).dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -169,7 +114,7 @@ void AdminHandler::getPendingRecipes(const httplib::Request& req, httplib::Respo
         auto pp = parsePagination(req, 20);
         auto result = service_.getPendingRecipes(pp.page, pp.size);
         res.status = 200;
-        res.body = toJson(result).dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -218,7 +163,7 @@ void AdminHandler::batchReviewRecipes(const httplib::Request& req, httplib::Resp
         if (reqJson.contains("reason")) request.reason = reqJson["reason"];
         auto result = service_.batchReviewRecipes(request);
         res.status = 200;
-        res.body = toJson(result).dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -256,7 +201,7 @@ void AdminHandler::sendNotification(const httplib::Request& req, httplib::Respon
         if (reqJson.contains("scheduled_at")) request.scheduled_at = reqJson["scheduled_at"];
         auto result = service_.sendNotification(request);
         res.status = 201;
-        res.body = toJson(result).dump();
+        res.body = JsonSerializer::toJson(result).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -277,7 +222,6 @@ void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response&
         resp["new_recipes_week"] = stats.new_recipes_week;
         resp["new_comments_week"] = stats.new_comments_week;
 
-        // growth 子对象
         json growthJson;
         growthJson["new_users_week"] = stats.growth.new_users_week;
         growthJson["new_users_week_growth"] = stats.growth.new_users_week_growth;
@@ -285,7 +229,6 @@ void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response&
         growthJson["active_users_7d_growth"] = stats.growth.active_users_7d_growth;
         resp["growth"] = growthJson;
 
-        // top_recipes 数组
         json topRecipesJson = json::array();
         for (const auto& recipe : stats.top_recipes) {
             json recipeJson;
@@ -296,7 +239,6 @@ void AdminHandler::getStatistics(const httplib::Request& req, httplib::Response&
         }
         resp["top_recipes"] = topRecipesJson;
 
-        // inventory_distribution 对象
         json inventoryDistJson;
         json categoriesJson = json::array();
         for (const auto& category : stats.inventory_distribution.categories) {
@@ -324,7 +266,6 @@ void AdminHandler::getAdminLogs(const httplib::Request& req, httplib::Response& 
         std::string type = req.get_param_value("type");
         int userId = parseIntParam(req, "user_id", 0);
         auto result = service_.getAdminLogs(pp.page, pp.size, type, userId);
-        // 简单序列化列表
         json resp;
         resp["data"] = json::array();
         for (const auto& log : result.data) {

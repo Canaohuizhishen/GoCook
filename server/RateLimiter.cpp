@@ -1,6 +1,6 @@
 #include "RateLimiter.h"
 #include <algorithm>
-#include <iostream>
+#include "common/Logger.h"
 
 using namespace std::chrono;
 
@@ -116,9 +116,9 @@ void RateLimiter::cleanupLoop()
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "RateLimiter cleanup error: " << e.what() << std::endl;
+            LOG_ERROR("RateLimiter cleanup error: %s", e.what());
         } catch (...) {
-            std::cerr << "RateLimiter cleanup unknown error" << std::endl;
+            LOG_ERROR("RateLimiter cleanup unknown error");
         }
     }
 }

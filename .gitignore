@@ -90,3 +90,5 @@ CMakeLists.txt.user*
 *vpp.lck
 
 build/
+
+.env

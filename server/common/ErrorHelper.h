@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <httplib/httplib.h>
+#include "Logger.h"
 
 /**
  * @brief 设置 HTTP 错误响应
@@ -27,19 +28,21 @@ inline void setErrorResponse(httplib::Response &res, int status, const std::stri
 inline void handleStandardException(const std::exception &e, httplib::Response &res) {
     auto* se = dynamic_cast<const gocook::services::ServiceException*>(&e);
     if (!se) {
+        LOG_ERROR("Unhandled exception: %s", e.what());
         setErrorResponse(res, 500, "服务器内部错误，请稍后重试");
         return;
     }
     std::string msg;
     int code = se->statusCode();
     switch (code) {
-        case 404: msg = "请求的资源不存在"; break;
-        case 409: msg = se->what(); break;   // 原文：用户可见的具体原因
-        case 400: msg = se->what(); break;   // 原文：具体参数错误
-        case 403: msg = se->what(); break;   // 原文："仅可编辑未审核的菜谱"
-        case 401: msg = "身份验证失败"; break;
-        case 501: msg = "功能暂未实现"; break;
-        default:  msg = "服务器内部错误，请稍后重试"; code = 500; break;
+        case 404: msg = "请求的资源不存在";    LOG_WARN("404: %s", se->what()); break;
+        case 409: msg = se->what();            LOG_WARN("409: %s", se->what()); break;
+        case 400: msg = se->what();            LOG_WARN("400: %s", se->what()); break;
+        case 403: msg = se->what();            LOG_WARN("403: %s", se->what()); break;
+        case 401: msg = "身份验证失败";         LOG_WARN("401: %s", se->what()); break;
+        case 501: msg = "功能暂未实现";         LOG_WARN("501: %s", se->what()); break;
+        default:  msg = "服务器内部错误，请稍后重试"; code = 500;
+                  LOG_ERROR("Unknown ServiceException: %s (code %d)", se->what(), code); break;
     }
     setErrorResponse(res, code, msg);
 }

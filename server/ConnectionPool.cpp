@@ -1,5 +1,6 @@
 #include "ConnectionPool.h"
-#include <iostream>
+#include "common/Logger.h"
+#include <gocook/IServices.h>
 #include <stdexcept>
 
 ConnectionPool::ConnectionPool(const std::string& connStr, int maxSize)
@@ -10,29 +11,43 @@ ConnectionPool::~ConnectionPool() {
     pool_.clear();
 }
 
+bool ConnectionPool::isConnectionAlive(pqxx::connection& conn) {
+    if (!conn.is_open()) return false;
+    try {
+        pqxx::work txn(conn);
+        txn.exec("SELECT 1");
+        txn.commit();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 std::unique_ptr<pqxx::connection> ConnectionPool::createConnection() {
     auto conn = std::make_unique<pqxx::connection>(connStr_);
     if (!conn->is_open()) {
         throw std::runtime_error("Failed to open database connection");
     }
+    LOG_INFO("Database connection created (active=%d)", activeCount_ + 1);
     return conn;
 }
 
-ConnectionPool::ConnectionGuard ConnectionPool::getConnection() {
+ConnectionPool::ConnectionGuard ConnectionPool::getConnection(
+    std::chrono::milliseconds timeout) {
     std::unique_lock lock(mutex_);
 
-    // 无空闲连接且已达上限，阻塞等待
     while (pool_.empty() && activeCount_ >= maxSize_) {
-        cv_.wait(lock);
+        if (cv_.wait_for(lock, timeout) == std::cv_status::timeout) {
+            throw gocook::services::ServiceException("系统繁忙，请稍后重试", 503);
+        }
     }
 
     if (!pool_.empty()) {
-        // 复用池中已有连接，取出前做活性检查
         auto raw = std::move(pool_.front());
         pool_.pop_front();
         pqxx::connection* ptr = raw.get();
-        if (!ptr->is_open()) {
-            // 连接已断开，丢弃并尝试重建
+        if (!isConnectionAlive(*ptr)) {
+            LOG_WARN("Stale connection detected, discarding");
             ptr = nullptr;
             raw.reset();
             --activeCount_;
@@ -41,13 +56,12 @@ ConnectionPool::ConnectionGuard ConnectionPool::getConnection() {
                 ptr = raw.get();
                 ++activeCount_;
             } else {
-                throw std::runtime_error("Database connection pool exhausted and all connections dead");
+                throw gocook::services::ServiceException("系统繁忙，请稍后重试", 503);
             }
         }
         return ConnectionGuard(ptr, this, std::move(raw));
     }
 
-    // 池空且未达上限，新建连接
     auto raw = createConnection();
     pqxx::connection* ptr = raw.get();
     ++activeCount_;
@@ -56,13 +70,12 @@ ConnectionPool::ConnectionGuard ConnectionPool::getConnection() {
 
 void ConnectionPool::returnConnection(std::unique_ptr<pqxx::connection> conn) {
     std::unique_lock lock(mutex_);
-    if (conn->is_open()) {
-        pool_.push_back(std::move(conn));
-    } else {
-        // 连接已断开则不再回收
+    if (!isConnectionAlive(*conn)) {
+        LOG_WARN("Connection dead on return, discarding");
         --activeCount_;
+    } else {
+        pool_.push_back(std::move(conn));
     }
-    // 通知可能正在等待的线程
     if (activeCount_ < maxSize_) {
         cv_.notify_one();
     }
