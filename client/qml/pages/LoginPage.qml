@@ -68,10 +68,29 @@ Page {
 
         Label {
             id: errorLabel
-            color: "red"
+            color: Theme.errorColor
             visible: text !== ""
             Layout.fillWidth: true
             wrapMode: Text.Wrap
+        }
+
+        Connections {
+            target: authViewModel
+            function onLoginFailed(error) {
+                errorLabel.color = Theme.errorColor
+                errorLabel.text = error
+            }
+            function onRegisterFailed(error) {
+                errorLabel.color = Theme.errorColor
+                errorLabel.text = error
+            }
+            function onRegisterSuccess() {
+                errorLabel.color = Theme.accentColor
+                errorLabel.text = "注册成功，请登录"
+            }
+            function onLoginSuccess() {
+                errorLabel.text = ""
+            }
         }
 
         // 连接认证管理器的信号

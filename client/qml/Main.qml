@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt.labs.settings
 import "./pages"
 
 ApplicationWindow {
@@ -12,6 +13,20 @@ ApplicationWindow {
 
     property bool isLoggedIn: authViewModel.loggedIn
     property bool isLoading: authViewModel.initialLoading
+
+    Settings {
+        id: settings
+        property int themeMode: 0
+    }
+
+    Component.onCompleted: Theme.themeMode = settings.themeMode
+
+    Connections {
+        target: Theme
+        function onThemeModeChanged() {
+            settings.themeMode = Theme.themeMode
+        }
+    }
 
     StackView {
         id: stackView

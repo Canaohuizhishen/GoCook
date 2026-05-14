@@ -121,7 +121,7 @@ Page {
                 }
                 Row {
                     spacing: 4
-                    Text { text: "\U0001F525"; font.pixelSize: 14 }
+                    Text { text: "🔥"; font.pixelSize: 14 }
                     Text {
                         text: qsTr("烹饪 %1分钟").arg(recipeVM.recipeDetail.cookTime || 0)
                         font.family: Theme.fontFamily
@@ -158,7 +158,7 @@ Page {
             }
 
             Text {
-                text: qsTr("\U0001F96C 食材")
+                text: qsTr("🥬 食材")
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
@@ -210,7 +210,7 @@ Page {
             }
 
             Text {
-                text: qsTr("\U0001F373 步骤")
+                text: qsTr("🍳 步骤")
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
@@ -272,7 +272,7 @@ Page {
                 visible: recipeVM.recipeDetail.nutrition && recipeVM.recipeDetail.nutrition.calories > 0
 
                 Text {
-                    text: qsTr("\U0001F4CA 营养信息")
+                    text: qsTr("📊 营养信息")
                     font.family: Theme.fontFamily
                     font.pixelSize: Theme.fontSizeH3
                     font.weight: Theme.fontWeightMedium

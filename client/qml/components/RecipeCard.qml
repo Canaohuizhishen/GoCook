@@ -65,7 +65,7 @@ Rectangle {
                     visible: recipeImage.status === Image.Error || recipeImage.source === ""
                     Text {
                         anchors.centerIn: parent
-                        text: "\U0001F372"
+                        text: "🍲"
                         font.pixelSize: 32
                     }
                 }

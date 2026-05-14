@@ -25,6 +25,8 @@ public:
     Q_INVOKABLE void addItem(const QString& name, double quantity, const QString& unit,
                              const QString& expiryDate = "");
     Q_INVOKABLE void deleteItem(int itemId);
+    Q_INVOKABLE void updateItem(int itemId, const QString& name, double quantity,
+                                const QString& unit, const QString& expiryDate = "");
     Q_INVOKABLE void refresh();
 
 signals:

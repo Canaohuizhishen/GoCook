@@ -76,44 +76,40 @@ Page {
 
                     Row {
                         spacing: Theme.spacingXSmall
-                        visible: !inventoryVM.deleting || inventoryVM.deletingId !== modelData.id
+                        visible: inventoryVM.deletingId === -1 || inventoryVM.deletingId !== modelData.id
 
                         ToolButton {
+                            id: deleteBtn
                             text: "删除"
-                            font {
-                                family: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif"
-                                pixelSize: 18
+                            font.pixelSize: 18
+                            contentItem: Text {
+                                text: deleteBtn.text
+                                font: deleteBtn.font
+                                color: Theme.textPrimary
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
                             onClicked: inventoryVM.deleteItem(modelData.id)
                         }
 
                         ToolButton {
+                            id: moreBtn
                             text: "更多"
-                            font {
-                                family: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif"
-                                pixelSize: 18
+                            font.pixelSize: 18
+                            contentItem: Text {
+                                text: moreBtn.text
+                                font: moreBtn.font
+                                color: Theme.textPrimary
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
                             onClicked: {
-                                // 保存当前编辑的条目ID和数据到弹出框
                                 currentEditItemId = modelData.id
                                 editNameField.text = modelData.ingredientName || ""
                                 editQuantityField.text = modelData.quantity !== undefined ? modelData.quantity.toString() : "1"
                                 editUnitField.text = modelData.unit || ""
                                 editExpiryField.text = modelData.expiry || ""
-
-                                // 获取按钮的全局坐标，用于定位弹出菜单
-                                var btnGlobalPos = mapToItem(null, 0, 0)
-                                editPopup.x = btnGlobalPos.x + width + Theme.spacingSmall
-                                editPopup.y = btnGlobalPos.y - editPopup.height / 2
-                                // 边界限制，防止超出屏幕
-                                if (editPopup.x + editPopup.width > parent.width)
-                                    editPopup.x = btnGlobalPos.x - editPopup.width - Theme.spacingSmall
-                                if (editPopup.y < 0)
-                                    editPopup.y = 0
-                                if (editPopup.y + editPopup.height > parent.height)
-                                    editPopup.y = parent.height - editPopup.height
-
-                                editPopup.open()
+                                moreMenu.popup()
                             }
                         }
                     }
@@ -163,27 +159,69 @@ Page {
         }
     }
 
-    // 编辑食材的下拉菜单（Popup）
-    Popup {
-        id: editPopup
-        modal: false
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: 280
-        padding: Theme.spacingMedium
+    // ===== 更多菜单（下拉到按钮旁边） =====
+    Menu {
+        id: moreMenu
+        modal: true
+        dim: false
+
         background: Rectangle {
             color: Theme.cardBackground
             radius: Theme.radiusMedium
-            border.color: Theme.divider
+            border.color: Theme.dividerColor
             border.width: 1
-            layer.enabled: true
-            layer.effect: null
-            Rectangle {
-                anchors.fill: parent
-                radius: parent.radius
-                color: Theme.cardBackground
-                border.color: Theme.divider
-                border.width: 1
+        }
+
+        MenuItem {
+            id: editMenuItem
+            text: qsTr("编辑信息")
+            font.pixelSize: Theme.fontSizeBody
+            contentItem: Label {
+                text: editMenuItem.text
+                font: editMenuItem.font
+                color: Theme.textPrimary
+                verticalAlignment: Text.AlignVCenter
             }
+            onClicked: editDialog.open()
+        }
+
+        MenuSeparator {
+            contentItem: Rectangle {
+                implicitWidth: 200
+                implicitHeight: 1
+                color: Theme.dividerColor
+            }
+        }
+
+        MenuItem {
+            id: delMenuItem
+            text: qsTr("删除")
+            font.pixelSize: Theme.fontSizeBody
+            contentItem: Label {
+                text: delMenuItem.text
+                font: delMenuItem.font
+                color: Theme.errorColor
+                verticalAlignment: Text.AlignVCenter
+            }
+            onClicked: inventoryVM.deleteItem(currentEditItemId)
+        }
+    }
+
+    // ===== 编辑食材对话框（独立弹窗） =====
+    Dialog {
+        id: editDialog
+        title: qsTr("编辑食材信息")
+        anchors.centerIn: parent
+        modal: true
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        width: 280
+
+        background: Rectangle {
+            color: Theme.cardBackground
+            radius: Theme.radiusMedium
+            border.color: Theme.dividerColor
+            border.width: 1
         }
 
         ColumnLayout {
@@ -193,14 +231,13 @@ Page {
             Text {
                 text: qsTr("编辑食材信息")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeTitle
+                font.pixelSize: Theme.fontSizeH3
                 font.bold: true
                 color: Theme.textPrimary
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            // 食材名称
             TextField {
                 id: editNameField
                 Layout.fillWidth: true
@@ -208,7 +245,6 @@ Page {
                 font.pixelSize: Theme.fontSizeBody
             }
 
-            // 数量和单位同行
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingSmall
@@ -229,7 +265,6 @@ Page {
                 }
             }
 
-            // 过期日期
             TextField {
                 id: editExpiryField
                 Layout.fillWidth: true
@@ -245,7 +280,7 @@ Page {
                     Layout.fillWidth: true
                     buttonText: qsTr("取消")
                     buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: editPopup.close()
+                    onClicked: editDialog.close()
                 }
 
                 CustomButton {
@@ -263,7 +298,7 @@ Page {
                                 editExpiryField.text.trim()
                             )
                         }
-                        editPopup.close()
+                        editDialog.close()
                     }
                 }
             }
