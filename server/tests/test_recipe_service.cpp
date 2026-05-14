@@ -1,0 +1,165 @@
+#include <gtest/gtest.h>
+#include <gmock/gmock.h>
+#include "../services/RecipeServiceImpl.h"
+#include "MockRecipeRepository.h"
+
+using namespace testing;
+using namespace gocook::models;
+using namespace gocook::services;
+using namespace gocook::repository;
+
+namespace {
+    RecipeSummary makeSummary(int id = 1) {
+        return {id, "Test Recipe", "A delicious test", "img.jpg",
+                "炒", "清淡", "荤", 10, 20, 500, 100, 4.5, {"test"}, 1, "Chef"};
+    }
+
+    PagedRecipes makePagedRecipes(int count = 1) {
+        PagedRecipes result;
+        for (int i = 1; i <= count; ++i)
+            result.data.push_back(makeSummary(i));
+        result.pagination = {1, count, 10, 1};
+        return result;
+    }
+
+    RecipeDetail makeDetail(int id = 1) {
+        return {id, "Test Recipe", "Detailed description", "img.jpg",
+                "炒", "清淡", 10, 20, 100, 4.5, {}, {}, {}, {"test"}, 1, "Chef", "2026-01-01"};
+    }
+
+    SubmitRecipeRequest makeSubmitReq() {
+        return {"New Recipe", "Yummy", "img.jpg", {}, {}, std::nullopt, {}, std::nullopt, std::nullopt, std::nullopt};
+    }
+}
+
+// ==================== 已实现的方法 ====================
+
+TEST(RecipeServiceTest, 公开菜谱列表正确委派) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    auto expected = makePagedRecipes(3);
+    EXPECT_CALL(*repo, findPublicRecipes(1, 20, nlohmann::json::object()))
+        .WillOnce(Return(expected));
+
+    auto result = service.getPublicRecipes(1, 20, nlohmann::json::object());
+    EXPECT_EQ(result.data.size(), 3);
+    EXPECT_EQ(result.data[0].name, "Test Recipe");
+}
+
+TEST(RecipeServiceTest, 菜谱详情正确委派) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    auto expected = makeDetail(5);
+    EXPECT_CALL(*repo, findById(5)).WillOnce(Return(expected));
+
+    auto result = service.getRecipeDetail(5);
+    EXPECT_EQ(result.id, 5);
+    EXPECT_EQ(result.name, "Test Recipe");
+}
+
+TEST(RecipeServiceTest, 投稿菜谱正确委派) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    auto expectedResp = SubmitRecipeResponse{99, "pending"};
+    auto req = makeSubmitReq();
+
+    EXPECT_CALL(*repo, create(42, Truly([](const auto& r) {
+        return r.name == "New Recipe";
+    }))).WillOnce(Return(expectedResp));
+
+    auto result = service.submitRecipe(42, req);
+    EXPECT_EQ(result.id, 99);
+    EXPECT_EQ(result.status, "pending");
+}
+
+// ==================== 未实现的方法 ====================
+
+TEST(RecipeServiceTest, 搜索菜谱未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.searchRecipes("keyword", 1, 20, {}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 智能推荐未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.getRecommendedRecipes(1, 1, 20), ServiceException);
+}
+
+TEST(RecipeServiceTest, 关联视频未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.getRecipeVideos(1), ServiceException);
+}
+
+TEST(RecipeServiceTest, 评分评论未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.getRecipeRatings(1, 1, 20), ServiceException);
+}
+
+TEST(RecipeServiceTest, 我的投稿列表未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.getMySubmittedRecipes(1, 1, 20), ServiceException);
+}
+
+TEST(RecipeServiceTest, 编辑菜谱未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.editRecipe(1, 1, {}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 切换收藏未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.toggleFavorite(1, 1), ServiceException);
+}
+
+TEST(RecipeServiceTest, 评分菜谱未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.rateRecipe(1, 1, {}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 修改评分未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.updateRating(1, 1, 1, {}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 删除评分未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.deleteRating(1, 1, 1), ServiceException);
+}
+
+TEST(RecipeServiceTest, 我的评分列表未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.getMyRatings(1, 1, 20), ServiceException);
+}
+
+TEST(RecipeServiceTest, 营养报告未实现) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_THROW(service.getRecipeNutrition(1), ServiceException);
+}
