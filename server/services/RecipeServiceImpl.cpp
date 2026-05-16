@@ -9,8 +9,10 @@ PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
 }
 
 // 以下方法暂时未实现（骨架）
-PagedRecipes RecipeServiceImpl::searchRecipes(const std::string&, int, int, const nlohmann::json&) {
-    throw ServiceException("Not implemented", 501);
+PagedRecipes RecipeServiceImpl::searchRecipes(const std::string& keyword,
+                                                int page, int size,
+                                                const nlohmann::json& filters) {
+    return recipeRepo_->searchRecipes(keyword, page, size, filters);
 }
 PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int, int, int) {
     throw ServiceException("Not implemented", 501);

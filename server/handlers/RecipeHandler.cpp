@@ -60,6 +60,12 @@ void RecipeHandler::getRecipesPublic(const httplib::Request& req, httplib::Respo
 void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response& res) {
     try {
         std::string keyword = req.get_param_value("keyword");
+        if (keyword.empty()) {
+            res.status = 400;
+            res.set_header("Content-Type", "application/json");
+            res.body = R"({"error":"keyword cannot be empty"})";
+            return;
+        }
         auto pp = parsePagination(req, 20);
         auto result = service_.searchRecipes(keyword, pp.page, pp.size, parseFilterParams(req));
         res.set_header("Content-Type", "application/json");

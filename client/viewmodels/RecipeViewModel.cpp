@@ -13,6 +13,10 @@ bool RecipeViewModel::hasMore() const { return m_hasMore; }
 bool RecipeViewModel::healthFilterApplied() const { return m_healthFilterApplied; }
 QVariantMap RecipeViewModel::recipeDetail() const { return m_recipeDetail; }
 bool RecipeViewModel::detailLoading() const { return m_detailLoading; }
+QVariantList RecipeViewModel::searchResults() const { return m_searchResults; }
+bool RecipeViewModel::searchLoading() const { return m_searchLoading; }
+bool RecipeViewModel::searchHasMore() const { return m_searchHasMore; }
+bool RecipeViewModel::searchPerformed() const { return m_searchPerformed; }
 
 void RecipeViewModel::setHealthFilterApplied(bool applied)
 {
@@ -25,10 +29,6 @@ void RecipeViewModel::setHealthFilterApplied(bool applied)
 void RecipeViewModel::refresh()
 {
     m_currentPage = 1;
-    m_recipes.clear();
-    emit recipesChanged();
-    m_hasMore = false;
-    emit hasMoreChanged();
 
     if (m_currentMode == LoadMode::Recommended)
         loadRecommendedRecipes(1, m_pageSize);
@@ -178,4 +178,71 @@ void RecipeViewModel::submitRecipe(const QString& name, const QString& descripti
         }
         emit self->recipeSubmitted(data.id, QString::fromStdString(data.status));
     });
+}
+
+void RecipeViewModel::searchRecipes(const QString& keyword, int page, int size)
+{
+    if (keyword.trimmed().isEmpty())
+        return;
+
+    m_lastKeyword = keyword;
+    m_searchPage = page;
+    m_searchLoading = true;
+    if (page == 1) {
+        m_searchPerformed = false;
+    }
+    emit searchLoadingChanged();
+
+    m_api->searchRecipes(keyword.toStdString(), page, size, {},
+                         [self = QPointer<RecipeViewModel>(this), page]
+                         (bool success, const gocook::models::PagedRecipes& data,
+                          const std::string& error) {
+                             if (!self) return;
+                             if (!success) {
+                                 emit self->searchErrorOccurred(QString::fromStdString(error));
+                                 self->m_searchLoading = false;
+                                 emit self->searchLoadingChanged();
+                                 return;
+                             }
+
+                             if (page == 1) {
+                                 self->m_searchResults.clear();
+                             }
+
+                             for (const auto& recipe : data.data) {
+                                 auto item = DataMapper::toMap(recipe);
+                                 self->m_searchResults.append(item);
+                             }
+
+                             self->m_searchPage = data.pagination.page;
+                             self->m_searchTotalPages = data.pagination.total_pages;
+                             self->m_searchHasMore = (self->m_searchPage < self->m_searchTotalPages);
+
+                             emit self->searchResultsChanged();
+                             emit self->searchHasMoreChanged();
+                             self->m_searchLoading = false;
+                             self->m_searchPerformed = true;
+                             emit self->searchPerformedChanged();
+                             emit self->searchLoadingChanged();
+                         });
+}
+
+void RecipeViewModel::searchNextPage()
+{
+    if (m_searchLoading || !m_searchHasMore)
+        return;
+    searchRecipes(m_lastKeyword, m_searchPage + 1, m_pageSize);
+}
+
+void RecipeViewModel::resetSearch()
+{
+    m_searchResults.clear();
+    m_searchHasMore = false;
+    m_searchPerformed = false;
+    m_searchPage = 1;
+    m_searchTotalPages = 0;
+    m_lastKeyword.clear();
+    emit searchResultsChanged();
+    emit searchHasMoreChanged();
+    emit searchPerformedChanged();
 }

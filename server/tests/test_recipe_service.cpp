@@ -80,11 +80,36 @@ TEST(RecipeServiceTest, 投稿菜谱正确委派) {
 
 // ==================== 未实现的方法 ====================
 
-TEST(RecipeServiceTest, 搜索菜谱未实现) {
+TEST(RecipeServiceTest, 搜索菜谱按关键字返回结果) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.searchRecipes("keyword", 1, 20, {}), ServiceException);
+    auto expected = makePagedRecipes(2);
+    expected.data[0].name = "番茄炒蛋";
+    expected.data[1].name = "番茄牛腩";
+    EXPECT_CALL(*repo, searchRecipes("番茄", 1, 20, _))
+        .WillOnce(Return(expected));
+
+    auto result = service.searchRecipes("番茄", 1, 20, {});
+    EXPECT_EQ(result.data.size(), 2);
+    EXPECT_EQ(result.data[0].name, "番茄炒蛋");
+    EXPECT_EQ(result.data[1].name, "番茄牛腩");
+}
+
+TEST(RecipeServiceTest, 搜索菜谱无结果返回空列表) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    PagedRecipes emptyResult;
+    emptyResult.pagination = {1, 20, 0, 0};
+    EXPECT_CALL(*repo, searchRecipes("不存在的菜谱", 1, 20, _))
+        .WillOnce(Return(emptyResult));
+
+    auto result = service.searchRecipes("不存在的菜谱", 1, 20, {});
+    EXPECT_EQ(result.data.size(), 0);
+    EXPECT_EQ(result.pagination.total, 0);
 }
 
 TEST(RecipeServiceTest, 智能推荐未实现) {

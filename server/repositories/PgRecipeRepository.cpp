@@ -35,6 +35,51 @@ std::vector<std::string> parseTags(const pqxx::field& field) {
     return tags;
 }
 
+void applyRecipeFilters(const nlohmann::json& filters,
+                        std::string& where,
+                        ParamBuilder& pb) {
+    auto addTag = [&](const std::string& v) {
+        where += " AND " + pb.next() + " = ANY(r.tags)";
+        pb.add(v);
+    };
+
+    if (filters.contains("cuisine"))         addTag(filters["cuisine"].get<std::string>());
+    if (filters.contains("meal_type"))        addTag(filters["meal_type"].get<std::string>());
+    if (filters.contains("difficulty"))       addTag(filters["difficulty"].get<std::string>());
+    if (filters.contains("flavor")) {
+        where += " AND r.flavor = " + pb.next();
+        pb.add(filters["flavor"].get<std::string>());
+    }
+    if (filters.contains("cooking_method")) {
+        where += " AND r.cooking_method = " + pb.next();
+        pb.add(filters["cooking_method"].get<std::string>());
+    }
+    if (filters.contains("ingredient_type")) {
+        where += " AND r.ingredient_type = " + pb.next();
+        pb.add(filters["ingredient_type"].get<std::string>());
+    }
+    if (filters.contains("max_time")) {
+        where += " AND (r.prep_time_minutes + r.cook_time_minutes) <= " + pb.next();
+        pb.addInt(filters["max_time"].get<int>());
+    }
+    if (filters.contains("min_calories")) {
+        where += " AND (r.nutrition_info->>'calories')::numeric >= " + pb.next();
+        pb.addInt(filters["min_calories"].get<int>());
+    }
+    if (filters.contains("max_calories")) {
+        where += " AND (r.nutrition_info->>'calories')::numeric <= " + pb.next();
+        pb.addInt(filters["max_calories"].get<int>());
+    }
+    if (filters.contains("min_rating")) {
+        where += " AND r.avg_rating >= " + pb.next();
+        pb.add(std::to_string(filters["min_rating"].get<double>()));
+    }
+    if (filters.contains("tags")) {
+        for (const auto& t : filters["tags"])
+            addTag(t.get<std::string>());
+    }
+}
+
 } // anonymous namespace
 
 PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
@@ -49,42 +94,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
         std::string where = "WHERE 1=1";
         ParamBuilder pb;
 
-        auto addTagCond = [&](const std::string& value) {
-            where += " AND " + pb.next() + " = ANY(r.tags)";
-            pb.add(value);
-        };
-
-        if (filters.contains("cuisine"))         addTagCond(filters["cuisine"].get<std::string>());
-        if (filters.contains("meal_type"))        addTagCond(filters["meal_type"].get<std::string>());
-        if (filters.contains("difficulty"))       addTagCond(filters["difficulty"].get<std::string>());
-        if (filters.contains("flavor")) {
-            where += " AND r.flavor = " + pb.next();
-            pb.add(filters["flavor"].get<std::string>());
-        }
-        if (filters.contains("cooking_method")) {
-            where += " AND r.cooking_method = " + pb.next();
-            pb.add(filters["cooking_method"].get<std::string>());
-        }
-        if (filters.contains("ingredient_type")) {
-            where += " AND r.ingredient_type = " + pb.next();
-            pb.add(filters["ingredient_type"].get<std::string>());
-        }
-        if (filters.contains("max_time")) {
-            where += " AND (r.prep_time_minutes + r.cook_time_minutes) <= " + pb.next();
-            pb.addInt(filters["max_time"].get<int>());
-        }
-        if (filters.contains("min_calories")) {
-            where += " AND (r.nutrition_info->>'calories')::numeric >= " + pb.next();
-            pb.addInt(filters["min_calories"].get<int>());
-        }
-        if (filters.contains("max_calories")) {
-            where += " AND (r.nutrition_info->>'calories')::numeric <= " + pb.next();
-            pb.addInt(filters["max_calories"].get<int>());
-        }
-        if (filters.contains("tags")) {
-            for (const auto& tag : filters["tags"])
-                addTagCond(tag.get<std::string>());
-        }
+        applyRecipeFilters(filters, where, pb);
 
         std::string countSql = "SELECT COUNT(*) FROM recipes r " + where;
         int total;
@@ -168,8 +178,110 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
     return result;
 }
 
-PagedRecipes PgRecipeRepository::searchRecipes(const std::string&, int, int, const nlohmann::json&) {
-    throw ServiceException("Not implemented", 501);
+PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
+                                               int page, int size,
+                                               const nlohmann::json& filters) {
+    PagedRecipes result;
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        int offset = (page > 0) ? (page - 1) * size : 0;
+
+        std::string where = "WHERE 1=1";
+        ParamBuilder pb;
+
+        // 关键词搜索：匹配菜名、描述、食材名称（ingredients 是 JSONB 数组）
+        if (!keyword.empty()) {
+            std::string safeKw = txn.esc(keyword);
+            where += " AND (r.name ILIKE '%' || '" + safeKw + "' || '%'"
+                     " OR r.description ILIKE '%' || '" + safeKw + "' || '%'"
+                     " OR EXISTS (SELECT 1 FROM jsonb_array_elements(r.ingredients) AS ing"
+                     "           WHERE ing->>'name' ILIKE '%' || '" + safeKw + "' || '%'))";
+        }
+
+        applyRecipeFilters(filters, where, pb);
+
+        std::string countSql = "SELECT COUNT(*) FROM recipes r " + where;
+        int total;
+        if (pb.values.empty()) {
+            total = txn.exec(countSql)[0][0].as<int>();
+        } else {
+            total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
+                        [0][0].as<int>();
+        }
+
+        std::string order = "ORDER BY r.created_at DESC";
+        if (filters.contains("sort_by")) {
+            std::string sort = filters["sort_by"].get<std::string>();
+            if (sort == "popular") order = "ORDER BY r.view_count DESC";
+            else if (sort == "rating") order = "ORDER BY r.avg_rating DESC";
+            else if (sort == "newest") order = "ORDER BY r.created_at DESC";
+        }
+
+        where += " " + order + " LIMIT " + pb.next();
+        pb.addInt(size);
+        where += " OFFSET " + pb.next();
+        pb.addInt(offset);
+
+        std::string dataSql = R"(
+            SELECT r.id, r.name, r.description, r.prep_time_minutes,
+                   r.cook_time_minutes, r.image_url,
+                   array_to_json(r.tags) AS tags_json,
+                   COALESCE((r.nutrition_info->>'calories')::numeric, 0) AS calories,
+                   r.author_id,
+                   u.username AS author_name, r.cooking_method, r.flavor,
+                   r.ingredient_type, r.view_count, r.avg_rating
+            FROM recipes r
+            LEFT JOIN users u ON r.author_id = u.id
+        )" + where;
+
+        auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
+
+        for (const auto& row : rows) {
+            RecipeSummary recipe;
+            recipe.id = row["id"].as<int>();
+            recipe.name = row["name"].c_str();
+            recipe.description = row["description"].c_str();
+            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>();
+            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>();
+            if (!row["image_url"].is_null())
+                recipe.image_url = row["image_url"].c_str();
+
+            recipe.tags = parseTags(row["tags_json"]);
+            recipe.calories = row["calories"].as<int>(0);
+
+            recipe.author_id = row["author_id"].as<int>(0);
+            if (!row["author_name"].is_null())
+                recipe.author_name = row["author_name"].c_str();
+            else
+                recipe.author_name = "unknown";
+
+            if (!row["cooking_method"].is_null())
+                recipe.cooking_method = row["cooking_method"].c_str();
+            if (!row["flavor"].is_null())
+                recipe.flavor = row["flavor"].c_str();
+            if (!row["ingredient_type"].is_null())
+                recipe.ingredient_type = row["ingredient_type"].c_str();
+            recipe.view_count = row["view_count"].as<int>(0);
+            recipe.avg_rating = row["avg_rating"].as<double>(0.0);
+
+            result.data.push_back(recipe);
+        }
+
+        result.pagination.page = page;
+        result.pagination.size = size;
+        result.pagination.total = total;
+        result.pagination.total_pages = (total + size - 1) / size;
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in searchRecipes: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+    return result;
 }
 
 PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int, int, int) {
