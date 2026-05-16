@@ -561,8 +561,72 @@ void HttpGoCookApi::searchRecipes(const std::string& keyword,
                                   int page, int size,
                                   const nlohmann::json& filters,
                                   PagedRecipesCallback callback) {
-    Q_UNUSED(keyword); Q_UNUSED(page); Q_UNUSED(size); Q_UNUSED(filters);
-    if (callback) callback(false, gocook::models::PagedRecipes{}, "Not implemented");
+    QVariantMap params;
+    params["keyword"] = QString::fromStdString(keyword);
+    params["page"] = page;
+    params["size"] = size;
+
+    if (!filters.is_null()) {
+        if (filters.contains("cuisine"))
+            params["cuisine"] = QString::fromStdString(filters["cuisine"].get<std::string>());
+        if (filters.contains("meal_type"))
+            params["meal_type"] = QString::fromStdString(filters["meal_type"].get<std::string>());
+        if (filters.contains("difficulty"))
+            params["difficulty"] = QString::fromStdString(filters["difficulty"].get<std::string>());
+        if (filters.contains("flavor"))
+            params["flavor"] = QString::fromStdString(filters["flavor"].get<std::string>());
+        if (filters.contains("cooking_method"))
+            params["cooking_method"] = QString::fromStdString(filters["cooking_method"].get<std::string>());
+        if (filters.contains("ingredient_type"))
+            params["ingredient_type"] = QString::fromStdString(filters["ingredient_type"].get<std::string>());
+        if (filters.contains("max_time"))
+            params["max_time"] = filters["max_time"].get<int>();
+        if (filters.contains("min_calories"))
+            params["min_calories"] = filters["min_calories"].get<int>();
+        if (filters.contains("max_calories"))
+            params["max_calories"] = filters["max_calories"].get<int>();
+        if (filters.contains("min_rating"))
+            params["min_rating"] = filters["min_rating"].get<double>();
+        if (filters.contains("sort_by"))
+            params["sort_by"] = QString::fromStdString(filters["sort_by"].get<std::string>());
+        if (filters.contains("tags")) {
+            QStringList tagList;
+            for (const auto& tag : filters["tags"])
+                tagList << QString::fromStdString(tag.get<std::string>());
+            if (!tagList.isEmpty())
+                params["tags"] = tagList.join(",");
+        }
+    }
+
+    QUrlQuery query;
+    for (auto it = params.begin(); it != params.end(); ++it)
+        query.addQueryItem(it.key(), it.value().toString());
+    QString endpoint = "/api/recipes/search";
+    if (!query.isEmpty())
+        endpoint += "?" + query.toString(QUrl::FullyEncoded);
+
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::PagedRecipes{},
+                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+            return;
+        }
+        QJsonObject root = doc.object();
+        gocook::models::PagedRecipes result;
+        if (root.contains("pagination") && root["pagination"].isObject()) {
+            QJsonObject pag = root["pagination"].toObject();
+            result.pagination.page        = pag["page"].toInt();
+            result.pagination.size        = pag["size"].toInt();
+            result.pagination.total       = pag["total"].toInt();
+            result.pagination.total_pages = pag["total_pages"].toInt();
+        }
+        if (root.contains("data") && root["data"].isArray()) {
+            const QJsonArray dataArr = root["data"].toArray();
+            for (const QJsonValue& val : dataArr)
+                result.data.push_back(parseRecipeSummary(val.toObject()));
+        }
+        callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::getRecipeDetail(int recipeId,
