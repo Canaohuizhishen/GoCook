@@ -306,6 +306,22 @@ void RecipeHandler::getRecipeNutrition(const httplib::Request& req, httplib::Res
     }
 }
 
+void RecipeHandler::getMyRatings(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        auto pp = parsePagination(req, 20);
+        auto result = service_.getMyRatings(info.userId, pp.page, pp.size);
+        res.set_header("Content-Type", "application/json");
+        res.status = 200;
+        res.body = JsonSerializer::toJson(result).dump();
+    } catch (const ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
 void RecipeHandler::updateRating(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;

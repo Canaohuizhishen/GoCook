@@ -58,9 +58,6 @@ public:
     void markAllNotificationsRead(const httplib::Request& req, httplib::Response& res);
     void deleteNotification(const httplib::Request& req, httplib::Response& res);
 
-    // 我的评论列表（需认证）
-    void getMyRatings(const httplib::Request& req, httplib::Response& res);
-
 private:
     gocook::services::IUserService& service_;   // 业务抽象，不接触数据库
     AuthMiddleware& auth_;                     // 认证中间件

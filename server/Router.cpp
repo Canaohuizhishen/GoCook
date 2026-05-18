@@ -221,7 +221,7 @@ void Router::registerUserRoutes(httplib::Server& svr) {
         userHandler_.deleteNotification(req, res);
     });
     svr.Get("/api/users/me/ratings", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getMyRatings(req, res);
+        recipeHandler_.getMyRatings(req, res);
     });
 }
 

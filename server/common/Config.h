@@ -18,7 +18,7 @@ struct Config {
     std::string logLevel = "info";
 
     static Config load() {
-        const char* candidates[] = {".env", "../../.env"};
+        const char* candidates[] = {".env", "../../../.env", "../../.env", "../.env"};
         bool loaded = false;
         for (auto p : candidates) {
             if (fileExists(p)) {
