@@ -402,15 +402,4 @@ void UserHandler::deleteNotification(const httplib::Request& req, httplib::Respo
     }
 }
 
-void UserHandler::getMyRatings(const httplib::Request& req, httplib::Response& res) {
-    auto info = requireAuth(auth_, req, res);
-    if (!info.valid) return;
-    try {
-        auto pp = parsePagination(req, 20);
-        throw gocook::services::ServiceException("Not implemented", 501);
-    } catch (const gocook::services::ServiceException& e) {
-        handleStandardException(e, res);
-    } catch (const std::exception& e) {
-        handleStandardException(e, res);
-    }
-}
+

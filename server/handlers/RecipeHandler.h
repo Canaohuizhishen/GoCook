@@ -37,6 +37,8 @@ public:
     void toggleFavorite(const httplib::Request& req, httplib::Response& res);
     // 评分与评论
     void rateRecipe(const httplib::Request& req, httplib::Response& res);
+    // 获取当前用户的所有评论列表
+    void getMyRatings(const httplib::Request& req, httplib::Response& res);
 
 private:
     nlohmann::json parseFilterParams(const httplib::Request& req);
