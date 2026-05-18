@@ -35,7 +35,7 @@ Page {
 
                 contentItem: Text {
                     text: "\u2039"
-                    font.pixelSize: 26
+                    font.pointSize: 19
                     color: Theme.textPrimary
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -48,27 +48,28 @@ Page {
                 }
             }
 
-            // 搜索输入框（搜索按钮在内部右侧）
+            // 搜索输入框
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 46
-                color: Theme.isDarkMode ? "#2A2A2A" : "#EEEEEE"
+                Layout.preferredHeight: 40
+                color: Theme.searchBarBackground
                 radius: Theme.radiusLarge
                 border.width: searchField.activeFocus ? 1 : 0
                 border.color: Theme.primaryColor
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 14
+                    anchors.leftMargin: 12
                     anchors.rightMargin: 6
-                    spacing: 0
+                    spacing: 8
 
                     TextField {
                         id: searchField
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        padding: 0
-                        font.pixelSize: Theme.fontSizeBody
+                        topPadding: 6
+                        bottomPadding: 6
+                        font.pointSize: Theme.fontSizeBody
                         color: Theme.textPrimary
                         placeholderText: qsTr("搜索菜谱、食材...")
                         placeholderTextColor: Theme.textHint
@@ -77,122 +78,138 @@ Page {
                         selectByMouse: true
 
                         onAccepted: searchPage.doSearch()
+
+                        onTextChanged: {
+                            if (searchField.text.trim() === "") {
+                                recipeVM.resetSearch()
+                            }
+                        }
                     }
 
-                    // 搜索按钮（在搜索框内部右侧）
                     RoundButton {
-                        Layout.preferredWidth: 34
-                        Layout.preferredHeight: 34
-                        radius: 17
-                        flat: false
-
-                        background: Rectangle {
-                            radius: 17
-                            color: searchField.text.trim() !== ""
-                                   ? Theme.primaryColor
-                                   : Theme.textHint
-                            opacity: searchField.text.trim() !== "" ? 1.0 : 0.5
-                        }
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 14
+                        flat: true
+                        visible: searchField.text.trim() !== ""
 
                         contentItem: Text {
-                            text: "\u2192"
-                            font.pixelSize: 16
-                            color: "#FFFFFF"
+                            text: "\u00D7"
+                            font.pointSize: 14
+                            color: Theme.textHint
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
 
-                        onClicked: searchPage.doSearch()
+                        onClicked: {
+                            searchField.clear()
+                        }
                     }
                 }
             }
-        }
 
-        // 加载指示器
-        LoadingIndicator {
-            id: loadingIndicator
-            fullscreen: false
-            message: qsTr("正在搜索...")
-            isLoading: recipeVM.searchLoading
-            visible: recipeVM.searchLoading
-        }
+            ToolButton {
+                text: qsTr("搜索")
+                font.pointSize: Theme.fontSizeCaption
+                leftPadding: 6
+                rightPadding: 6
+                enabled: searchField.text.trim() !== ""
+                onClicked: searchPage.doSearch()
 
-        // 结果列表
-        ListView {
-            id: resultListView
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: Theme.spacingSmall
-            clip: true
-            visible: !loadingIndicator.isLoading
-            leftMargin: Theme.spacingMedium
-            rightMargin: Theme.spacingMedium
-
-            model: recipeVM.searchResults
-
-            delegate: RecipeCard {
-                width: resultListView.width - resultListView.leftMargin - resultListView.rightMargin
-                recipeName: modelData.name
-                recipeDescription: modelData.description
-                imageSource: modelData.imageUrl || ""
-                prepTime: modelData.prepTime + qsTr("分钟")
-                cookTime: modelData.cookTime + qsTr("分钟")
-                tags: modelData.tags || []
-                isFavorite: modelData.isFavorite || false
-
-                onClicked: {
-                    searchPage.recipeClicked(modelData.id)
-                }
-
-                onFavoriteClicked: {
-                    console.log("Toggle favorite for:", modelData.id)
-                }
-            }
-
-            footer: Item {
-                width: resultListView.width
-                height: recipeVM.searchHasMore ? 50 : 0
-                visible: recipeVM.searchHasMore
-
-                CustomButton {
-                    anchors.centerIn: parent
-                    buttonText: qsTr("加载更多")
-                    buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: recipeVM.searchNextPage()
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: parent.enabled ? Theme.primaryColor : Theme.textHint
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
         }
 
-        // 空状态提示
+        // 内容区（固定占满剩余空间，子项互切不回流）
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: recipeVM.searchPerformed
-                     && !recipeVM.searchLoading
-                     && recipeVM.searchResults.length === 0
+
+            LoadingIndicator {
+                anchors.centerIn: parent
+                fullscreen: false
+                message: qsTr("正在搜索...")
+                isLoading: recipeVM.searchLoading
+                visible: recipeVM.searchLoading
+            }
+
+            ListView {
+                id: resultListView
+                anchors.fill: parent
+                anchors.leftMargin: Theme.spacingMedium
+                anchors.rightMargin: Theme.spacingMedium
+                spacing: Theme.spacingSmall
+                clip: true
+                visible: recipeVM.searchResults.length > 0
+
+                model: recipeVM.searchResults
+
+                delegate: RecipeCard {
+                    width: resultListView.width - resultListView.leftMargin - resultListView.rightMargin
+                    recipeName: modelData.name
+                    recipeDescription: modelData.description
+                    imageSource: modelData.imageUrl || ""
+                    prepTime: modelData.prepTime + qsTr("分钟")
+                    cookTime: modelData.cookTime + qsTr("分钟")
+                    tags: modelData.tags || []
+
+                    onClicked: {
+                        searchPage.recipeClicked(modelData.id)
+                    }
+                }
+
+                onAtYEndChanged: {
+                    if (atYEnd && !recipeVM.searchLoading && recipeVM.searchHasMore) {
+                        recipeVM.searchNextPage()
+                    }
+                }
+            }
 
             Column {
                 anchors.centerIn: parent
                 spacing: Theme.spacingMedium
+                visible: recipeVM.searchPerformed
+                         && !recipeVM.searchLoading
+                         && recipeVM.searchResults.length === 0
 
-                Text {
+                Canvas {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "\uD83D\uDD0D"  // 🔍
-                    font.pixelSize: 48
+                    width: 36
+                    height: 36
+                    property color iconColor: Theme.textHint
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = iconColor
+                        ctx.lineWidth = 2.5
+                        ctx.lineCap = "round"
+                        ctx.beginPath()
+                        ctx.ellipse(4, 4, 20, 20)
+                        ctx.stroke()
+                        ctx.beginPath()
+                        ctx.moveTo(20.5, 20.5)
+                        ctx.lineTo(31, 31)
+                        ctx.stroke()
+                    }
                 }
 
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: qsTr("暂无匹配结果")
                     color: Theme.textHint
-                    font.pixelSize: Theme.fontSizeBody
+                    font.pointSize: Theme.fontSizeBody
                 }
 
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: qsTr("试试其他关键词吧")
                     color: Theme.textHint
-                    font.pixelSize: Theme.fontSizeCaption
+                    font.pointSize: Theme.fontSizeCaption
                     opacity: 0.6
                 }
             }
@@ -207,7 +224,7 @@ Page {
         anchors.bottomMargin: Theme.spacingLarge
         text: ""
         color: Theme.errorColor
-        font.pixelSize: Theme.fontSizeCaption
+        font.pointSize: Theme.fontSizeCaption
         visible: text !== ""
     }
 

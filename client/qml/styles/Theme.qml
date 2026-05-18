@@ -35,15 +35,19 @@ QtObject {
     readonly property color backgroundColor: isDarkMode ? "#121212" : "#F5F5F5"
     readonly property color cardBackground: isDarkMode ? "#1E1E1E" : "#FFFFFF"
 
+    readonly property color cardShadowColor: isDarkMode ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(0, 0, 0, 0.08)
+    readonly property color textOnPrimary: "#FFFFFF"
+    readonly property color searchBarBackground: isDarkMode ? "#2A2A2A" : "#EEEEEE"
+
     // ========== 字体系统 ==========
     readonly property string fontFamily: "Microsoft YaHei, PingFang SC, Helvetica Neue, Arial, sans-serif"
 
-    readonly property int fontSizeH1: 24
-    readonly property int fontSizeH2: 20
-    readonly property int fontSizeH3: 18
-    readonly property int fontSizeBody: 15
-    readonly property int fontSizeCaption: 13
-    readonly property int fontSizeSmall: 12
+    readonly property int fontSizeH1: 18
+    readonly property int fontSizeH2: 16
+    readonly property int fontSizeH3: 14
+    readonly property int fontSizeBody: 13
+    readonly property int fontSizeCaption: 11
+    readonly property int fontSizeSmall: 10
 
     readonly property int fontWeightLight: Font.Light
     readonly property int fontWeightNormal: Font.Normal
@@ -62,6 +66,10 @@ QtObject {
     readonly property int radiusMedium: 8
     readonly property int radiusLarge: 12
     readonly property int radiusXLarge: 16
+
+    // ========== 布局常量 ==========
+    readonly property int tabIconSize: 22
+    readonly property int gridSpacing: 8
 
     // ========== 动画时长 ==========
     readonly property int durationShort: 150

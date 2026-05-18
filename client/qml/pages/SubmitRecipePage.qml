@@ -13,78 +13,103 @@ Page {
         RowLayout {
             anchors.fill: parent
             ToolButton {
-                text: qsTr("\u2190 返回")
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                flat: true
+                contentItem: Canvas {
+                    width: 22
+                    height: 22
+                    property color arrowColor: Theme.textPrimary
+                    onArrowColorChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = arrowColor
+                        ctx.lineWidth = 2
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(14, 5)
+                        ctx.lineTo(6, 11)
+                        ctx.lineTo(14, 17)
+                        ctx.stroke()
+                    }
+                }
                 onClicked: _stackView.pop()
             }
             Label {
                 Layout.fillWidth: true
                 text: qsTr("提交菜谱")
-                font.pixelSize: 18
+                font.pointSize: Theme.fontSizeBody
+                font.weight: Theme.fontWeightMedium
                 elide: Label.ElideRight
                 horizontalAlignment: Qt.AlignHCenter
                 verticalAlignment: Qt.AlignVCenter
             }
-            Item { Layout.preferredWidth: 80 }
+            Item { Layout.preferredWidth: 44 }
         }
     }
 
-    ScrollView {
-        id: scrollView
+    Flickable {
+        id: flickable
         anchors.fill: parent
         anchors.margins: Theme.spacingMedium
+        contentWidth: width
+        contentHeight: formColumn.implicitHeight + Theme.spacingLarge
         clip: true
 
-        ColumnLayout {
+        Column {
+            id: formColumn
             width: parent.width
             spacing: Theme.spacingMedium
 
             Text {
-                Layout.fillWidth: true
+                width: parent.width
                 text: qsTr("基本信息")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
             }
 
             TextField {
                 id: nameField
-                Layout.fillWidth: true
+                width: parent.width
                 placeholderText: qsTr("菜谱名称 *")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
             }
 
             TextField {
                 id: imageUrlField
-                Layout.fillWidth: true
+                width: parent.width
                 placeholderText: qsTr("封面图片 URL")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
             }
 
             TextArea {
                 id: descField
-                Layout.fillWidth: true
-                Layout.preferredHeight: 80
+                width: parent.width
+                height: 80
                 placeholderText: qsTr("描述")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
                 wrapMode: TextArea.WordWrap
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
+            Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
 
             Text {
-                Layout.fillWidth: true
-                text: qsTr("🥬 食材")
+                width: parent.width
+                text: qsTr("食材")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
             }
 
             ListView {
                 id: ingredientsList
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, ingredientListModel.count * 50 + 44)
+                width: parent.width
+                height: contentHeight + (ingredientListModel.count > 0 ? 48 : 0)
+                interactive: false
                 model: ListModel { id: ingredientListModel }
                 spacing: 4
                 delegate: Rectangle {
@@ -98,14 +123,14 @@ Page {
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("%1. %2 %3 %4").arg(index + 1).arg(name).arg(quantity).arg(unit)
-                            font.pixelSize: Theme.fontSizeBody
+                            font.pointSize: Theme.fontSizeBody
                             color: Theme.textPrimary
                             elide: Text.ElideRight
                         }
                         Button {
                             text: qsTr("删除")
                             flat: true
-                            font.pixelSize: Theme.fontSizeSmall
+                            font.pointSize: Theme.fontSizeSmall
                             onClicked: ingredientListModel.remove(index)
                         }
                     }
@@ -118,21 +143,22 @@ Page {
                 }
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
+            Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
 
             Text {
-                Layout.fillWidth: true
-                text: qsTr("🍳 步骤")
+                width: parent.width
+                text: qsTr("步骤")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
             }
 
             ListView {
                 id: stepsList
-                Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(200, stepListModel.count * 50 + 44)
+                width: parent.width
+                height: contentHeight + (stepListModel.count > 0 ? 48 : 0)
+                interactive: false
                 model: ListModel { id: stepListModel }
                 spacing: 4
                 delegate: Rectangle {
@@ -146,14 +172,14 @@ Page {
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("步骤%1: %2").arg(order).arg(description)
-                            font.pixelSize: Theme.fontSizeBody
+                            font.pointSize: Theme.fontSizeBody
                             color: Theme.textPrimary
                             elide: Text.ElideRight
                         }
                         Button {
                             text: qsTr("删除")
                             flat: true
-                            font.pixelSize: Theme.fontSizeSmall
+                            font.pointSize: Theme.fontSizeSmall
                             onClicked: stepListModel.remove(index)
                         }
                     }
@@ -166,10 +192,10 @@ Page {
                 }
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
+            Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
 
             CustomButton {
-                Layout.fillWidth: true
+                width: parent.width
                 buttonText: submitting ? qsTr("提交中...") : qsTr("提交菜谱")
                 enabled: nameField.text.trim() !== "" && !submitting
                         && ingredientListModel.count > 0 && stepListModel.count > 0
@@ -196,7 +222,7 @@ Page {
                 }
             }
 
-            Item { Layout.preferredHeight: Theme.spacingLarge }
+            Item { height: Theme.spacingLarge }
         }
     }
 
@@ -205,10 +231,18 @@ Page {
         title: qsTr("添加食材")
         anchors.centerIn: parent
         modal: true
+        width: Math.min(parent.width * 0.85, 340)
+
+        background: Rectangle {
+            color: Theme.cardBackground
+            radius: Theme.radiusMedium
+            border.color: Theme.dividerColor
+            border.width: 1
+        }
 
         ColumnLayout {
             spacing: Theme.spacingSmall
-            width: 280
+            width: parent.width
 
             TextField { id: ingNameField; placeholderText: qsTr("食材名"); Layout.fillWidth: true }
             RowLayout {
@@ -240,10 +274,18 @@ Page {
         title: qsTr("添加步骤")
         anchors.centerIn: parent
         modal: true
+        width: Math.min(parent.width * 0.85, 340)
+
+        background: Rectangle {
+            color: Theme.cardBackground
+            radius: Theme.radiusMedium
+            border.color: Theme.dividerColor
+            border.width: 1
+        }
 
         ColumnLayout {
             spacing: Theme.spacingSmall
-            width: 280
+            width: parent.width
             TextField { id: stepDescField; placeholderText: qsTr("步骤描述"); Layout.fillWidth: true }
             CustomButton {
                 Layout.fillWidth: true
@@ -301,7 +343,7 @@ Page {
             id: msgText
             anchors.centerIn: parent
             color: "white"
-            font.pixelSize: Theme.fontSizeCaption
+            font.pointSize: Theme.fontSizeCaption
         }
 
         Behavior on opacity { NumberAnimation { duration: 300 } }

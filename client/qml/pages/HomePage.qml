@@ -16,15 +16,15 @@ Page {
         anchors.fill: parent
         spacing: 0
 
-        // 搜索栏（仅在推荐页显示，点击进入搜索页）
+        // 搜索栏（仅在首页显示，点击进入搜索页）
         Rectangle {
             visible: swipeView.currentIndex === 0
             Layout.fillWidth: true
             Layout.margins: Theme.spacingMedium
             Layout.topMargin: Theme.spacingMedium
             Layout.bottomMargin: Theme.spacingSmall
-            height: 46
-            color: Theme.isDarkMode ? "#2A2A2A" : "#EEEEEE"
+            height: 40
+            color: Theme.searchBarBackground
             radius: Theme.radiusLarge
 
             Row {
@@ -53,7 +53,7 @@ Page {
                 Label {
                     text: qsTr("搜索菜谱、食材...")
                     color: Theme.textHint
-                    font.pixelSize: Theme.fontSizeBody
+                    font.pointSize: Theme.fontSizeBody
                     elide: Text.ElideRight
                 }
             }
@@ -71,18 +71,18 @@ Page {
             currentIndex: tabBar.currentIndex
 
             RecommendPage {
-                title: qsTr("推荐")
                 onRecipeClicked: (recipeId) => {
                     homePage.showDetailRequest(recipeId)
                 }
             }
 
             InventoryPage {
-                title: qsTr("我的库存")
+            }
+
+            FavoritesPage {
             }
 
             ProfilePage {
-                title: qsTr("个人中心")
                 onShowSubmitRequest: {
                     homePage.showSubmitRequest()
                 }
@@ -93,15 +93,152 @@ Page {
     footer: TabBar {
         id: tabBar
         currentIndex: swipeView.currentIndex
+        contentHeight: 50
 
         TabButton {
-            text: qsTr("推荐")
+            id: homeTab
+            topPadding: 2
+            bottomPadding: 2
+            contentItem: Column {
+                spacing: 1
+                anchors.centerIn: parent
+                Canvas {
+                    width: Theme.tabIconSize
+                    height: Theme.tabIconSize
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    property color icoColor: homeTab.checked ? Theme.primaryColor : Theme.textHint
+                    onIcoColorChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = icoColor
+                        ctx.lineWidth = 1.5
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(2, height * 0.52)
+                        ctx.lineTo(width / 2, 3)
+                        ctx.lineTo(width - 2, height * 0.52)
+                        ctx.stroke()
+                        ctx.strokeRect(4, height * 0.52, width - 8, height * 0.4)
+                    }
+                }
+                Label {
+                    text: qsTr("首页")
+                    font.pointSize: 9
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: homeTab.checked ? Theme.primaryColor : Theme.textHint
+                }
+            }
         }
+
         TabButton {
-            text: qsTr("库存")
+            id: invTab
+            topPadding: 2
+            bottomPadding: 2
+            contentItem: Column {
+                spacing: 1
+                anchors.centerIn: parent
+                Canvas {
+                    width: Theme.tabIconSize
+                    height: Theme.tabIconSize
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    property color icoColor: invTab.checked ? Theme.primaryColor : Theme.textHint
+                    onIcoColorChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = icoColor
+                        ctx.lineWidth = 1.5
+                        ctx.strokeRect(3, 5, width - 6, height - 8)
+                        ctx.beginPath()
+                        ctx.moveTo(3, 5)
+                        ctx.lineTo(width / 2, 2)
+                        ctx.lineTo(width - 3, 5)
+                        ctx.stroke()
+                    }
+                }
+                Label {
+                    text: qsTr("库存")
+                    font.pointSize: 9
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: invTab.checked ? Theme.primaryColor : Theme.textHint
+                }
+            }
         }
+
         TabButton {
-            text: qsTr("我的")
+            id: favTab
+            topPadding: 2
+            bottomPadding: 2
+            contentItem: Column {
+                spacing: 1
+                anchors.centerIn: parent
+                Canvas {
+                    width: Theme.tabIconSize
+                    height: Theme.tabIconSize
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    property color icoColor: favTab.checked ? Theme.primaryColor : Theme.textHint
+                    onIcoColorChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = icoColor
+                        ctx.lineWidth = 1.5
+                        ctx.lineJoin = "round"
+                        var cx = width / 2, cy = height / 2
+                        var outerR = width / 2 - 1, innerR = outerR * 0.38
+                        ctx.beginPath()
+                        for (var i = 0; i < 5; i++) {
+                            var outerAngle = -Math.PI / 2 + i * (2 * Math.PI / 5)
+                            var innerAngle = outerAngle + Math.PI / 5
+                            var ox = cx + outerR * Math.cos(outerAngle)
+                            var oy = cy + outerR * Math.sin(outerAngle)
+                            var ix = cx + innerR * Math.cos(innerAngle)
+                            var iy = cy + innerR * Math.sin(innerAngle)
+                            if (i === 0) ctx.moveTo(ox, oy)
+                            else ctx.lineTo(ox, oy)
+                            ctx.lineTo(ix, iy)
+                        }
+                        ctx.closePath()
+                        ctx.stroke()
+                    }
+                }
+                Label {
+                    text: qsTr("收藏")
+                    font.pointSize: 9
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: favTab.checked ? Theme.primaryColor : Theme.textHint
+                }
+            }
+        }
+
+        TabButton {
+            id: profileTab
+            topPadding: 2
+            bottomPadding: 2
+            contentItem: Column {
+                spacing: 1
+                anchors.centerIn: parent
+                Canvas {
+                    width: Theme.tabIconSize
+                    height: Theme.tabIconSize
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    property color icoColor: profileTab.checked ? Theme.primaryColor : Theme.textHint
+                    onIcoColorChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = icoColor
+                        ctx.lineWidth = 1.5
+                        ctx.beginPath()
+                        ctx.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 2)
+                        ctx.stroke()
+                    }
+                }
+                Label {
+                    text: qsTr("我的")
+                    font.pointSize: 9
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: profileTab.checked ? Theme.primaryColor : Theme.textHint
+                }
+            }
         }
     }
 }

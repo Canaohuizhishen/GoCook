@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Shapes
-import Qt5Compat.GraphicalEffects
+
 import client.styles
 import "../components"
 
@@ -19,6 +19,10 @@ Page {
     property bool refreshing: false
     property bool readyToRelease: false
     property bool spinning: false
+
+    readonly property real gridHMargin: Theme.spacingMedium
+    readonly property real gridCellWidth: (width - gridHMargin * 2 - Theme.gridSpacing) / 2
+    readonly property real gridCellHeight: gridCellWidth + 50
 
     onSpinningChanged: {
         if (spinning) ringSpin.start()
@@ -39,41 +43,31 @@ Page {
         isLoading: recipeVM.isLoading && recipeVM.recipes.length === 0 && !refreshing
     }
 
-    ListView {
-        id: recipeListView
+    GridView {
+        id: recipeGridView
         anchors.fill: parent
-        spacing: Theme.spacingSmall
+        anchors.leftMargin: gridHMargin
+        anchors.rightMargin: gridHMargin
+        cellWidth: gridCellWidth
+        cellHeight: gridCellHeight
         clip: true
         boundsBehavior: Flickable.DragOverBounds
-        leftMargin: Theme.spacingMedium
-        rightMargin: Theme.spacingMedium
+        bottomMargin: Theme.spacingLarge
 
         model: recipeVM.recipes
 
-        delegate: RecipeCard {
-            width: recipeListView.width - recipeListView.leftMargin - recipeListView.rightMargin
-            recipeName: modelData.name
-            recipeDescription: modelData.description
-            imageSource: modelData.imageUrl || ""
-            prepTime: modelData.prepTime + qsTr("分钟")
-            cookTime: modelData.cookTime + qsTr("分钟")
-            tags: modelData.tags || []
-            isFavorite: modelData.isFavorite || false
+        delegate: Item {
+            width: recipeGridView.cellWidth
+            height: recipeGridView.cellHeight
 
-            onClicked: recommendPage.recipeClicked(modelData.id)
-            onFavoriteClicked: console.log("Toggle favorite for:", modelData.id)
-        }
+            RecipeGridCard {
+                anchors.fill: parent
+                anchors.margins: Theme.spacingXSmall
+                recipeName: modelData.name
+                imageSource: modelData.imageUrl || ""
+                prepTime: modelData.prepTime + qsTr("分钟")
 
-        footer: Item {
-            width: recipeListView.width
-            height: recipeVM.hasMore ? 50 : 0
-            visible: recipeVM.hasMore
-
-            CustomButton {
-                anchors.centerIn: parent
-                buttonText: qsTr("加载更多")
-                buttonType: CustomButton.ButtonType.Secondary
-                onClicked: recipeVM.loadNextPage()
+                onClicked: recommendPage.recipeClicked(modelData.id)
             }
         }
 
@@ -91,6 +85,12 @@ Page {
                 releaseList.start()
             }
         }
+
+        onAtYEndChanged: {
+            if (atYEnd && !recipeVM.isLoading && recipeVM.hasMore) {
+                recipeVM.loadNextPage()
+            }
+        }
     }
 
     // 下拉圆圈指示器
@@ -101,12 +101,12 @@ Page {
         anchors.horizontalCenter: parent.horizontalCenter
 
         y: refreshing
-           ? -recipeListView.contentY - circleSize - holdPadding
-           : Math.max(-circleSize, -recipeListView.contentY - circleSize - holdPadding)
+           ? -recipeGridView.contentY - circleSize - holdPadding
+           : Math.max(-circleSize, -recipeGridView.contentY - circleSize - holdPadding)
 
         opacity: refreshing
                  ? 1.0
-                 : Math.min(-recipeListView.contentY / pullThreshold, 1.0)
+                 : Math.min(-recipeGridView.contentY / pullThreshold, 1.0)
 
         visible: opacity > 0
 
@@ -116,7 +116,7 @@ Page {
             asynchronous: true
 
             ShapePath {
-                strokeColor: Qt.rgba(0.5, 0.5, 0.5, 0.25)
+                strokeColor: Theme.dividerColor
                 strokeWidth: 2.5
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap
@@ -154,14 +154,14 @@ Page {
 
     NumberAnimation {
         id: snapHold
-        target: recipeListView; property: "contentY"
+        target: recipeGridView; property: "contentY"
         to: holdY; duration: 200
         easing.type: Easing.OutCubic
     }
 
     NumberAnimation {
         id: releaseList
-        target: recipeListView; property: "contentY"
+        target: recipeGridView; property: "contentY"
         to: 0; duration: 250
         easing.type: Easing.OutCubic
         onStopped: { refreshing = false }
@@ -173,7 +173,7 @@ Page {
         onTriggered: {
             if (refreshing) {
                 minSpinTimer.stop()
-                recipeListView.contentY = holdY
+                recipeGridView.contentY = holdY
                 spinning = false
                 releaseList.start()
             }
@@ -185,7 +185,7 @@ Page {
         interval: 1000
         onTriggered: {
                 if (refreshing && readyToRelease) {
-                recipeListView.contentY = holdY
+                recipeGridView.contentY = holdY
                 spinning = false
                 releaseList.start()
             }
@@ -199,7 +199,7 @@ Page {
                 refreshTimer.stop()
                 readyToRelease = true
                 if (!minSpinTimer.running) {
-                    recipeListView.contentY = holdY
+                    recipeGridView.contentY = holdY
                     spinning = false
                     releaseList.start()
                 }

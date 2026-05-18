@@ -31,7 +31,7 @@ Page {
             Layout.fillWidth: true
             text: qsTr("暂无库存，点击上方按钮添加食材")
             font.family: Theme.fontFamily
-            font.pixelSize: Theme.fontSizeBody
+            font.pointSize: Theme.fontSizeBody
             color: Theme.textHint
             horizontalAlignment: Text.AlignHCenter
             visible: !inventoryVM.isLoading && inventoryVM.items.length === 0
@@ -62,7 +62,7 @@ Page {
                         Layout.fillWidth: true
                         text: modelData.ingredientName || ""
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeBody
+                        font.pointSize: Theme.fontSizeBody
                         color: Theme.textPrimary
                         elide: Text.ElideRight
                     }
@@ -70,7 +70,7 @@ Page {
                     Text {
                         text: qsTr("%1 %2").arg(modelData.quantity || 0).arg(modelData.unit || "")
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeCaption
+                        font.pointSize: Theme.fontSizeCaption
                         color: Theme.textSecondary
                     }
 
@@ -80,8 +80,10 @@ Page {
 
                         ToolButton {
                             id: deleteBtn
+                            implicitWidth: 44
+                            implicitHeight: 44
                             text: "删除"
-                            font.pixelSize: 18
+                            font.pointSize: 13
                             contentItem: Text {
                                 text: deleteBtn.text
                                 font: deleteBtn.font
@@ -94,8 +96,10 @@ Page {
 
                         ToolButton {
                             id: moreBtn
+                            implicitWidth: 44
+                            implicitHeight: 44
                             text: "更多"
-                            font.pixelSize: 18
+                            font.pointSize: 13
                             contentItem: Text {
                                 text: moreBtn.text
                                 font: moreBtn.font
@@ -163,7 +167,7 @@ Page {
     Menu {
         id: moreMenu
         modal: true
-        dim: false
+        dim: true
 
         background: Rectangle {
             color: Theme.cardBackground
@@ -175,7 +179,7 @@ Page {
         MenuItem {
             id: editMenuItem
             text: qsTr("编辑信息")
-            font.pixelSize: Theme.fontSizeBody
+            font.pointSize: Theme.fontSizeBody
             contentItem: Label {
                 text: editMenuItem.text
                 font: editMenuItem.font
@@ -196,7 +200,7 @@ Page {
         MenuItem {
             id: delMenuItem
             text: qsTr("删除")
-            font.pixelSize: Theme.fontSizeBody
+            font.pointSize: Theme.fontSizeBody
             contentItem: Label {
                 text: delMenuItem.text
                 font: delMenuItem.font
@@ -215,7 +219,7 @@ Page {
         modal: true
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: 280
+        width: Math.min(parent.width * 0.85, 340)
 
         background: Rectangle {
             color: Theme.cardBackground
@@ -231,7 +235,7 @@ Page {
             Text {
                 text: qsTr("编辑食材信息")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.bold: true
                 color: Theme.textPrimary
                 Layout.fillWidth: true
@@ -242,7 +246,7 @@ Page {
                 id: editNameField
                 Layout.fillWidth: true
                 placeholderText: qsTr("食材名称")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
             }
 
             RowLayout {
@@ -253,7 +257,7 @@ Page {
                     id: editQuantityField
                     Layout.preferredWidth: 110
                     placeholderText: qsTr("数量")
-                    font.pixelSize: Theme.fontSizeBody
+                    font.pointSize: Theme.fontSizeBody
                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                 }
 
@@ -261,7 +265,7 @@ Page {
                     id: editUnitField
                     Layout.fillWidth: true
                     placeholderText: qsTr("单位")
-                    font.pixelSize: Theme.fontSizeBody
+                    font.pointSize: Theme.fontSizeBody
                 }
             }
 
@@ -269,7 +273,7 @@ Page {
                 id: editExpiryField
                 Layout.fillWidth: true
                 placeholderText: qsTr("过期日期 (YYYY-MM-DD)")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
             }
 
             RowLayout {
@@ -311,16 +315,17 @@ Page {
         title: qsTr("添加食材")
         anchors.centerIn: parent
         modal: true
+        width: Math.min(parent.width * 0.85, 340)
 
         ColumnLayout {
             spacing: Theme.spacingSmall
-            width: 280
+            width: parent.width
 
             TextField {
                 id: itemNameField
                 Layout.fillWidth: true
                 placeholderText: qsTr("食材名称 (如: 鸡蛋)")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
             }
 
             RowLayout {
@@ -330,7 +335,7 @@ Page {
                     id: itemQtyField
                     Layout.preferredWidth: 110
                     placeholderText: qsTr("数量")
-                    font.pixelSize: Theme.fontSizeBody
+                    font.pointSize: Theme.fontSizeBody
                     inputMethodHints: Qt.ImhFormattedNumbersOnly
                 }
 
@@ -338,7 +343,7 @@ Page {
                     id: itemUnitField
                     Layout.fillWidth: true
                     placeholderText: qsTr("单位 (如: 个)")
-                    font.pixelSize: Theme.fontSizeBody
+                    font.pointSize: Theme.fontSizeBody
                 }
             }
 
@@ -346,7 +351,7 @@ Page {
                 id: expiryField
                 Layout.fillWidth: true
                 placeholderText: qsTr("过期日期 (YYYY-MM-DD)")
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
             }
 
             CustomButton {
