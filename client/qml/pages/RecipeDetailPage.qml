@@ -8,29 +8,13 @@ Page {
     title: qsTr("菜谱详情")
 
     property int recipeId: 0
+    property bool isFavorited: false
+    readonly property real imageHeight: Math.min(250, (flickable.width - Theme.spacingMedium * 2) * 0.6)
+    readonly property real navThreshold: imageHeight - navBar.height
 
     Component.onCompleted: {
         if (recipeId > 0)
             recipeVM.loadRecipeDetail(recipeId)
-    }
-
-    header: ToolBar {
-        RowLayout {
-            anchors.fill: parent
-            ToolButton {
-                text: qsTr("\u2190 返回")
-                onClicked: _stackView.pop()
-            }
-            Label {
-                Layout.fillWidth: true
-                text: qsTr("菜谱详情")
-                font.pixelSize: 18
-                elide: Label.ElideRight
-                horizontalAlignment: Qt.AlignHCenter
-                verticalAlignment: Qt.AlignVCenter
-            }
-            Item { Layout.preferredWidth: 80 }
-        }
     }
 
     LoadingIndicator {
@@ -44,18 +28,21 @@ Page {
         id: flickable
         anchors.fill: parent
         contentWidth: width
-        contentHeight: detailColumn.implicitHeight + Theme.spacingLarge * 2
+        contentHeight: detailColumn.implicitHeight + Theme.spacingLarge + navBar.height + bottomBar.height + Theme.spacingMedium
         clip: true
+        topMargin: -navBar.height
+        bottomMargin: -bottomBar.height
 
         Column {
             id: detailColumn
             width: parent.width - Theme.spacingMedium * 2
             x: Theme.spacingMedium
+            y: navBar.height + Theme.spacingMedium
             spacing: Theme.spacingMedium
 
             Rectangle {
                 width: parent.width
-                height: 200
+                height: imageHeight
                 radius: Theme.radiusMedium
                 color: Theme.dividerColor
                 clip: true
@@ -74,7 +61,7 @@ Page {
                 width: parent.width
                 text: recipeVM.recipeDetail.name || qsTr("加载中...")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH2
+                font.pointSize: Theme.fontSizeH2
                 font.weight: Theme.fontWeightBold
                 color: Theme.textPrimary
                 wrapMode: Text.WordWrap
@@ -98,7 +85,7 @@ Page {
                             id: tagText
                             anchors.centerIn: parent
                             text: modelData
-                            font.pixelSize: Theme.fontSizeSmall
+                            font.pointSize: Theme.fontSizeSmall
                             color: "white"
                         }
                     }
@@ -111,21 +98,57 @@ Page {
 
                 Row {
                     spacing: 4
-                    Text { text: "\u23F1\uFE0F"; font.pixelSize: 14 }
+                    Canvas {
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        property color iconColor: Theme.textSecondary
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.strokeStyle = iconColor
+                            ctx.lineWidth = 1
+                            ctx.beginPath()
+                            ctx.arc(7, 7, 5.5, 0, Math.PI * 2)
+                            ctx.stroke()
+                            ctx.beginPath()
+                            ctx.moveTo(7, 7)
+                            ctx.lineTo(7, 3.5)
+                            ctx.stroke()
+                            ctx.beginPath()
+                            ctx.moveTo(7, 7)
+                            ctx.lineTo(10, 7)
+                            ctx.stroke()
+                        }
+                    }
                     Text {
                         text: qsTr("准备 %1分钟").arg(recipeVM.recipeDetail.prepTime || 0)
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeCaption
+                        font.pointSize: Theme.fontSizeCaption
                         color: Theme.textSecondary
                     }
                 }
                 Row {
                     spacing: 4
-                    Text { text: "🔥"; font.pixelSize: 14 }
+                    Canvas {
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        property color iconColor: Theme.textSecondary
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.strokeStyle = iconColor
+                            ctx.lineWidth = 1
+                            ctx.beginPath()
+                            ctx.moveTo(7, 1.5)
+                            ctx.quadraticCurveTo(13, 5, 7, 12)
+                            ctx.quadraticCurveTo(1, 5, 7, 1.5)
+                            ctx.stroke()
+                        }
+                    }
                     Text {
                         text: qsTr("烹饪 %1分钟").arg(recipeVM.recipeDetail.cookTime || 0)
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeCaption
+                        font.pointSize: Theme.fontSizeCaption
                         color: Theme.textSecondary
                     }
                 }
@@ -136,7 +159,7 @@ Page {
                 Text {
                     text: qsTr("作者: ") + (recipeVM.recipeDetail.authorName || "")
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSizeCaption
+                    font.pointSize: Theme.fontSizeCaption
                     color: Theme.textSecondary
                 }
             }
@@ -145,7 +168,7 @@ Page {
                 width: parent.width
                 text: recipeVM.recipeDetail.description || ""
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeBody
+                font.pointSize: Theme.fontSizeBody
                 color: Theme.textSecondary
                 wrapMode: Text.WordWrap
                 visible: text !== ""
@@ -158,9 +181,9 @@ Page {
             }
 
             Text {
-                text: qsTr("🥬 食材")
+                text: qsTr("食材")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
             }
@@ -170,7 +193,7 @@ Page {
                 width: parent.width
                 text: qsTr("(暂无食材)")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
+                font.pointSize: Theme.fontSizeCaption
                 color: Theme.textHint
                 visible: true
             }
@@ -178,26 +201,49 @@ Page {
             Column {
                 id: ingredientsColumn
                 width: parent.width
-                spacing: 6
+                spacing: 8
 
                 Repeater {
                     id: ingredientsRepeater
                     model: 0
-                    delegate: RowLayout {
+                    delegate: Rectangle {
                         width: ingredientsColumn.width
-                        height: 32
-                        Text {
-                            text: "\u2022  " + modelData.name
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSizeBody
-                            color: Theme.textPrimary
-                            Layout.fillWidth: true
+                        height: 28
+                        color: "transparent"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: Theme.spacingSmall
+
+                            Text {
+                                text: "\u2022"
+                                font.pointSize: Theme.fontSizeBody
+                                color: Theme.primaryColor
+                                font.bold: true
+                            }
+
+                            Text {
+                                text: modelData.name
+                                font.family: Theme.fontFamily
+                                font.pointSize: Theme.fontSizeBody
+                                color: Theme.textPrimary
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: modelData.quantity + " " + modelData.unit
+                                font.family: Theme.fontFamily
+                                font.pointSize: Theme.fontSizeCaption
+                                color: Theme.textHint
+                            }
                         }
-                        Text {
-                            text: modelData.quantity + " " + modelData.unit
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSizeCaption
-                            color: Theme.textHint
+
+                        Rectangle {
+                            anchors.bottom: parent.bottom
+                            width: parent.width
+                            height: 1
+                            color: Theme.dividerColor
+                            opacity: 0.3
                         }
                     }
                 }
@@ -210,9 +256,9 @@ Page {
             }
 
             Text {
-                text: qsTr("🍳 步骤")
+                text: qsTr("步骤")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
             }
@@ -222,7 +268,7 @@ Page {
                 width: parent.width
                 text: qsTr("(暂无步骤)")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
+                font.pointSize: Theme.fontSizeCaption
                 color: Theme.textHint
                 visible: true
             }
@@ -230,30 +276,39 @@ Page {
             Column {
                 id: stepsColumn
                 width: parent.width
-                spacing: 6
+                spacing: Theme.spacingMedium
 
                 Repeater {
                     id: stepsRepeater
                     model: 0
-                    delegate: ColumnLayout {
+                    delegate: RowLayout {
                         width: stepsColumn.width
-                        spacing: Theme.spacingXSmall
+                        spacing: Theme.spacingSmall
+                        layoutDirection: Qt.LeftToRight
 
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("步骤 ") + (modelData.order || index + 1)
-                            font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSizeSmall
-                            font.weight: Theme.fontWeightMedium
+                        Rectangle {
+                            Layout.preferredWidth: 20
+                            Layout.preferredHeight: 20
+                            radius: 10
                             color: Theme.primaryColor
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.order || index + 1
+                                font.pointSize: Theme.fontSizeSmall - 1
+                                font.bold: true
+                                color: Theme.textOnPrimary
+                            }
                         }
+
                         Text {
                             Layout.fillWidth: true
                             text: modelData.description
                             font.family: Theme.fontFamily
-                            font.pixelSize: Theme.fontSizeBody
+                            font.pointSize: Theme.fontSizeBody
                             color: Theme.textPrimary
                             wrapMode: Text.WordWrap
+                            Layout.maximumWidth: stepsColumn.width - 40
                         }
                     }
                 }
@@ -272,9 +327,9 @@ Page {
                 visible: recipeVM.recipeDetail.nutrition && recipeVM.recipeDetail.nutrition.calories > 0
 
                 Text {
-                    text: qsTr("📊 营养信息")
+                    text: qsTr("营养信息")
                     font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSizeH3
+                    font.pointSize: Theme.fontSizeH3
                     font.weight: Theme.fontWeightMedium
                     color: Theme.textPrimary
                 }
@@ -284,15 +339,176 @@ Page {
                     width: parent.width
                     spacing: 4
 
-                    Text { text: qsTr("热量"); color: Theme.textSecondary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.calories + " kcal"; color: Theme.textPrimary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: qsTr("蛋白质"); color: Theme.textSecondary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.protein + " g"; color: Theme.textPrimary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: qsTr("脂肪"); color: Theme.textSecondary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.fat + " g"; color: Theme.textPrimary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: qsTr("碳水"); color: Theme.textSecondary; font.pixelSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.carbs + " g"; color: Theme.textPrimary; font.pixelSize: Theme.fontSizeCaption }
+                    Text { text: qsTr("热量"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: recipeVM.recipeDetail.nutrition.calories + " kcal"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: qsTr("蛋白质"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: recipeVM.recipeDetail.nutrition.protein + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: qsTr("脂肪"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: recipeVM.recipeDetail.nutrition.fat + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: qsTr("碳水"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: recipeVM.recipeDetail.nutrition.carbs + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
                 }
+            }
+        }
+    }
+
+    // 浮动导航栏（覆盖在内容上方）
+    Rectangle {
+        id: navBar
+        width: parent.width
+        height: 44
+        z: 10
+        color: "transparent"
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#2A2A2A"
+            opacity: flickable.contentY > navThreshold ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+        }
+
+        Rectangle {
+            anchors.bottom: parent.bottom
+            width: parent.width
+            height: 1
+            color: Theme.dividerColor
+            opacity: flickable.contentY > navThreshold ? 1.0 : 0.0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 4
+            anchors.rightMargin: 4
+            spacing: 0
+
+            ToolButton {
+                id: backBtn
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                flat: true
+                contentItem: Canvas {
+                    width: 22
+                    height: 22
+                    property color arrowColor: flickable.contentY > navThreshold ? Theme.textPrimary : "white"
+                    onArrowColorChanged: requestPaint()
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.strokeStyle = arrowColor
+                        ctx.lineWidth = 2
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        ctx.beginPath()
+                        ctx.moveTo(14, 5)
+                        ctx.lineTo(6, 11)
+                        ctx.lineTo(14, 17)
+                        ctx.stroke()
+                    }
+                }
+                onClicked: _stackView.pop()
+            }
+
+            Label {
+                Layout.fillWidth: true
+                text: recipeVM.recipeDetail.name || ""
+                font.pointSize: Theme.fontSizeBody
+                font.weight: Theme.fontWeightMedium
+                color: Theme.textPrimary
+                elide: Text.ElideRight
+                horizontalAlignment: Qt.AlignHCenter
+                verticalAlignment: Qt.AlignVCenter
+                opacity: flickable.contentY > navThreshold ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+            }
+
+            ToolButton {
+                id: moreBtn
+                Layout.preferredWidth: 44
+                Layout.preferredHeight: 44
+                flat: true
+                text: "\u22EF"
+                font.pointSize: 20
+                contentItem: Text {
+                    text: parent.text
+                    font: parent.font
+                    color: flickable.contentY > navThreshold ? Theme.textPrimary : "white"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: moreMenu.popup(moreBtn, 0, moreBtn.height)
+            }
+        }
+    }
+
+    // 底部操作栏
+    Rectangle {
+        id: bottomBar
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: 56
+        z: 10
+        color: Theme.cardBackground
+
+        Rectangle {
+            anchors.top: parent.top
+            width: parent.width
+            height: 1
+            color: Theme.dividerColor
+        }
+
+        CustomButton {
+            anchors.centerIn: parent
+            width: parent.width - Theme.spacingMedium * 2
+            buttonText: isFavorited ? "\u2605 " + qsTr("已收藏此菜谱") : "\u2606 " + qsTr("收藏此菜谱")
+            buttonType: isFavorited ? CustomButton.ButtonType.Secondary : CustomButton.ButtonType.Primary
+            onClicked: {
+                isFavorited = !isFavorited
+            }
+        }
+    }
+
+    Menu {
+        id: moreMenu
+        modal: true
+        dim: true
+
+        background: Rectangle {
+            color: Theme.cardBackground
+            radius: Theme.radiusMedium
+            border.color: Theme.dividerColor
+            border.width: 1
+        }
+
+        MenuItem {
+            text: (isFavorited ? "\u2605 " : "\u2606 ") + qsTr("收藏")
+            font.pointSize: Theme.fontSizeBody
+            contentItem: Label {
+                text: parent.text
+                font: parent.font
+                color: Theme.textPrimary
+                verticalAlignment: Text.AlignVCenter
+            }
+            onClicked: {
+                isFavorited = !isFavorited
+            }
+        }
+
+        MenuSeparator {
+            contentItem: Rectangle {
+                implicitWidth: 200
+                implicitHeight: 1
+                color: Theme.dividerColor
+            }
+        }
+
+        MenuItem {
+            text: qsTr("分享")
+            font.pointSize: Theme.fontSizeBody
+            contentItem: Label {
+                text: parent.text
+                font: parent.font
+                color: Theme.textHint
+                verticalAlignment: Text.AlignVCenter
             }
         }
     }

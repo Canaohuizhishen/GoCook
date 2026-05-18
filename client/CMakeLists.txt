@@ -31,7 +31,9 @@ qt_add_qml_module(appclient
     QML_FILES qml/styles/Theme.qml
     QML_FILES qml/components/CustomButton.qml
     QML_FILES qml/components/RecipeCard.qml
+    QML_FILES qml/components/RecipeGridCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
+    QML_FILES qml/pages/FavoritesPage.qml
     SOURCES ../contracts/include/gocook/DataModels.h
     SOURCES ../contracts/include/gocook/IGoCookApi.h
     SOURCES viewmodels/RecipeViewModel.cpp viewmodels/RecipeViewModel.h

@@ -54,7 +54,7 @@ Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: qsTr("加载中...")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
+                font.pointSize: Theme.fontSizeCaption
                 color: fullscreen ? Theme.textSecondary : Theme.textPrimary
                 visible: text !== ""
             }

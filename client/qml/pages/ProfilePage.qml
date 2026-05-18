@@ -18,11 +18,26 @@ Page {
             Layout.alignment: Qt.AlignHCenter
             spacing: Theme.spacingSmall
 
+            Canvas {
+                Layout.alignment: Qt.AlignHCenter
+                width: 48
+                height: 48
+                property color circleColor: Theme.textHint
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.strokeStyle = circleColor
+                    ctx.lineWidth = 1.5
+                    ctx.beginPath()
+                    ctx.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 2)
+                    ctx.stroke()
+                }
+            }
+
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: authViewModel.loggedIn ? qsTr("欢迎, %1").arg(authViewModel.username) : qsTr("未登录")
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH2
+                font.pointSize: Theme.fontSizeH2
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
             }
@@ -31,7 +46,7 @@ Page {
                 Layout.alignment: Qt.AlignHCenter
                 text: authViewModel.loggedIn ? qsTr("用户 ID: %1").arg(authViewModel.userId) : ""
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
+                font.pointSize: Theme.fontSizeCaption
                 color: Theme.textHint
                 visible: authViewModel.loggedIn
             }
@@ -45,7 +60,7 @@ Page {
 
         CustomButton {
             Layout.fillWidth: true
-            buttonText: qsTr("+ 提交新菜谱")
+            buttonText: qsTr("+ 发布菜谱")
             buttonType: CustomButton.ButtonType.Primary
             visible: authViewModel.loggedIn
             onClicked: showSubmitRequest()
@@ -53,7 +68,6 @@ Page {
 
         Item { Layout.fillHeight: true }
 
-        // 主题切换
         ColumnLayout {
             Layout.fillWidth: true
             spacing: Theme.spacingXSmall
@@ -67,7 +81,7 @@ Page {
 
             Text {
                 text: qsTr("主题模式")
-                font { family: Theme.fontFamily; pixelSize: Theme.fontSizeBody; weight: Theme.fontWeightBold }
+                font { family: Theme.fontFamily; pointSize: Theme.fontSizeBody; weight: Theme.fontWeightBold }
                 color: Theme.textPrimary
                 Layout.topMargin: Theme.spacingSmall
             }

@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import Qt5Compat.GraphicalEffects
+
 import client.styles
 
 Button {
@@ -17,7 +17,7 @@ Button {
     property int buttonType: CustomButton.ButtonType.Primary
     property alias buttonText: buttonText.text
     property alias textColor: buttonText.color
-    property alias fontSize: buttonText.font.pixelSize
+    property alias fontSize: buttonText.font.pointSize
 
     // 基础样式
     implicitWidth: 120
@@ -48,13 +48,6 @@ Button {
         border.width: control.buttonType === CustomButton.ButtonType.Secondary ? 1 : 0
 
         // 阴影效果（仅主要按钮）
-        layer.enabled: control.buttonType === CustomButton.ButtonType.Primary && control.enabled && !control.pressed
-        layer.effect: DropShadow {
-            verticalOffset: 2
-            radius: 8
-            samples: 17
-            color: "#20000000"
-        }
 
         Behavior on color {
             ColorAnimation { duration: Theme.durationShort }
@@ -66,13 +59,12 @@ Button {
         id: buttonText
         text: control.text
         font.family: Theme.fontFamily
-        font.pixelSize: Theme.fontSizeBody
+        font.pointSize: Theme.fontSizeBody
         font.weight: control.buttonType === CustomButton.ButtonType.Primary ? Theme.fontWeightMedium : Theme.fontWeightNormal
         color: {
             if (!control.enabled) return Theme.textHint
-            if (control.buttonType === CustomButton.ButtonType.Primary) return "white"
+            if (control.buttonType === CustomButton.ButtonType.Primary) return Theme.textOnPrimary
             if (control.buttonType === CustomButton.ButtonType.Text) {
-                if (control.hovered) return Theme.primaryColor
                 return Theme.primaryColor
             }
             return Theme.primaryColor

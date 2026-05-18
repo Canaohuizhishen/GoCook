@@ -16,7 +16,7 @@ Page {
 
         Text {
             text: "GoCook"
-            font.pixelSize: 32
+            font.pointSize: 24
             font.bold: true
             Layout.alignment: Qt.AlignHCenter
         }
@@ -93,24 +93,5 @@ Page {
             }
         }
 
-        // 连接认证管理器的信号
-        Connections {
-            target: authViewModel
-            function onLoginFailed(error) {
-                errorLabel.color = "red"
-                errorLabel.text = error
-            }
-            function onRegisterFailed(error) {
-                errorLabel.color = "red"
-                errorLabel.text = error
-            }
-            function onRegisterSuccess() {
-                errorLabel.color = "green"  // 成功消息用绿色与错误红色区分
-                errorLabel.text = "注册成功，请登录"
-            }
-            function onLoginSuccess() {
-                errorLabel.text = ""
-            }
-        }
     }
 }

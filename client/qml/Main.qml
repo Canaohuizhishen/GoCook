@@ -9,6 +9,8 @@ ApplicationWindow {
     visible: true
     width: 400
     height: 700
+    minimumWidth: 320
+    minimumHeight: 480
     title: qsTr("GoCook")
 
     property bool isLoggedIn: authViewModel.loggedIn
@@ -185,7 +187,7 @@ ApplicationWindow {
             Text {
                 anchors.centerIn: parent
                 text: qsTr("加载中...")
-                font.pixelSize: 20
+                font.pointSize: 15
             }
         }
     }

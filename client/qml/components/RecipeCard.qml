@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
+
 import client.styles
 
 Rectangle {
@@ -14,23 +14,24 @@ Rectangle {
     property alias prepTime: prepTimeLabel.text
     property alias cookTime: cookTimeLabel.text
     property alias tags: tagsRepeater.model
-    property bool isFavorite: false
 
     signal clicked()
-    signal favoriteClicked()
 
     width: parent ? parent.width : 300
-    height: 120
+    height: 105
     radius: Theme.radiusMedium
     color: Theme.cardBackground
 
     // 阴影
-    layer.enabled: true
-    layer.effect: DropShadow {
-        verticalOffset: 2
-        radius: 6
-        samples: 13
-        color: "#10000000"
+    Rectangle {
+        anchors.fill: parent
+        anchors.topMargin: 2
+        anchors.leftMargin: 1
+        anchors.rightMargin: 1
+        anchors.bottomMargin: -1
+        radius: card.radius
+        color: Theme.cardShadowColor
+        z: -1
     }
 
     // 点击交互
@@ -46,7 +47,7 @@ Rectangle {
 
         // 左侧图片区域
         Rectangle {
-            Layout.preferredWidth: 100
+            Layout.preferredWidth: 88
             Layout.fillHeight: true
             radius: Theme.radiusSmall
             color: Theme.dividerColor
@@ -63,35 +64,27 @@ Rectangle {
                     anchors.fill: parent
                     color: Theme.dividerColor
                     visible: recipeImage.status === Image.Error || recipeImage.source === ""
-                    Text {
+                    Canvas {
                         anchors.centerIn: parent
-                        text: "🍲"
-                        font.pixelSize: 32
+                        width: 20
+                        height: 20
+                        property color iconColor: Theme.textHint
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.strokeStyle = iconColor
+                            ctx.lineWidth = 1.5
+                            ctx.beginPath()
+                            ctx.arc(width / 2, height / 2 + 1, 7, 0, Math.PI)
+                            ctx.stroke()
+                            ctx.beginPath()
+                            ctx.moveTo(3, height / 2 + 2)
+                            ctx.lineTo(width - 3, height / 2 + 2)
+                            ctx.stroke()
+                        }
                     }
                 }
             }
 
-            // 收藏按钮（叠加在图片右上角）
-            Rectangle {
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: Theme.spacingXSmall
-                width: 28
-                height: 28
-                radius: 14
-                color: card.isFavorite ? Theme.errorColor : "#80000000"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: card.isFavorite ? "❤️" : "🤍"
-                    font.pixelSize: 16
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: card.favoriteClicked()
-                }
-            }
         }
 
         // 右侧信息区域
@@ -105,7 +98,7 @@ Rectangle {
                 id: nameLabel
                 Layout.fillWidth: true
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeH3
+                font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
                 elide: Text.ElideRight
@@ -117,7 +110,7 @@ Rectangle {
                 id: descLabel
                 Layout.fillWidth: true
                 font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
+                font.pointSize: Theme.fontSizeCaption
                 color: Theme.textSecondary
                 elide: Text.ElideRight
                 maximumLineCount: 2
@@ -131,24 +124,60 @@ Rectangle {
 
                 // 准备时间
                 Row {
-                    spacing: 2
-                    Text { text: "⏱️"; font.pixelSize: 12 }
+                    spacing: 4
+                    Canvas {
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        property color iconColor: Theme.textSecondary
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.strokeStyle = iconColor
+                            ctx.lineWidth = 1
+                            ctx.beginPath()
+                            ctx.arc(7, 7, 5.5, 0, Math.PI * 2)
+                            ctx.stroke()
+                            ctx.beginPath()
+                            ctx.moveTo(7, 7)
+                            ctx.lineTo(7, 3.5)
+                            ctx.stroke()
+                            ctx.beginPath()
+                            ctx.moveTo(7, 7)
+                            ctx.lineTo(10, 7)
+                            ctx.stroke()
+                        }
+                    }
                     Text {
                         id: prepTimeLabel
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeSmall
+                        font.pointSize: Theme.fontSizeSmall
                         color: Theme.textSecondary
                     }
                 }
 
                 // 烹饪时间
                 Row {
-                    spacing: 2
-                    Text { text: "🔥"; font.pixelSize: 12 }
+                    spacing: 4
+                    Canvas {
+                        width: 14
+                        height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        property color iconColor: Theme.textSecondary
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.strokeStyle = iconColor
+                            ctx.lineWidth = 1
+                            ctx.beginPath()
+                            ctx.moveTo(7, 1.5)
+                            ctx.quadraticCurveTo(13, 5, 7, 12)
+                            ctx.quadraticCurveTo(1, 5, 7, 1.5)
+                            ctx.stroke()
+                        }
+                    }
                     Text {
                         id: cookTimeLabel
                         font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeSmall
+                        font.pointSize: Theme.fontSizeSmall
                         color: Theme.textSecondary
                     }
                 }
@@ -171,8 +200,8 @@ Rectangle {
                                 id: tagText
                                 anchors.centerIn: parent
                                 text: modelData
-                                font.pixelSize: Theme.fontSizeSmall - 1
-                                color: "white"
+                                font.pointSize: Theme.fontSizeSmall - 1
+                                color: Theme.textOnPrimary
                             }
                         }
                     }
