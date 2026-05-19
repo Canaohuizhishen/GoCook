@@ -33,6 +33,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeCard.qml
     QML_FILES qml/components/RecipeGridCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
+    QML_FILES qml/components/CircularImage.qml
     QML_FILES qml/pages/FavoritesPage.qml
     SOURCES ../contracts/include/gocook/DataModels.h
     SOURCES ../contracts/include/gocook/IGoCookApi.h
@@ -44,6 +45,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
     QML_FILES qml/pages/ProfileEditPage.qml
+    QML_FILES qml/pages/ChangePasswordPage.qml
 )
 
 # 增加头文件查找路径

@@ -156,6 +156,9 @@ ApplicationWindow {
             onShowProfileEditRequest: () => {
                 stackView.push(profileEditPage)
             }
+            onShowChangePasswordRequest: () => {
+                stackView.push(changePasswordPage)
+            }
         }
     }
 
@@ -186,6 +189,11 @@ ApplicationWindow {
     Component {
         id: profileEditPage
         ProfileEditPage { }
+    }
+
+    Component {
+        id: changePasswordPage
+        ChangePasswordPage { }
     }
 
     Component {

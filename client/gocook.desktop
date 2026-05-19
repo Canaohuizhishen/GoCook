@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GoCook
+Comment=菜谱/烹饪应用客户端
+Exec=bash -c "cd $(dirname %k) && ./start_appclient.sh"
+Icon=application-x-executable
+Terminal=false
+Categories=Utility;
+StartupNotify=true

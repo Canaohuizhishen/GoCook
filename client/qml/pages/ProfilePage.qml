@@ -9,6 +9,7 @@ Page {
 
     signal showSubmitRequest()
     signal showProfileEditRequest()
+    signal showChangePasswordRequest()
 
     // 页面创建时和每次可见时都加载最新用户资料
     Component.onCompleted: authViewModel.loadProfile()
@@ -25,63 +26,23 @@ Page {
             Layout.alignment: Qt.AlignHCenter
             spacing: Theme.spacingSmall
 
-            // ★ 圆形头像（Canvas 绘制，不依赖额外模块）
-            Item {
+            // ★ 圆形头像（ShaderEffect 遮罩，全 Qt 版本兼容）
+            CircularImage {
+                id: profileAvatar
                 Layout.alignment: Qt.AlignHCenter
                 width: 72; height: 72
-
-                // 背景圆
-                Rectangle {
-                    anchors.fill: parent; radius: width / 2
-                    color: Theme.cardBackground
-                    border.color: Theme.dividerColor; border.width: 1
+                borderColor: Theme.dividerColor
+                borderWidth: 1.5
+                placeholderFallback: {
+                    var n = authViewModel.profileDisplayName
+                    if (n.length > 0) return n.charAt(0).toUpperCase()
+                    n = authViewModel.username
+                    if (n.length > 0) return n.charAt(0).toUpperCase()
+                    return "G"
                 }
-
-                // 无头像时的占位文字
-                Text {
-                    id: profilePlaceholder
-                    anchors.centerIn: parent
-                    text: {
-                        var n = authViewModel.profileDisplayName
-                        if (n.length > 0) return n.charAt(0).toUpperCase()
-                        n = authViewModel.username
-                        if (n.length > 0) return n.charAt(0).toUpperCase()
-                        return "G"
-                    }
-                    font.family: Theme.fontFamily; font.pointSize: 32
-                    font.weight: Theme.fontWeightMedium; color: Theme.textHint
-                }
-
-                // Canvas 绘制圆形头像
-                Canvas {
-                    id: profileCanvas
-                    anchors.fill: parent; anchors.margins: 2
-
-                    property url pendingUrl: ""
-
-                    onPendingUrlChanged: {
-                        if (pendingUrl.toString().length > 0)
-                            loadImage(pendingUrl)
-                    }
-
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.clearRect(0, 0, width, height)
-                        var src = pendingUrl.toString()
-                        if (src.length === 0 || !ctx.isImageReady(src)) {
-                            profilePlaceholder.visible = true
-                            return
-                        }
-                        profilePlaceholder.visible = false
-                        ctx.beginPath()
-                        ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2)
-                        ctx.closePath()
-                        ctx.clip()
-                        ctx.drawImage(src, 0, 0, width, height)
-                    }
-
-                    onImageLoaded: requestPaint()
-                }
+                placeholderText.font.family: Theme.fontFamily
+                placeholderText.font.weight: Theme.fontWeightMedium
+                placeholderText.color: Theme.textHint
 
                 // 监听 profileAvatarUrl 变化
                 Connections {
@@ -89,17 +50,10 @@ Page {
                     function onProfileChanged() {
                         var url = authViewModel.profileAvatarUrl
                         if (url.length > 0)
-                            profileCanvas.pendingUrl = "http://127.0.0.1:8080" + url
+                            profileAvatar.source = authViewModel.apiBaseUrl + url
                         else
-                            profileCanvas.pendingUrl = ""
+                            profileAvatar.source = ""
                     }
-                }
-
-                // 圆形边框
-                Rectangle {
-                    anchors.fill: parent; radius: width / 2
-                    color: "transparent"
-                    border.color: Theme.dividerColor; border.width: 1.5
                 }
             }
 
@@ -134,6 +88,14 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             visible: authViewModel.loggedIn
             onClicked: showProfileEditRequest()
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            buttonText: qsTr("修改密码")
+            buttonType: CustomButton.ButtonType.Secondary
+            visible: authViewModel.loggedIn
+            onClicked: showChangePasswordRequest()
         }
 
         CustomButton {
