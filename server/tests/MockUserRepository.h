@@ -15,6 +15,7 @@ public:
                 (int, const gocook::models::UpdateProfileRequest&), (override));
     MOCK_METHOD(void, changePassword, (int, const std::string&), (override));
     MOCK_METHOD(void, deleteAccount, (int), (override));
+    MOCK_METHOD(std::string, getPasswordHash, (int), (override));
     MOCK_METHOD(gocook::models::AvatarUploadResponse, uploadAvatar,
                 (int, const std::string&), (override));
     MOCK_METHOD(gocook::models::UserPreferences, getPreferences, (int), (override));

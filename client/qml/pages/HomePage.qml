@@ -12,6 +12,7 @@ Page {
     signal showSubmitRequest()
     signal showSearchRequest()
     signal showProfileEditRequest()
+    signal showChangePasswordRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -89,6 +90,9 @@ Page {
                 }
                 onShowProfileEditRequest: {
                     homePage.showProfileEditRequest()
+                }
+                onShowChangePasswordRequest: {
+                    homePage.showChangePasswordRequest()
                 }
             }
         }

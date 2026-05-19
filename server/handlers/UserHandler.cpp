@@ -1,5 +1,6 @@
 #include "UserHandler.h"
 #include <optional>
+#include <iostream>
 #include <fstream>
 #include <chrono>
 #include "../common/ErrorHelper.h"
@@ -142,53 +143,80 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
     try {
+        // ======== 调试信息 ========
+        std::cerr << "\n=== [AVATAR DEBUG] UserHandler::uploadAvatar ===" << std::endl;
+        std::cerr << "[AVATAR] userId=" << info.userId << " username=" << info.username << std::endl;
+        std::cerr << "[AVATAR] Content-Type raw: '" << req.get_header_value("Content-Type") << "'" << std::endl;
+        std::cerr << "[AVATAR] body.size() = " << req.body.size() << " bytes" << std::endl;
+
         // 直接从 req.body 读取原始二进制数据（客户端直接发 POST body）
         const std::string& content = req.body;
 
         if (content.empty()) {
+            std::cerr << "[AVATAR] ERROR: body is empty!" << std::endl;
             setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
             return;
         }
 
         // 从 Content-Type 头获取 MIME 类型
         std::string contentType = extractMime(req.get_header_value("Content-Type"));
+        std::cerr << "[AVATAR] extracted MIME: '" << contentType << "'" << std::endl;
 
         // 校验文件类型
         if (contentType != "image/jpeg" && contentType != "image/png"
-            && contentType != "image/jpg") {
-            setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
+            && contentType != "image/jpg" && contentType != "image/gif"
+            && contentType != "image/bmp" && contentType != "image/webp"
+            && contentType != "image/svg+xml") {
+            std::cerr << "[AVATAR] ERROR: unsupported MIME type!" << std::endl;
+            setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/WEBP/SVG");
             return;
         }
 
         // 校验文件大小（不超过 5MB）
         if (content.size() > 5 * 1024 * 1024) {
+            std::cerr << "[AVATAR] ERROR: file too large (" << content.size() << " bytes)" << std::endl;
             setErrorResponse(res, 400, "图片大小不能超过5MB");
             return;
         }
 
         // 写临时文件
-        std::string ext = (contentType == "image/png") ? ".png" : ".jpg";
+        std::string ext = ".jpg";
+        if (contentType == "image/png")          ext = ".png";
+        else if (contentType == "image/gif")      ext = ".gif";
+        else if (contentType == "image/bmp")      ext = ".bmp";
+        else if (contentType == "image/webp")     ext = ".webp";
+        else if (contentType == "image/svg+xml")  ext = ".svg";
         std::string tempPath = "/tmp/gocook_avatar_" + std::to_string(info.userId)
                              + "_" + std::to_string(std::chrono::system_clock::now()
                                    .time_since_epoch().count()) + ext;
+        std::cerr << "[AVATAR] tempPath = " << tempPath << std::endl;
 
         {
             std::ofstream ofs(tempPath, std::ios::binary);
             if (!ofs) {
+                std::cerr << "[AVATAR] ERROR: failed to write temp file!" << std::endl;
                 setErrorResponse(res, 500, "文件写入失败");
                 return;
             }
             ofs.write(content.data(), content.size());
+            ofs.close();
+            std::cerr << "[AVATAR] temp file written OK (" << content.size() << " bytes)" << std::endl;
         }
 
         // 调用 Service 层
+        std::cerr << "[AVATAR] calling service_.uploadAvatar(" << info.userId << ", " << tempPath << ")" << std::endl;
         auto result = service_.uploadAvatar(info.userId, tempPath);
+        std::cerr << "[AVATAR] service returned: avatar_id=" << result.avatar_id
+                  << " avatar_url='" << result.avatar_url << "'" << std::endl;
 
         res.status = 200;
+        res.set_header("Content-Type", "application/json");
         res.body = json{
             {"avatar_id", result.avatar_id},
             {"avatar_url", result.avatar_url}
         }.dump();
+        std::cerr << "[AVATAR] response body: " << res.body << std::endl;
+        std::cerr << "=== [AVATAR END] ===" << std::endl;
 
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);

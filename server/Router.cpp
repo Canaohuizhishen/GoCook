@@ -1,5 +1,7 @@
 #include "Router.h"
 #include "common/Logger.h"
+#include <filesystem>
+#include <fstream>
 
 Router::Router(ConnectionPool& db,
                RecipeHandler& recipeHandler,
@@ -44,11 +46,8 @@ void Router::setupRoutes(httplib::Server& svr) {
     registerAdminRoutes(svr);
     registerPublicTestRoutes(svr);
 
-    // 挂载静态文件目录，用于头像等上传文件的访问
-    // 文件实际存储在 <project_root>/uploads/ 下
-    if (!svr.set_mount_point("/uploads", "uploads")) {
-        LOG_WARN("无法挂载静态文件目录 uploads/ ，头像服务可能不可用");
-    }
+    // 注册头像文件服务路由（替代 set_mount_point，更可靠且可控）
+    registerAvatarFileRoutes(svr);
 }
 
 // ============================================================
@@ -94,6 +93,62 @@ void Router::registerRootRoute(httplib::Server& svr) {
 </html>
     )";
         res.set_content(html, "text/html");
+    });
+}
+
+// ============================================================
+// 头像等静态文件服务（替代 set_mount_point）
+// ============================================================
+
+void Router::registerAvatarFileRoutes(httplib::Server& svr) {
+    // 确保上传目录存在
+    try {
+        std::filesystem::create_directories("uploads/avatars");
+    } catch (const std::exception& e) {
+        LOG_WARN("无法创建 uploads/avatars 目录: %s", e.what());
+    }
+
+    // 服务头像文件：GET /uploads/avatars/<filename>
+    svr.Get(R"(/uploads/avatars/(.+))", [](const httplib::Request& req, httplib::Response& res) {
+        try {
+            std::string filename = req.matches[1];
+            // 防止路径穿越攻击
+            if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
+                res.status = 400;
+                res.set_content("Bad request", "text/plain");
+                return;
+            }
+            std::string filePath = "uploads/avatars/" + filename;
+            if (!std::filesystem::exists(filePath)) {
+                res.status = 404;
+                res.set_content("Not found", "text/plain");
+                return;
+            }
+            std::ifstream ifs(filePath, std::ios::binary);
+            if (!ifs) {
+                res.status = 500;
+                res.set_content("Internal error", "text/plain");
+                return;
+            }
+            std::string content((std::istreambuf_iterator<char>(ifs)),
+                                std::istreambuf_iterator<char>());
+
+            // 根据扩展名设置 MIME 类型
+            auto dot = filename.find_last_of('.');
+            std::string ext = (dot != std::string::npos) ? filename.substr(dot) : "";
+            std::string mime = "image/jpeg";
+            if (ext == ".png")       mime = "image/png";
+            else if (ext == ".gif")  mime = "image/gif";
+            else if (ext == ".bmp")  mime = "image/bmp";
+            else if (ext == ".webp") mime = "image/webp";
+            else if (ext == ".svg")  mime = "image/svg+xml";
+
+            res.set_content(content, mime);
+        } catch (const std::exception& e) {
+            LOG_ERROR("Error serving avatar file: %s", e.what());
+            res.status = 500;
+            res.set_content("Internal error", "text/plain");
+        }
     });
 }
 

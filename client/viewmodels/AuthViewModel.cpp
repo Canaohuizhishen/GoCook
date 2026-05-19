@@ -1,6 +1,8 @@
 #include "AuthViewModel.h"
 #include <QPointer>
+#include <QDebug>
 #include <gocook/IGoCookApi.h>
+#include "../api/HttpGoCookApi.h"
 
 AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent)
@@ -129,6 +131,8 @@ void AuthViewModel::saveProfile(const QString &displayName,
         req.email = email.toStdString();
     if (!phone.isEmpty())
         req.phone = phone.toStdString();
+    if (m_pendingAvatarId > 0)
+        req.avatar_id = m_pendingAvatarId;
 
     m_api->updateProfile(req, [self = QPointer<AuthViewModel>(this)]
                          (bool success,
@@ -143,26 +147,70 @@ void AuthViewModel::saveProfile(const QString &displayName,
         self->m_profileEmail = QString::fromStdString(profile.email);
         self->m_profilePhone = QString::fromStdString(profile.phone);
         self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
+        self->m_pendingAvatarId = 0;   // 头像已确认，清空待处理 ID
         emit self->profileChanged();
         emit self->profileSaved();
     });
 }
 
 void AuthViewModel::uploadAvatar(const QString &filePath) {
-    if (!m_loggedIn) return;
+    qDebug() << "AuthViewModel::uploadAvatar called with:" << filePath;
+    if (!m_loggedIn) {
+        qDebug() << "uploadAvatar: not logged in, aborting";
+        emit avatarUploadFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
     m_api->uploadAvatar(filePath.toStdString(), [self = QPointer<AuthViewModel>(this)]
                         (bool success,
                          const gocook::models::AvatarUploadResponse& resp,
                          const std::string& error) {
-        if (!self) return;
+        if (!self) {
+            qDebug() << "uploadAvatar callback: self is null";
+            return;
+        }
+        qDebug() << "uploadAvatar callback: success=" << success << "error=" << QString::fromStdString(error);
         if (!success) {
             emit self->avatarUploadFailed(QString::fromStdString(error));
             return;
         }
+        qDebug() << "uploadAvatar callback: avatar_id=" << resp.avatar_id
+                  << " avatar_url=" << QString::fromStdString(resp.avatar_url);
+        self->m_pendingAvatarId = resp.avatar_id;
         self->m_profileAvatarUrl = QString::fromStdString(resp.avatar_url);
         emit self->profileChanged();
         emit self->avatarUploaded(QString::fromStdString(resp.avatar_url));
+        // 注意：不在这里调用 loadProfile()，否则异步的 getCurrentUser
+        // 可能在 DB 更新完全传播前返回，用旧数据覆盖刚设置的 avatar_url。
+        // 用户返回 ProfilePage 时 onVisibleChanged 会自动触发 loadProfile。
     });
+}
+
+void AuthViewModel::changePassword(const QString &currentPassword, const QString &newPassword) {
+    if (!m_loggedIn) {
+        emit passwordChangeFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
+    m_api->changePassword(currentPassword.toStdString(),
+                          newPassword.toStdString(),
+                          [self = QPointer<AuthViewModel>(this)]
+                          (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            emit self->passwordChanged();
+        } else {
+            emit self->passwordChangeFailed(QString::fromStdString(
+                error.empty() ? "修改失败" : error));
+        }
+    });
+}
+
+QString AuthViewModel::apiBaseUrl() const {
+    // 返回 API 基础 URL，供 QML 拼接头像等静态资源 URL 使用
+    // 实际从 HttpGoCookApi 获取，确保与 API 配置一致
+    auto* httpApi = dynamic_cast<const HttpGoCookApi*>(m_api);
+    if (httpApi)
+        return httpApi->baseUrl();
+    return QStringLiteral("http://127.0.0.1:8080");
 }
 
 void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)

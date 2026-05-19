@@ -27,6 +27,8 @@ public:
     virtual std::optional<models::UserProfile> findById(int userId) = 0;
     virtual void updateProfile(int userId,
                                const models::UpdateProfileRequest& profile) = 0;
+    /// 获取用户密码哈希（用于修改密码时验证原密码）
+    virtual std::string getPasswordHash(int userId) = 0;
     virtual void changePassword(int userId,
                                 const std::string& newPasswordHash) = 0;
     virtual void deleteAccount(int userId) = 0;

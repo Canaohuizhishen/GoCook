@@ -16,6 +16,7 @@ public:
     std::optional<gocook::models::UserProfile> findById(int userId) override;
     void updateProfile(int userId,
                        const gocook::models::UpdateProfileRequest& profile) override;
+    std::string getPasswordHash(int userId) override;
     void changePassword(int userId, const std::string& newPasswordHash) override;
     void deleteAccount(int userId) override;
 

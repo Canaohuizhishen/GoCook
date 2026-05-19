@@ -27,21 +27,51 @@ Page {
     property url    selectedFileUrl: ""
     property string pendingAvatarPath: ""
     property bool   avatarUploading: false
+    // 当前要显示的头像 URL（本地预览或服务端地址）
+    property url    avatarDisplayUrl: ""
+
+    // API 基础 URL（拼接头像等静态资源），来自 HttpGoCookApi 配置
+    readonly property string apiBaseUrl: authViewModel.apiBaseUrl
+
+    // ========== 调试信息（输出到终端） ==========
+    function dbg(msg) { console.log("[QML-AVATAR] [" + new Date().toLocaleTimeString() + "] " + msg) }
 
     // ========== 文件选择器 ==========
     FileDialog {
         id: avatarFileDialog
         title: qsTr("选择头像图片")
-        nameFilters: [ qsTr("图片文件 (*.jpg *.jpeg *.png)") ]
+        nameFilters: [ qsTr("图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.webp)") ]
         onAccepted: {
-            var localPath = selectedFile.toLocalFile()
+            profileEditPage.dbg("FileDialog onAccepted 触发")
+
+            // 兼容 Qt 6.0+ 不同版本：
+            // - Qt 6.0-6.2: selectedFile (单数)
+            // - Qt 6.3+:    selectedFile 已弃用，改用 selectedFiles (数组)
+            var chosenUrl = selectedFile;
+            if (typeof selectedFiles !== "undefined" && selectedFiles.length > 0) {
+                chosenUrl = selectedFiles[0];
+            }
+            profileEditPage.dbg("chosenUrl: " + chosenUrl)
+
+            var localPath = chosenUrl.toLocalFile()
+            profileEditPage.dbg("toLocalFile: " + (localPath || "(空)"))
             if (localPath) {
-                selectedFileUrl = selectedFile
+                selectedFileUrl = chosenUrl
                 pendingAvatarPath = localPath
             } else {
-                selectedFileUrl = selectedFile
-                pendingAvatarPath = selectedFile.toString()
+                selectedFileUrl = chosenUrl
+                pendingAvatarPath = chosenUrl.toString()
+                profileEditPage.dbg("localPath 为空，使用 toString()")
             }
+            profileEditPage.dbg("pendingAvatarPath = " + pendingAvatarPath)
+            statusText.text = qsTr("正在上传头像...")
+            profileEditPage.avatarUploading = true
+            profileEditPage.dbg("调用 uploadAvatar...")
+            authViewModel.uploadAvatar(profileEditPage.pendingAvatarPath)
+            profileEditPage.dbg("uploadAvatar 调用完毕")
+        }
+        onRejected: {
+            profileEditPage.dbg("FileDialog onRejected (用户取消)")
         }
     }
 
@@ -57,88 +87,28 @@ Page {
                 anchors.top: parent.top; anchors.topMargin: Theme.spacingXLarge
                 spacing: Theme.spacingMedium
 
-                // ========== 圆形头像（Canvas 绘制，不依赖任何额外模块） ==========
+                // ========== 圆形头像 ==========
                 Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 110; height: 110
 
-                    // 背景圆
-                    Rectangle {
-                        anchors.fill: parent; radius: width / 2
-                        color: Theme.cardBackground
-                        border.color: Theme.dividerColor; border.width: 1
-                    }
-
-                    // 无头像时的占位文字
-                    Text {
-                        id: placeholderText
-                        anchors.centerIn: parent
-                        text: {
+                    CircularImage {
+                        id: avatarImage
+                        anchors.fill: parent
+                        borderColor: Theme.dividerColor
+                        borderWidth: 1.5
+                        source: profileEditPage.avatarDisplayUrl
+                        placeholderFallback: {
                             var n = authViewModel.profileDisplayName
                             if (n.length > 0) return n.charAt(0).toUpperCase()
                             n = authViewModel.username
                             if (n.length > 0) return n.charAt(0).toUpperCase()
                             return "?"
                         }
-                        font.family: Theme.fontFamily; font.pointSize: 40
-                        font.weight: Theme.fontWeightMedium; color: Theme.textHint
-                    }
-
-                    // Canvas 绘制圆形头像
-                    Canvas {
-                        id: avatarCanvas
-                        anchors.fill: parent; anchors.margins: 3
-
-                        property url pendingUrl: ""
-
-                        onPendingUrlChanged: {
-                            if (pendingUrl.toString().length > 0)
-                                loadImage(pendingUrl)
-                        }
-
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.clearRect(0, 0, width, height)
-
-                            var src = pendingUrl.toString()
-                            if (src.length === 0 || !ctx.isImageReady(src)) {
-                                placeholderText.visible = true
-                                return
-                            }
-
-                            placeholderText.visible = false
-                            ctx.beginPath()
-                            ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2)
-                            ctx.closePath()
-                            ctx.clip()
-                            ctx.drawImage(src, 0, 0, width, height)
-                        }
-
-                        onImageLoaded: requestPaint()
-                    }
-
-                    // selectedFileUrl 变化时通知 Canvas 加载
-                    Connections {
-                        target: profileEditPage
-                        function onSelectedFileUrlChanged() {
-                            avatarCanvas.pendingUrl = profileEditPage.selectedFileUrl
-                        }
-                    }
-                    // authViewModel.profileAvatarUrl 变化时通知 Canvas 加载
-                    Connections {
-                        target: authViewModel
-                        function onProfileChanged() {
-                            var url = authViewModel.profileAvatarUrl
-                            if (url.length > 0)
-                                avatarCanvas.pendingUrl = "http://127.0.0.1:8080" + url
-                        }
-                    }
-
-                    // 圆形边框
-                    Rectangle {
-                        anchors.fill: parent; radius: width / 2
-                        color: "transparent"
-                        border.color: Theme.dividerColor; border.width: 1.5
+                        placeholderText.font.family: Theme.fontFamily
+                        placeholderText.font.pointSize: 40
+                        placeholderText.font.weight: Theme.fontWeightMedium
+                        placeholderText.color: Theme.textHint
                     }
 
                     // 点击更换
@@ -254,13 +224,7 @@ Page {
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: {
-                        if (profileEditPage.pendingAvatarPath.length > 0) {
-                            statusText.text = qsTr("正在上传头像...")
-                            profileEditPage.avatarUploading = true
-                            authViewModel.uploadAvatar(profileEditPage.pendingAvatarPath)
-                        } else {
-                            profileEditPage.doSaveProfile()
-                        }
+                        profileEditPage.doSaveProfile()
                     }
                 }
 
@@ -284,22 +248,39 @@ Page {
         }
     }
 
+    // 选择本地文件后，头像预览
+    onSelectedFileUrlChanged: {
+        if (selectedFileUrl.toString().length > 0)
+            avatarDisplayUrl = selectedFileUrl
+    }
+
     Connections {
         target: authViewModel
+        function onProfileChanged() {
+            console.log("[QML-AVATAR] onProfileChanged fired, profileAvatarUrl='" + authViewModel.profileAvatarUrl + "'")
+            var url = authViewModel.profileAvatarUrl
+            if (url.length > 0)
+                profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + url
+        }
         function onProfileSaved() {
+            console.log("[QML-AVATAR] onProfileSaved")
             statusText.text = qsTr("保存完成")
             profileEditPage.goBack()
         }
         function onProfileSaveFailed(error) {
+            console.log("[QML-AVATAR] onProfileSaveFailed: " + error)
             statusText.text = qsTr("保存失败: ") + error
         }
         function onAvatarUploaded(serverUrl) {
+            console.log("[QML-AVATAR] onAvatarUploaded: serverUrl='" + serverUrl + "'")
             profileEditPage.selectedFileUrl = ""
             profileEditPage.pendingAvatarPath = ""
             profileEditPage.avatarUploading = false
-            profileEditPage.doSaveProfile()
+            profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + serverUrl
+            statusText.text = qsTr("头像已更新")
         }
         function onAvatarUploadFailed(error) {
+            console.log("[QML-AVATAR] onAvatarUploadFailed: " + error)
             profileEditPage.avatarUploading = false
             statusText.text = qsTr("头像上传失败: ") + error
         }

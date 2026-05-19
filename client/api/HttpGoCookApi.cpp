@@ -240,9 +240,18 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                 return;
             }
 
-            emit networkError(reply->errorString());
+            // 即使 reply->error() 有值，也尝试读取响应体（某些 Qt 版本对 HTTP 5xx 同时设置 error）
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QString errMsg = reply->errorString();
+            if (doc.isObject() && doc.object().contains("error"))
+                errMsg = doc.object()["error"].toString();
+            else if (!responseData.isEmpty())
+                errMsg = QString::fromUtf8(responseData);
+
+            emit networkError(errMsg);
             if (callback) {
-                callback(false, reply->errorString(), QJsonDocument());
+                callback(false, errMsg, doc);
             }
             reply->deleteLater();
             return;
@@ -407,28 +416,52 @@ void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileReque
 void HttpGoCookApi::uploadAvatar(const std::string& filePath,
                                  AvatarUploadCallback callback)
 {
+    // 调试日志写到文件 /tmp/gocook_avatar_debug.log
+    auto avLog = [](const QString& msg) {
+        QFile f("/tmp/gocook_avatar_debug.log");
+        f.open(QIODevice::Append | QIODevice::Text);
+        f.write(("[CLIENT] " + msg + "\n").toUtf8());
+        f.close();
+    };
+    avLog("=== HttpGoCookApi::uploadAvatar ===");
+    avLog("filePath: " + QString::fromStdString(filePath));
+
     QFile file(QString::fromStdString(filePath));
     if (!file.exists()) {
+        avLog("ERROR: file does not exist");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "文件不存在");
         return;
     }
     if (!file.open(QIODevice::ReadOnly)) {
+        avLog("ERROR: cannot open file");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无法打开文件");
         return;
     }
     QByteArray fileData = file.readAll();
     QString fileName = QFileInfo(file.fileName()).fileName();
     file.close();
+    avLog("fileName: " + fileName + " size: " + QString::number(fileData.size()) + " bytes");
 
     if (fileData.size() > 5 * 1024 * 1024) {
+        avLog("ERROR: file exceeds 5MB limit");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "图片大小不能超过5MB");
         return;
     }
 
     // ★ 直接发原始二进制 POST，不经过 sendRequest（避免 JSON 序列化大数据的风险）
+    QString lower = fileName.toLower();
     QString contentType = "image/jpeg";
-    if (fileName.toLower().endsWith(".png"))
+    if (lower.endsWith(".png"))
         contentType = "image/png";
+    else if (lower.endsWith(".gif"))
+        contentType = "image/gif";
+    else if (lower.endsWith(".bmp"))
+        contentType = "image/bmp";
+    else if (lower.endsWith(".webp"))
+        contentType = "image/webp";
+    else if (lower.endsWith(".svg") || lower.endsWith(".svgz"))
+        contentType = "image/svg+xml";
+    avLog("Content-Type: " + contentType + " token set: " + (m_token.isEmpty() ? "NO" : "YES"));
 
     QUrl url(m_baseUrl + "/api/users/me/avatar");
     QNetworkRequest request(url);
@@ -436,18 +469,26 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
     request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
     if (!m_token.isEmpty())
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    avLog("POST " + url.toString());
 
     QNetworkReply* reply = m_nam.post(request, fileData);
 
-    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this)]() {
-        if (!self) return;
+    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this), avLog]() {
+        if (!self) {
+            avLog("callback: self is null");
+            return;
+        }
 
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         QByteArray responseData = reply->readAll();
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
         reply->deleteLater();
 
+        avLog("response status: " + QString::number(statusCode));
+        avLog("response body: " + QString::fromUtf8(responseData));
+
         if (statusCode == 401) {
+            avLog("unauthorized (401)");
             emit self->unauthorized();
             self->invokeUnauthorizedHandler();
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "未授权");
@@ -459,6 +500,7 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
             QString err = QString::fromUtf8(responseData);
             if (doc.isObject() && doc.object().contains("error"))
                 err = doc.object()["error"].toString();
+            avLog("request failed: " + err);
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, err.toStdString());
             return;
         }
@@ -468,8 +510,10 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
             gocook::models::AvatarUploadResponse resp;
             resp.avatar_id = obj["avatar_id"].toInt();
             resp.avatar_url = obj["avatar_url"].toString().toStdString();
+            avLog("SUCCESS: avatar_id=" + QString::number(resp.avatar_id) + " avatar_url=" + QString::fromStdString(resp.avatar_url));
             if (callback) callback(true, resp, "");
         } else {
+            avLog("invalid response format (not JSON)");
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无效的响应格式");
         }
     });
@@ -479,9 +523,23 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
                                    const std::string& newPassword,
                                    SuccessCallback callback)
 {
-    Q_UNUSED(currentPassword);
-    Q_UNUSED(newPassword);
-    if (callback) callback(false, "Not implemented");
+    QVariantMap data;
+    data["current_password"] = QString::fromStdString(currentPassword);
+    data["new_password"] = QString::fromStdString(newPassword);
+
+    put("/api/users/me/password", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::deleteAccount(SuccessCallback callback)

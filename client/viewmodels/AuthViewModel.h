@@ -24,6 +24,9 @@ class AuthViewModel : public QObject
     Q_PROPERTY(QString profilePhone READ profilePhone NOTIFY profileChanged)
     Q_PROPERTY(QString profileAvatarUrl READ profileAvatarUrl NOTIFY profileChanged)
 
+    // API 基础 URL（用于 QML 拼接头像等静态资源 URL）
+    Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)
+
 public:
     explicit AuthViewModel(IGoCookApi *api, QObject *parent = nullptr);
 
@@ -37,6 +40,7 @@ public:
     QString profileEmail() const { return m_profileEmail; }
     QString profilePhone() const { return m_profilePhone; }
     QString profileAvatarUrl() const { return m_profileAvatarUrl; }
+    QString apiBaseUrl() const;
 
     Q_INVOKABLE void login(const QString &username, const QString &password);
     Q_INVOKABLE void registerUser(const QString &username, const QString &password, const QString &email);
@@ -47,6 +51,7 @@ public:
     Q_INVOKABLE void loadProfile();
     Q_INVOKABLE void saveProfile(const QString &displayName, const QString &email, const QString &phone);
     Q_INVOKABLE void uploadAvatar(const QString &filePath);
+    Q_INVOKABLE void changePassword(const QString &currentPassword, const QString &newPassword);
 
 signals:
     void loggedInChanged();
@@ -65,6 +70,8 @@ signals:
     void profileSaveFailed(const QString &error);
     void avatarUploaded(const QString &avatarUrl);
     void avatarUploadFailed(const QString &error);
+    void passwordChanged();
+    void passwordChangeFailed(const QString &error);
 
 private:
     void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "");
@@ -81,4 +88,5 @@ private:
     QString m_profileEmail;
     QString m_profilePhone;
     QString m_profileAvatarUrl;
+    int m_pendingAvatarId = 0;   // 上次上传头像的 avatar_id，在 saveProfile 时传递
 };
