@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gocook/IUserRepository.h>
-#include "../ConnectionPool.h"
+#include "../common/ConnectionPool.h"
 
 class PgUserRepository : public gocook::repository::IUserRepository {
 public:

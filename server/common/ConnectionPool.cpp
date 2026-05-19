@@ -1,5 +1,5 @@
 #include "ConnectionPool.h"
-#include "common/Logger.h"
+#include "Logger.h"
 #include <gocook/IServices.h>
 #include <stdexcept>
 

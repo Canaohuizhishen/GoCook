@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gocook/IInventoryRepository.h>
-#include "../ConnectionPool.h"
+#include "../common/ConnectionPool.h"
 
 class PgInventoryRepository : public gocook::repository::IInventoryRepository {
 public:

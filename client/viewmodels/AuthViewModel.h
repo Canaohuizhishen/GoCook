@@ -2,7 +2,7 @@
 
 #include <QObject>
 #include <gocook/IGoCookApi.h>
-#include "LocalDatabase.h"
+#include "../database/LocalDatabase.h"
 
 /**
  * @brief 用户认证管理类，处理登录、注册、登出及自动登录逻辑

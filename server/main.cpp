@@ -6,7 +6,7 @@
 #include <memory>
 #include "common/Config.h"
 #include "common/Logger.h"
-#include "ConnectionPool.h"
+#include "common/ConnectionPool.h"
 #include "repositories/PgUserRepository.h"
 #include "repositories/PgRecipeRepository.h"
 #include "repositories/PgInventoryRepository.h"
@@ -25,7 +25,7 @@
 #include "handlers/MealPlanHandler.h"
 #include "handlers/AnnouncementHandler.h"
 #include "handlers/AdminHandler.h"
-#include "auth_middleware.h"
+#include "middleware/auth_middleware.h"
 #include "Router.h"
 
 namespace {

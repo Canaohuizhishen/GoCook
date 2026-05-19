@@ -15,10 +15,10 @@ pkg_check_modules(PQXX REQUIRED libpqxx)
 
 # ---- 可复用的服务器库（不含 main.cpp）----
 set(SERVER_LIB_SOURCES
-    ConnectionPool.cpp ConnectionPool.h
+    common/ConnectionPool.cpp common/ConnectionPool.h
     Router.h Router.cpp
-    auth_middleware.h auth_middleware.cpp
-    RateLimiter.h RateLimiter.cpp
+    middleware/auth_middleware.h middleware/auth_middleware.cpp
+    middleware/RateLimiter.h middleware/RateLimiter.cpp
     ../contracts/include/gocook/IServices.h
     ../contracts/include/gocook/DataModels.h
     ../contracts/include/gocook/IUserRepository.h

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gocook/IAdminRepository.h>
-#include "../ConnectionPool.h"
+#include "../common/ConnectionPool.h"
 
 class PgAdminRepository : public gocook::repository::IAdminRepository {
 public:

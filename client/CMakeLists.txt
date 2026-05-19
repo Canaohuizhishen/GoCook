@@ -18,8 +18,8 @@ qt_add_qml_module(appclient
     URI client
     VERSION 1.0
     SOURCES main.cpp
-    SOURCES HttpGoCookApi.h HttpGoCookApi.cpp
-    SOURCES LocalDatabase.h LocalDatabase.cpp
+    SOURCES api/HttpGoCookApi.h api/HttpGoCookApi.cpp
+    SOURCES database/LocalDatabase.h database/LocalDatabase.cpp
     QML_FILES qml/pages/LoginPage.qml
     QML_FILES qml/pages/HomePage.qml
     QML_FILES qml/pages/RecommendPage.qml
@@ -46,9 +46,9 @@ qt_add_qml_module(appclient
 )
 
 # 增加头文件查找路径
-target_include_directories(appclient PRIVATE ${CMAKE_SOURCE_DIR}/../contracts/include)
-target_include_directories(appclient PRIVATE ${CMAKE_SOURCE_DIR}/../third_party)
-target_include_directories(appclient PRIVATE ${CMAKE_SOURCE_DIR}/adapters)
+target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../contracts/include)
+target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
+target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/adapters)
 
 target_sources(appclient
     PRIVATE

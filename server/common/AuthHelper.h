@@ -2,7 +2,7 @@
 
 #include <httplib/httplib.h>
 #include <gocook/DataModels.h>
-#include "../auth_middleware.h"
+#include "../middleware/auth_middleware.h"
 #include "ErrorHelper.h"
 
 /**
