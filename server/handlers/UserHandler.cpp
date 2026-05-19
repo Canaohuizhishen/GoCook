@@ -1,5 +1,7 @@
 #include "UserHandler.h"
 #include <optional>
+#include <fstream>
+#include <chrono>
 #include "../common/ErrorHelper.h"
 #include "../common/PaginationHelper.h"
 #include "../common/JsonSerializer.h"
@@ -127,11 +129,67 @@ void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& 
     }
 }
 
+// 从 Content-Type 提取 MIME 类型（去掉 ;boundary 等参数）
+static std::string extractMime(const std::string& ct) {
+    auto p = ct.find(';');
+    std::string m = (p == std::string::npos) ? ct : ct.substr(0, p);
+    while (!m.empty() && (m.front()==' '||m.front()=='\t')) m.erase(0,1);
+    while (!m.empty() && (m.back()==' '||m.back()=='\t')) m.pop_back();
+    return m;
+}
+
 void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
     try {
-        throw gocook::services::ServiceException("Not implemented", 501);
+        // 直接从 req.body 读取原始二进制数据（客户端直接发 POST body）
+        const std::string& content = req.body;
+
+        if (content.empty()) {
+            setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
+            return;
+        }
+
+        // 从 Content-Type 头获取 MIME 类型
+        std::string contentType = extractMime(req.get_header_value("Content-Type"));
+
+        // 校验文件类型
+        if (contentType != "image/jpeg" && contentType != "image/png"
+            && contentType != "image/jpg") {
+            setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
+            return;
+        }
+
+        // 校验文件大小（不超过 5MB）
+        if (content.size() > 5 * 1024 * 1024) {
+            setErrorResponse(res, 400, "图片大小不能超过5MB");
+            return;
+        }
+
+        // 写临时文件
+        std::string ext = (contentType == "image/png") ? ".png" : ".jpg";
+        std::string tempPath = "/tmp/gocook_avatar_" + std::to_string(info.userId)
+                             + "_" + std::to_string(std::chrono::system_clock::now()
+                                   .time_since_epoch().count()) + ext;
+
+        {
+            std::ofstream ofs(tempPath, std::ios::binary);
+            if (!ofs) {
+                setErrorResponse(res, 500, "文件写入失败");
+                return;
+            }
+            ofs.write(content.data(), content.size());
+        }
+
+        // 调用 Service 层
+        auto result = service_.uploadAvatar(info.userId, tempPath);
+
+        res.status = 200;
+        res.body = json{
+            {"avatar_id", result.avatar_id},
+            {"avatar_url", result.avatar_url}
+        }.dump();
+
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

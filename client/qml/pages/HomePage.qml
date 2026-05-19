@@ -11,6 +11,7 @@ Page {
     signal showDetailRequest(int recipeId)
     signal showSubmitRequest()
     signal showSearchRequest()
+    signal showProfileEditRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -85,6 +86,9 @@ Page {
             ProfilePage {
                 onShowSubmitRequest: {
                     homePage.showSubmitRequest()
+                }
+                onShowProfileEditRequest: {
+                    homePage.showProfileEditRequest()
                 }
             }
         }

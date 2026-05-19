@@ -213,10 +213,8 @@ TEST(UserServiceTest, 未实现方法返回501) {
 
     EXPECT_THROW(service.requestPasswordReset("a@b.com"), ServiceException);
     EXPECT_THROW(service.resetPassword("tok", "pw"), ServiceException);
-    EXPECT_THROW(service.updateProfile(1, {}), ServiceException);
     EXPECT_THROW(service.changePassword(1, "old", "new"), ServiceException);
     EXPECT_THROW(service.deleteAccount(1), ServiceException);
-    EXPECT_THROW(service.uploadAvatar(1, "f.png"), ServiceException);
     EXPECT_THROW(service.getPreferences(1), ServiceException);
     EXPECT_THROW(service.updatePreferences(1, {}), ServiceException);
     EXPECT_THROW(service.updateHealthProfile(1, {}), ServiceException);
@@ -231,4 +229,138 @@ TEST(UserServiceTest, 未实现方法返回501) {
     EXPECT_THROW(service.markNotificationRead(1, 1), ServiceException);
     EXPECT_THROW(service.markAllNotificationsRead(1), ServiceException);
     EXPECT_THROW(service.deleteNotification(1, 1), ServiceException);
+}
+
+// ==================== 更新个人资料 ====================
+
+TEST(UserServiceTest, 更新个人资料成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    UpdateProfileRequest profile;
+    profile.display_name = "新昵称";
+    profile.email = "new@example.com";
+    profile.phone = "13900139000";
+
+    auto currentProfile = makeUserProfile(42);  // has email "test@example.com"
+    auto updatedProfile = makeUserProfile(42);
+    updatedProfile.display_name = "新昵称";
+    updatedProfile.email = "new@example.com";
+    updatedProfile.phone = "13900139000";
+
+    // First findById is for email check (returns current), second is for return value (returns updated)
+    EXPECT_CALL(*repo, findById(42))
+        .WillOnce(Return(currentProfile))
+        .WillOnce(Return(updatedProfile));
+    EXPECT_CALL(*repo, existsByEmail("new@example.com")).WillOnce(Return(false));
+    EXPECT_CALL(*repo, updateProfile(42, _)).Times(1);
+
+    auto result = service.updateProfile(42, profile);
+    EXPECT_EQ(result.display_name, "新昵称");
+    EXPECT_EQ(result.email, "new@example.com");
+}
+
+TEST(UserServiceTest, 更新个人资料没有字段) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    try {
+        service.updateProfile(1, {});
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+    }
+}
+
+TEST(UserServiceTest, 更新个人资料昵称为空) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    UpdateProfileRequest profile;
+    profile.display_name = "";
+
+    try {
+        service.updateProfile(1, profile);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "昵称不能为空");
+    }
+}
+
+TEST(UserServiceTest, 更新个人资料邮箱已注册) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto current = makeUserProfile(42);
+    current.email = "old@example.com";
+
+    UpdateProfileRequest profile;
+    profile.email = "taken@example.com";
+
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(current));
+    EXPECT_CALL(*repo, existsByEmail("taken@example.com")).WillOnce(Return(true));
+
+    try {
+        service.updateProfile(42, profile);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 409);
+        EXPECT_STREQ(e.what(), "邮箱已被注册");
+    }
+}
+
+TEST(UserServiceTest, 更新个人资料邮箱不变跳过检查) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto current = makeUserProfile(42);
+    current.email = "same@example.com";
+
+    UpdateProfileRequest profile;
+    profile.display_name = "新昵称";
+    profile.email = "same@example.com";  // same as current — should NOT call existsByEmail
+
+    EXPECT_CALL(*repo, findById(42))
+        .Times(2)
+        .WillRepeatedly(Return(current));
+    EXPECT_CALL(*repo, existsByEmail(_)).Times(0);  // should not check
+    EXPECT_CALL(*repo, updateProfile(42, _)).Times(1);
+
+    auto result = service.updateProfile(42, profile);
+    EXPECT_EQ(result.display_name, "Test User");
+}
+
+// ==================== 头像上传 ====================
+
+TEST(UserServiceTest, 上传头像成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    AvatarUploadResponse expectedResp;
+    expectedResp.avatar_id = 42;
+    expectedResp.avatar_url = "/uploads/avatars/user_42_12345.jpg";
+
+    EXPECT_CALL(*repo, uploadAvatar(42, "/tmp/test_avatar.jpg"))
+        .WillOnce(Return(expectedResp));
+
+    auto result = service.uploadAvatar(42, "/tmp/test_avatar.jpg");
+    EXPECT_EQ(result.avatar_id, 42);
+    EXPECT_EQ(result.avatar_url, "/uploads/avatars/user_42_12345.jpg");
+}
+
+TEST(UserServiceTest, 上传头像空路径) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    try {
+        service.uploadAvatar(1, "");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+    }
 }

@@ -43,6 +43,7 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
+    QML_FILES qml/pages/ProfileEditPage.qml
 )
 
 # 增加头文件查找路径
