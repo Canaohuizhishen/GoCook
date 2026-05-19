@@ -1,4 +1,5 @@
 #include "Router.h"
+#include "common/Logger.h"
 
 Router::Router(ConnectionPool& db,
                RecipeHandler& recipeHandler,
@@ -42,6 +43,12 @@ void Router::setupRoutes(httplib::Server& svr) {
     registerAnnouncementRoutes(svr);
     registerAdminRoutes(svr);
     registerPublicTestRoutes(svr);
+
+    // 挂载静态文件目录，用于头像等上传文件的访问
+    // 文件实际存储在 <project_root>/uploads/ 下
+    if (!svr.set_mount_point("/uploads", "uploads")) {
+        LOG_WARN("无法挂载静态文件目录 uploads/ ，头像服务可能不可用");
+    }
 }
 
 // ============================================================

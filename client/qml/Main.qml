@@ -153,6 +153,9 @@ ApplicationWindow {
             onShowSearchRequest: () => {
                 stackView.push(searchPage)
             }
+            onShowProfileEditRequest: () => {
+                stackView.push(profileEditPage)
+            }
         }
     }
 
@@ -178,6 +181,11 @@ ApplicationWindow {
                 stackView.push(recipeDetailPage, {recipeId: recipeId})
             }
         }
+    }
+
+    Component {
+        id: profileEditPage
+        ProfileEditPage { }
     }
 
     Component {

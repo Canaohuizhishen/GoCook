@@ -99,6 +99,72 @@ void AuthViewModel::checkAutoLogin()
     }
 }
 
+void AuthViewModel::loadProfile() {
+    if (!m_loggedIn) return;
+    m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](bool success,
+                           const gocook::models::UserProfile& profile,
+                           const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->profileSaveFailed(QString::fromStdString(error));
+            return;
+        }
+        self->m_profileDisplayName = QString::fromStdString(profile.display_name);
+        self->m_profileEmail = QString::fromStdString(profile.email);
+        self->m_profilePhone = QString::fromStdString(profile.phone);
+        self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
+        emit self->profileChanged();
+    });
+}
+
+void AuthViewModel::saveProfile(const QString &displayName,
+                                 const QString &email,
+                                 const QString &phone) {
+    if (!m_loggedIn) return;
+
+    gocook::models::UpdateProfileRequest req;
+    if (!displayName.isEmpty())
+        req.display_name = displayName.toStdString();
+    if (!email.isEmpty())
+        req.email = email.toStdString();
+    if (!phone.isEmpty())
+        req.phone = phone.toStdString();
+
+    m_api->updateProfile(req, [self = QPointer<AuthViewModel>(this)]
+                         (bool success,
+                          const gocook::models::UserProfile& profile,
+                          const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->profileSaveFailed(QString::fromStdString(error));
+            return;
+        }
+        self->m_profileDisplayName = QString::fromStdString(profile.display_name);
+        self->m_profileEmail = QString::fromStdString(profile.email);
+        self->m_profilePhone = QString::fromStdString(profile.phone);
+        self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
+        emit self->profileChanged();
+        emit self->profileSaved();
+    });
+}
+
+void AuthViewModel::uploadAvatar(const QString &filePath) {
+    if (!m_loggedIn) return;
+    m_api->uploadAvatar(filePath.toStdString(), [self = QPointer<AuthViewModel>(this)]
+                        (bool success,
+                         const gocook::models::AvatarUploadResponse& resp,
+                         const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->avatarUploadFailed(QString::fromStdString(error));
+            return;
+        }
+        self->m_profileAvatarUrl = QString::fromStdString(resp.avatar_url);
+        emit self->profileChanged();
+        emit self->avatarUploaded(QString::fromStdString(resp.avatar_url));
+    });
+}
+
 void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
 {
     if (m_loggedIn != loggedIn) {

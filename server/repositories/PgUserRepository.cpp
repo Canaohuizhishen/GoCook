@@ -2,6 +2,9 @@
 #include <pqxx/pqxx>
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
+#include <filesystem>
+#include <fstream>
+#include <chrono>
 
 using namespace gocook::models;
 using namespace gocook::repository;
@@ -83,8 +86,36 @@ std::optional<UserProfile> PgUserRepository::findById(int userId) {
     }
 }
 
-void PgUserRepository::updateProfile(int, const UpdateProfileRequest&) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& profile) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        txn.exec_params(
+            "UPDATE users SET "
+            "display_name = COALESCE($1, display_name), "
+            "email = COALESCE($2, email), "
+            "phone = COALESCE($3, phone), "
+            "avatar_url = COALESCE($4, avatar_url) "
+            "WHERE id = $5",
+            profile.display_name.has_value()
+                ? profile.display_name.value().c_str()
+                : nullptr,
+            profile.email.has_value()
+                ? profile.email.value().c_str()
+                : nullptr,
+            profile.phone.has_value()
+                ? profile.phone.value().c_str()
+                : nullptr,
+            profile.avatar_url.has_value()
+                ? profile.avatar_url.value().c_str()
+                : nullptr,
+            userId
+        );
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 void PgUserRepository::changePassword(int, const std::string&) {
@@ -95,8 +126,55 @@ void PgUserRepository::deleteAccount(int) {
     throw ServiceException("Not implemented", 501);
 }
 
-AvatarUploadResponse PgUserRepository::uploadAvatar(int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::string& filePath) {
+    try {
+        // Determine file extension from the uploaded file
+        std::string ext = ".jpg";  // default
+        auto dotPos = filePath.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            std::string origExt = filePath.substr(dotPos);
+            if (origExt == ".png" || origExt == ".PNG") ext = ".png";
+        }
+
+        // Generate unique filename: user_<id>_<timestamp><ext>
+        auto now = std::chrono::system_clock::now();
+        auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+                      now.time_since_epoch()).count();
+        std::string filename = "user_" + std::to_string(userId)
+                             + "_" + std::to_string(ts) + ext;
+
+        // Create uploads directory if needed
+        std::string uploadDir = "uploads/avatars/";
+        std::filesystem::create_directories(uploadDir);
+        std::string destPath = uploadDir + filename;
+
+        // Copy file to permanent location
+        std::filesystem::copy(filePath, destPath,
+                              std::filesystem::copy_options::overwrite_existing);
+
+        // Build URL: for now use relative path; in production would be full URL
+        std::string avatarUrl = "/" + destPath;
+
+        // Update user's avatar_url in database
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        txn.exec_params(
+            "UPDATE users SET avatar_url = $1 WHERE id = $2",
+            avatarUrl, userId);
+        txn.commit();
+
+        // Clean up temp file
+        std::filesystem::remove(filePath);
+
+        AvatarUploadResponse resp;
+        resp.avatar_id = userId;   // Use userId as avatar resource identifier
+        resp.avatar_url = avatarUrl;
+        return resp;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in uploadAvatar: %s", e.what());
+        throw ServiceException("头像上传失败");
+    }
 }
 
 UserPreferences PgUserRepository::getPreferences(int) {

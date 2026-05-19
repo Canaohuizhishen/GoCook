@@ -8,6 +8,8 @@
 #include <QtQml/QQmlEngine>
 #include <QTimer>
 #include <QPointer>
+#include <QFile>
+#include <QFileInfo>
 #include <gocook/IServices.h>
 
 // 构造函数
@@ -349,8 +351,41 @@ void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
 
 void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& profile,
                                   UserProfileCallback callback) {
-    Q_UNUSED(profile);
-    if (callback) callback(false, gocook::models::UserProfile{}, "Not implemented");
+    QVariantMap data;
+    if (profile.display_name.has_value())
+        data["display_name"] = QString::fromStdString(profile.display_name.value());
+    if (profile.email.has_value())
+        data["email"] = QString::fromStdString(profile.email.value());
+    if (profile.phone.has_value())
+        data["phone"] = QString::fromStdString(profile.phone.value());
+    if (profile.avatar_url.has_value())
+        data["avatar_url"] = QString::fromStdString(profile.avatar_url.value());
+    if (profile.avatar_id.has_value())
+        data["avatar_id"] = profile.avatar_id.value();
+
+    put("/api/users/me/profile", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, gocook::models::UserProfile{}, err.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::UserProfile profile;
+        profile.id = obj["id"].toInt();
+        profile.username = obj["username"].toString().toStdString();
+        profile.display_name = obj["display_name"].toString().toStdString();
+        profile.email = obj["email"].toString().toStdString();
+        profile.phone = obj["phone"].toString().toStdString();
+        profile.avatar_url = obj["avatar_url"].toString().toStdString();
+        profile.preferences_complete = obj["preferences_complete"].toBool();
+        profile.created_at = obj["created_at"].toString().toStdString();
+        if (callback) callback(true, profile, "");
+    });
 }
 
 void HttpGoCookApi::getPreferences(PreferencesCallback callback) {
@@ -372,8 +407,72 @@ void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileReque
 void HttpGoCookApi::uploadAvatar(const std::string& filePath,
                                  AvatarUploadCallback callback)
 {
-    Q_UNUSED(filePath);
-    if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "Not implemented");
+    QFile file(QString::fromStdString(filePath));
+    if (!file.exists()) {
+        if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "文件不存在");
+        return;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无法打开文件");
+        return;
+    }
+    QByteArray fileData = file.readAll();
+    QString fileName = QFileInfo(file.fileName()).fileName();
+    file.close();
+
+    if (fileData.size() > 5 * 1024 * 1024) {
+        if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "图片大小不能超过5MB");
+        return;
+    }
+
+    // ★ 直接发原始二进制 POST，不经过 sendRequest（避免 JSON 序列化大数据的风险）
+    QString contentType = "image/jpeg";
+    if (fileName.toLower().endsWith(".png"))
+        contentType = "image/png";
+
+    QUrl url(m_baseUrl + "/api/users/me/avatar");
+    QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    if (!m_token.isEmpty())
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+
+    QNetworkReply* reply = m_nam.post(request, fileData);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this)]() {
+        if (!self) return;
+
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        reply->deleteLater();
+
+        if (statusCode == 401) {
+            emit self->unauthorized();
+            self->invokeUnauthorizedHandler();
+            if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "未授权");
+            return;
+        }
+
+        bool success = (statusCode >= 200 && statusCode < 300);
+        if (!success) {
+            QString err = QString::fromUtf8(responseData);
+            if (doc.isObject() && doc.object().contains("error"))
+                err = doc.object()["error"].toString();
+            if (callback) callback(false, gocook::models::AvatarUploadResponse{}, err.toStdString());
+            return;
+        }
+
+        if (doc.isObject()) {
+            QJsonObject obj = doc.object();
+            gocook::models::AvatarUploadResponse resp;
+            resp.avatar_id = obj["avatar_id"].toInt();
+            resp.avatar_url = obj["avatar_url"].toString().toStdString();
+            if (callback) callback(true, resp, "");
+        } else {
+            if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无效的响应格式");
+        }
+    });
 }
 
 void HttpGoCookApi::changePassword(const std::string& currentPassword,

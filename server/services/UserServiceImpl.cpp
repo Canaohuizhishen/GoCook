@@ -109,15 +109,53 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
     return *user;
 }
 
-// 以下方法暂时未实现（骨架）
+// 以下方法暂时未实现（骨架）- updateProfile 已实现，uploadAvatar 已实现
 void UserServiceImpl::requestPasswordReset(const std::string&) {
     throw ServiceException("Not implemented", 501);
 }
 void UserServiceImpl::resetPassword(const std::string&, const std::string&) {
     throw ServiceException("Not implemented", 501);
 }
-UserProfile UserServiceImpl::updateProfile(int, const UpdateProfileRequest&) {
-    throw ServiceException("Not implemented", 501);
+UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileRequest& profile) {
+    // Validate: at least one field must be provided
+    if (!profile.display_name.has_value() && !profile.avatar_url.has_value() &&
+        !profile.avatar_id.has_value() && !profile.email.has_value() &&
+        !profile.phone.has_value()) {
+        throw ServiceException("没有提供需要更新的字段", 400);
+    }
+
+    // Validate display_name not empty
+    if (profile.display_name.has_value() && profile.display_name->empty()) {
+        throw ServiceException("昵称不能为空", 400);
+    }
+
+    // Resolve avatar_id → if avatar_id equals userId, keep current avatar_url
+    // (the upload already set it). If avatar_id is set but different, ignore it.
+    UpdateProfileRequest resolvedProfile = profile;
+    if (profile.avatar_id.has_value() && profile.avatar_id.value() == userId) {
+        // Keep existing avatar_url — set resolvedProfile.avatar_url to nullopt
+        // so the repo's COALESCE won't override it
+        resolvedProfile.avatar_url = std::nullopt;
+    }
+
+    // Check email uniqueness if being changed
+    if (profile.email.has_value() && !profile.email->empty()) {
+        auto currentUser = userRepo_->findById(userId);
+        if (currentUser.has_value() && profile.email.value() != currentUser->email) {
+            if (userRepo_->existsByEmail(profile.email.value())) {
+                throw ServiceException("邮箱已被注册", 409);
+            }
+        }
+    }
+
+    userRepo_->updateProfile(userId, resolvedProfile);
+
+    // Return updated profile
+    auto updated = userRepo_->findById(userId);
+    if (!updated.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+    return *updated;
 }
 void UserServiceImpl::changePassword(int, const std::string&, const std::string&) {
     throw ServiceException("Not implemented", 501);
@@ -125,8 +163,11 @@ void UserServiceImpl::changePassword(int, const std::string&, const std::string&
 void UserServiceImpl::deleteAccount(int) {
     throw ServiceException("Not implemented", 501);
 }
-AvatarUploadResponse UserServiceImpl::uploadAvatar(int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+AvatarUploadResponse UserServiceImpl::uploadAvatar(int userId, const std::string& filePath) {
+    if (filePath.empty()) {
+        throw ServiceException("文件路径无效", 400);
+    }
+    return userRepo_->uploadAvatar(userId, filePath);
 }
 UserPreferences UserServiceImpl::getPreferences(int) {
     throw ServiceException("Not implemented", 501);

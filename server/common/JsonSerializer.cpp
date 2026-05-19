@@ -189,6 +189,13 @@ json toJson(const HealthProfileResponse& resp) {
     return {{"suggested_avoidances", arr}};
 }
 
+json toJson(const AvatarUploadResponse& resp) {
+    return {
+        {"avatar_id", resp.avatar_id},
+        {"avatar_url", resp.avatar_url}
+    };
+}
+
 json toJson(const FavoriteItem& item) {
     return {
         {"id", item.id},

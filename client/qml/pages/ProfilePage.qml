@@ -8,6 +8,13 @@ Page {
     title: qsTr("个人中心")
 
     signal showSubmitRequest()
+    signal showProfileEditRequest()
+
+    // 页面创建时和每次可见时都加载最新用户资料
+    Component.onCompleted: authViewModel.loadProfile()
+    onVisibleChanged: {
+        if (visible) authViewModel.loadProfile()
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -18,18 +25,81 @@ Page {
             Layout.alignment: Qt.AlignHCenter
             spacing: Theme.spacingSmall
 
-            Canvas {
+            // ★ 圆形头像（Canvas 绘制，不依赖额外模块）
+            Item {
                 Layout.alignment: Qt.AlignHCenter
-                width: 48
-                height: 48
-                property color circleColor: Theme.textHint
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.strokeStyle = circleColor
-                    ctx.lineWidth = 1.5
-                    ctx.beginPath()
-                    ctx.arc(width / 2, height / 2, width / 2 - 2, 0, Math.PI * 2)
-                    ctx.stroke()
+                width: 72; height: 72
+
+                // 背景圆
+                Rectangle {
+                    anchors.fill: parent; radius: width / 2
+                    color: Theme.cardBackground
+                    border.color: Theme.dividerColor; border.width: 1
+                }
+
+                // 无头像时的占位文字
+                Text {
+                    id: profilePlaceholder
+                    anchors.centerIn: parent
+                    text: {
+                        var n = authViewModel.profileDisplayName
+                        if (n.length > 0) return n.charAt(0).toUpperCase()
+                        n = authViewModel.username
+                        if (n.length > 0) return n.charAt(0).toUpperCase()
+                        return "G"
+                    }
+                    font.family: Theme.fontFamily; font.pointSize: 32
+                    font.weight: Theme.fontWeightMedium; color: Theme.textHint
+                }
+
+                // Canvas 绘制圆形头像
+                Canvas {
+                    id: profileCanvas
+                    anchors.fill: parent; anchors.margins: 2
+
+                    property url pendingUrl: ""
+
+                    onPendingUrlChanged: {
+                        if (pendingUrl.toString().length > 0)
+                            loadImage(pendingUrl)
+                    }
+
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.clearRect(0, 0, width, height)
+                        var src = pendingUrl.toString()
+                        if (src.length === 0 || !ctx.isImageReady(src)) {
+                            profilePlaceholder.visible = true
+                            return
+                        }
+                        profilePlaceholder.visible = false
+                        ctx.beginPath()
+                        ctx.arc(width / 2, height / 2, width / 2, 0, Math.PI * 2)
+                        ctx.closePath()
+                        ctx.clip()
+                        ctx.drawImage(src, 0, 0, width, height)
+                    }
+
+                    onImageLoaded: requestPaint()
+                }
+
+                // 监听 profileAvatarUrl 变化
+                Connections {
+                    target: authViewModel
+                    function onProfileChanged() {
+                        var url = authViewModel.profileAvatarUrl
+                        if (url.length > 0)
+                            profileCanvas.pendingUrl = "http://127.0.0.1:8080" + url
+                        else
+                            profileCanvas.pendingUrl = ""
+                    }
+                }
+
+                // 圆形边框
+                Rectangle {
+                    anchors.fill: parent; radius: width / 2
+                    color: "transparent"
+                    border.color: Theme.dividerColor; border.width: 1.5
                 }
             }
 
@@ -56,6 +126,14 @@ Page {
             Layout.fillWidth: true
             height: 1
             color: Theme.dividerColor
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            buttonText: qsTr("编辑个人资料")
+            buttonType: CustomButton.ButtonType.Secondary
+            visible: authViewModel.loggedIn
+            onClicked: showProfileEditRequest()
         }
 
         CustomButton {
