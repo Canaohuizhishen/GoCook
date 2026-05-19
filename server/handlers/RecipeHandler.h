@@ -1,7 +1,7 @@
 #pragma once
 #include <httplib/httplib.h>
 #include <gocook/IServices.h>   // 只依赖抽象
-#include "../auth_middleware.h"
+#include "../middleware/auth_middleware.h"
 
 class RecipeHandler
 {

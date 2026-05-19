@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gocook/IMealPlanRepository.h>
-#include "../ConnectionPool.h"
+#include "../common/ConnectionPool.h"
 
 class PgMealPlanRepository : public gocook::repository::IMealPlanRepository {
 public:

@@ -3,7 +3,7 @@
 #include <httplib/httplib.h>
 #include <gocook/IServices.h>          // 依赖抽象 IMealPlanService
 #include <nlohmann/json.hpp>
-#include "../auth_middleware.h"
+#include "../middleware/auth_middleware.h"
 
 class MealPlanHandler {
 public:

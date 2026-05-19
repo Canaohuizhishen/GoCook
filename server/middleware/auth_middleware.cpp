@@ -1,5 +1,5 @@
 #include "auth_middleware.h"
-#include "common/Logger.h"
+#include "../common/Logger.h"
 #include <chrono>   // 用于检查 Token 过期时间
 
 using namespace gocook::models;

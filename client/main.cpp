@@ -1,8 +1,8 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include "HttpGoCookApi.h"
-#include "LocalDatabase.h"
+#include "api/HttpGoCookApi.h"
+#include "database/LocalDatabase.h"
 #include "viewmodels/AuthViewModel.h"
 #include "viewmodels/RecipeViewModel.h"
 #include "viewmodels/InventoryViewModel.h"

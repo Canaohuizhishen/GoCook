@@ -4,7 +4,7 @@
 #include <gocook/IServices.h>          // 依赖抽象 IUserService
 #include <nlohmann/json.hpp>
 #include <string>
-#include "../auth_middleware.h"
+#include "../middleware/auth_middleware.h"
 
 using json = nlohmann::json;
 

@@ -3,7 +3,7 @@
 #include <vector>
 #include <httplib/httplib.h>
 #include <gocook/IServices.h>
-#include "../auth_middleware.h"
+#include "../middleware/auth_middleware.h"
 
 class AdminHandler {
 public:
