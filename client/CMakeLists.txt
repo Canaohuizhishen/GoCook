@@ -26,6 +26,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/InventoryPage.qml
     QML_FILES qml/pages/ProfilePage.qml
     QML_FILES qml/pages/RecipeDetailPage.qml
+    QML_FILES qml/pages/NutritionReportPage.qml
     QML_FILES qml/pages/SubmitRecipePage.qml
     QML_FILES qml/Main.qml
     QML_FILES qml/styles/Theme.qml
