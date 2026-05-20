@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import client.styles
+import client
 import "../components"
 
 Page {
@@ -12,7 +12,7 @@ Page {
     signal showSubmitRequest()
     signal showSearchRequest()
     signal showProfileEditRequest()
-    signal showChangePasswordRequest()
+    signal showAccountSecurityRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -91,8 +91,8 @@ Page {
                 onShowProfileEditRequest: {
                     homePage.showProfileEditRequest()
                 }
-                onShowChangePasswordRequest: {
-                    homePage.showChangePasswordRequest()
+                onShowAccountSecurityRequest: {
+                    homePage.showAccountSecurityRequest()
                 }
             }
         }

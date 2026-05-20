@@ -2,12 +2,14 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import client.styles
+import client
 import "../components"
 
 Page {
     id: profileEditPage
     title: qsTr("编辑个人资料")
+
+    signal showPreferencesRequest()
 
     function goBack() {
         var item = profileEditPage.parent
@@ -75,7 +77,9 @@ Page {
         }
     }
 
-    Component.onCompleted: authViewModel.loadProfile()
+    Component.onCompleted: {
+        authViewModel.loadProfile()
+    }
 
     Item {
         anchors.fill: parent
@@ -204,12 +208,30 @@ Page {
                     }
                 }
 
+                Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
+
                 // ========== 状态提示 ==========
                 Text {
                     id: statusText; width: parent.width; height: 20
                     font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                     color: Theme.accentColor; horizontalAlignment: Text.AlignHCenter
                     visible: text.length > 0
+                }
+
+                // ========== 饮食偏好设置入口 ==========
+                Button {
+                    id: prefBtn; width: parent.width; height: 50
+                    text: qsTr("饮食偏好设置")
+                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.searchBarBackground; border.color: Theme.dividerColor; border.width: 1 }
+                    contentItem: Text {
+                        text: prefBtn.text; font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
+                        color: Theme.textPrimary; horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        profileEditPage.showPreferencesRequest()
+                    }
                 }
 
                 // ========== 保存按钮 ==========
@@ -263,7 +285,6 @@ Page {
                 profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + url
         }
         function onProfileSaved() {
-            console.log("[QML-AVATAR] onProfileSaved")
             statusText.text = qsTr("保存完成")
             profileEditPage.goBack()
         }
@@ -284,5 +305,6 @@ Page {
             profileEditPage.avatarUploading = false
             statusText.text = qsTr("头像上传失败: ") + error
         }
+
     }
 }

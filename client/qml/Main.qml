@@ -156,8 +156,8 @@ ApplicationWindow {
             onShowProfileEditRequest: () => {
                 stackView.push(profileEditPage)
             }
-            onShowChangePasswordRequest: () => {
-                stackView.push(changePasswordPage)
+            onShowAccountSecurityRequest: () => {
+                stackView.push(accountSecurityPage)
             }
         }
     }
@@ -188,12 +188,30 @@ ApplicationWindow {
 
     Component {
         id: profileEditPage
-        ProfileEditPage { }
+        ProfileEditPage {
+            onShowPreferencesRequest: () => {
+                stackView.push(preferencesPage)
+            }
+        }
+    }
+
+    Component {
+        id: preferencesPage
+        PreferencesPage { }
     }
 
     Component {
         id: changePasswordPage
         ChangePasswordPage { }
+    }
+
+    Component {
+        id: accountSecurityPage
+        AccountSecurityPage {
+            onShowChangePasswordRequest: () => {
+                stackView.push(changePasswordPage)
+            }
+        }
     }
 
     Component {

@@ -196,8 +196,13 @@ void UserServiceImpl::changePassword(int userId,
     userRepo_->changePassword(userId, newHash);
     std::cerr << "[PASSWORD] password changed successfully" << std::endl;
 }
-void UserServiceImpl::deleteAccount(int) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::deleteAccount(int userId) {
+    // Verify user exists first
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+    userRepo_->deleteAccount(userId);
 }
 AvatarUploadResponse UserServiceImpl::uploadAvatar(int userId, const std::string& filePath) {
     std::cerr << "[AVATAR-SERVICE] UserServiceImpl::uploadAvatar(userId="
@@ -211,11 +216,21 @@ AvatarUploadResponse UserServiceImpl::uploadAvatar(int userId, const std::string
               << " avatar_url='" << result.avatar_url << "'" << std::endl;
     return result;
 }
-UserPreferences UserServiceImpl::getPreferences(int) {
-    throw ServiceException("Not implemented", 501);
+UserPreferences UserServiceImpl::getPreferences(int userId) {
+    // Verify user exists first
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+    return userRepo_->getPreferences(userId);
 }
-void UserServiceImpl::updatePreferences(int, const UserPreferences&) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::updatePreferences(int userId, const UserPreferences& prefs) {
+    // Verify user exists first
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+    userRepo_->updatePreferences(userId, prefs);
 }
 HealthProfileResponse UserServiceImpl::updateHealthProfile(int, const HealthProfileRequest&) {
     throw ServiceException("Not implemented", 501);

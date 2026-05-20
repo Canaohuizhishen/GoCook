@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+
 #include "api/HttpGoCookApi.h"
 #include "database/LocalDatabase.h"
 #include "viewmodels/AuthViewModel.h"
@@ -13,9 +14,10 @@ int main(int argc, char *argv[])
 
     QGuiApplication app(argc, argv);
 
+    // Register Theme.qml singleton under the "client" module (same URI as qt_add_qml_module)
     qmlRegisterSingletonType(
         QUrl("qrc:/client/qml/styles/Theme.qml"),
-        "client.styles",
+        "client",
         1, 0,
         "Theme"
         );

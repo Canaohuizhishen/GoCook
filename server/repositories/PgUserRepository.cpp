@@ -159,8 +159,32 @@ void PgUserRepository::changePassword(int userId, const std::string& newPassword
     }
 }
 
-void PgUserRepository::deleteAccount(int) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::deleteAccount(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 1. Anonymize public content: recipes (author_id has no CASCADE)
+        txn.exec_params("UPDATE recipes SET author_id = NULL WHERE author_id = $1", userId);
+        //    ratings: ON DELETE CASCADE + NOT NULL → gets deleted with user, fine
+
+        // 2. Delete user — CASCADE on FK constraints auto-clears:
+        //    user_preferences, health_profiles, inventory, shopping_lists,
+        //    shopping_list_items, notifications, meal_plans, favorites, favorite_groups
+        auto delResult = txn.exec_params(
+            "DELETE FROM users WHERE id = $1", userId
+        );
+        if (delResult.affected_rows() == 0) {
+            throw ServiceException("用户不存在", 404);
+        }
+
+        txn.commit();
+    } catch (const gocook::services::ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in deleteAccount: %s", e.what());
+        throw ServiceException("账户注销失败");
+    }
 }
 
 AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::string& filePath) {
@@ -249,12 +273,81 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
     }
 }
 
-UserPreferences PgUserRepository::getPreferences(int) {
-    throw ServiceException("Not implemented", 501);
+UserPreferences PgUserRepository::getPreferences(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        pqxx::result r = txn.exec_params(
+            "SELECT preference_type, value FROM user_preferences "
+            "WHERE user_id = $1 ORDER BY preference_type, value",
+            userId
+        );
+        txn.commit();
+
+        UserPreferences prefs;
+        for (const auto& row : r) {
+            std::string type = row["preference_type"].c_str();
+            std::string value = row["value"].c_str();
+            if (type == "likes") {
+                prefs.likes.push_back(value);
+            } else if (type == "dislikes" || type == "allergies") {
+                // v2.8: "allergies" and "dislikes" both map to dislikes
+                prefs.dislikes.push_back(value);
+            } else if (type == "health_goal" && prefs.health_goal.empty()) {
+                prefs.health_goal = value;
+            }
+        }
+        return prefs;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in getPreferences: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-void PgUserRepository::updatePreferences(int, const UserPreferences&) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::updatePreferences(int userId, const UserPreferences& prefs) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // Delete all existing preferences for this user
+        txn.exec_params("DELETE FROM user_preferences WHERE user_id = $1", userId);
+
+        // Insert likes
+        for (const auto& v : prefs.likes) {
+            txn.exec_params(
+                "INSERT INTO user_preferences (user_id, preference_type, value) VALUES ($1, 'likes', $2)",
+                userId, v
+            );
+        }
+
+        // Insert dislikes
+        for (const auto& v : prefs.dislikes) {
+            txn.exec_params(
+                "INSERT INTO user_preferences (user_id, preference_type, value) VALUES ($1, 'dislikes', $2)",
+                userId, v
+            );
+        }
+
+        // Insert health goal (if non-empty)
+        if (!prefs.health_goal.empty()) {
+            txn.exec_params(
+                "INSERT INTO user_preferences (user_id, preference_type, value) VALUES ($1, 'health_goal', $2)",
+                userId, prefs.health_goal
+            );
+        }
+
+        // Update preferences_complete flag on users table
+        bool hasPrefs = !prefs.likes.empty() || !prefs.dislikes.empty() || !prefs.health_goal.empty();
+        txn.exec_params(
+            "UPDATE users SET preferences_complete = $1 WHERE id = $2",
+            hasPrefs, userId
+        );
+
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updatePreferences: %s", e.what());
+        throw ServiceException("偏好保存失败");
+    }
 }
 
 HealthProfileResponse PgUserRepository::updateHealthProfile(int, const HealthProfileRequest&) {

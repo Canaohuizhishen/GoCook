@@ -204,6 +204,78 @@ void AuthViewModel::changePassword(const QString &currentPassword, const QString
     });
 }
 
+void AuthViewModel::deleteAccount() {
+    if (!m_loggedIn) {
+        emit accountDeleteFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
+    m_api->deleteAccount([self = QPointer<AuthViewModel>(this)]
+                         (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            // Clear local state and log out
+            self->m_db->clearUser();
+            self->m_api->setAuthToken("");
+            self->setLoggedIn(false, 0, "");
+            emit self->accountDeleted();
+        } else {
+            emit self->accountDeleteFailed(QString::fromStdString(
+                error.empty() ? "注销失败" : error));
+        }
+    });
+}
+
+void AuthViewModel::loadPreferences() {
+    if (!m_loggedIn) {
+        emit preferencesLoadFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
+    m_api->getPreferences([self = QPointer<AuthViewModel>(this)]
+                          (bool success,
+                           const gocook::models::UserPreferences& prefs,
+                           const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->preferencesLoadFailed(QString::fromStdString(
+                error.empty() ? "获取偏好失败" : error));
+            return;
+        }
+        QStringList likes, dislikes;
+        for (const auto& v : prefs.likes)
+            likes << QString::fromStdString(v);
+        for (const auto& v : prefs.dislikes)
+            dislikes << QString::fromStdString(v);
+        QString healthGoal = QString::fromStdString(prefs.health_goal);
+        emit self->preferencesLoaded(likes, dislikes, healthGoal);
+    });
+}
+
+void AuthViewModel::savePreferences(const QStringList &likes,
+                                     const QStringList &dislikes,
+                                     const QString &healthGoal) {
+    if (!m_loggedIn) {
+        emit preferencesSaveFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
+    gocook::models::UserPreferences prefs;
+    for (const auto& v : likes)
+        prefs.likes.push_back(v.toStdString());
+    for (const auto& v : dislikes)
+        prefs.dislikes.push_back(v.toStdString());
+    prefs.health_goal = healthGoal.toStdString();
+
+    m_api->updatePreferences(prefs, [self = QPointer<AuthViewModel>(this)]
+                             (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            emit self->preferencesSaved();
+        } else {
+            emit self->preferencesSaveFailed(QString::fromStdString(
+                error.empty() ? "保存失败" : error));
+        }
+    });
+}
+
 QString AuthViewModel::apiBaseUrl() const {
     // 返回 API 基础 URL，供 QML 拼接头像等静态资源 URL 使用
     // 实际从 HttpGoCookApi 获取，确保与 API 配置一致

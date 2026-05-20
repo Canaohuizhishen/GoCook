@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Shapes
 
-import client.styles
+import client
 import "../components"
 
 Page {

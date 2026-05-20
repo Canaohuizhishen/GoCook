@@ -18,6 +18,9 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool searchLoading READ searchLoading NOTIFY searchLoadingChanged)
     Q_PROPERTY(bool searchHasMore READ searchHasMore NOTIFY searchHasMoreChanged)
     Q_PROPERTY(bool searchPerformed READ searchPerformed NOTIFY searchPerformedChanged)
+    Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
+    Q_PROPERTY(bool favoritesHasMore READ favoritesHasMore NOTIFY favoritesHasMoreChanged)
+    Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoritesLoadingChanged)
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -32,6 +35,9 @@ public:
     bool searchLoading() const;
     bool searchHasMore() const;
     bool searchPerformed() const;
+    QVariantList favorites() const { return m_favorites; }
+    bool favoritesHasMore() const { return m_favoritesHasMore; }
+    bool favoritesLoading() const { return m_favoritesLoading; }
 
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 20);
     Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 20);
@@ -44,6 +50,9 @@ public:
     Q_INVOKABLE void searchRecipes(const QString& keyword, int page = 1, int size = 20);
     Q_INVOKABLE void searchNextPage();
     Q_INVOKABLE void resetSearch();
+
+    Q_INVOKABLE void loadFavorites(int page = 1, int size = 20);
+    Q_INVOKABLE void loadMoreFavorites();
 
 signals:
     void recipesChanged();
@@ -60,6 +69,9 @@ signals:
     void errorOccurred(const QString &error);
     void recipeSubmitted(int id, const QString& status);
     void submitFailed(const QString& error);
+    void favoritesChanged();
+    void favoritesHasMoreChanged();
+    void favoritesLoadingChanged();
 
 private:
     enum class LoadMode { Public, Recommended };
@@ -86,4 +98,11 @@ private:
     int m_searchPage = 1;
     int m_searchTotalPages = 0;
     QString m_lastKeyword;
+
+    // 收藏状态
+    QVariantList m_favorites;
+    int m_favoritesPage = 1;
+    int m_favoritesTotalPages = 0;
+    bool m_favoritesHasMore = false;
+    bool m_favoritesLoading = false;
 };

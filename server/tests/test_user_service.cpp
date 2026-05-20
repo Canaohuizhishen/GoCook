@@ -214,9 +214,6 @@ TEST(UserServiceTest, 未实现方法返回501) {
     EXPECT_THROW(service.requestPasswordReset("a@b.com"), ServiceException);
     EXPECT_THROW(service.resetPassword("tok", "pw"), ServiceException);
     EXPECT_THROW(service.changePassword(1, "old", "new"), ServiceException);
-    EXPECT_THROW(service.deleteAccount(1), ServiceException);
-    EXPECT_THROW(service.getPreferences(1), ServiceException);
-    EXPECT_THROW(service.updatePreferences(1, {}), ServiceException);
     EXPECT_THROW(service.updateHealthProfile(1, {}), ServiceException);
     EXPECT_THROW(service.getFavorites(1, 1, 20, ""), ServiceException);
     EXPECT_THROW(service.getFavoriteGroups(1), ServiceException);
@@ -362,5 +359,114 @@ TEST(UserServiceTest, 上传头像空路径) {
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 400);
+    }
+}
+
+// ==================== 注销账户 ====================
+
+TEST(UserServiceTest, 注销账户成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, deleteAccount(42)).Times(1);
+
+    EXPECT_NO_THROW(service.deleteAccount(42));
+}
+
+TEST(UserServiceTest, 注销账户用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, deleteAccount(_)).Times(0);
+
+    try {
+        service.deleteAccount(999);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
+    }
+}
+
+// ==================== 获取饮食偏好 ====================
+
+TEST(UserServiceTest, 获取饮食偏好成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    UserPreferences expectedPrefs;
+    expectedPrefs.likes = {"中式", "清淡"};
+    expectedPrefs.dislikes = {"香菜"};
+    expectedPrefs.health_goal = "减脂";
+    EXPECT_CALL(*repo, getPreferences(42)).WillOnce(Return(expectedPrefs));
+
+    auto result = service.getPreferences(42);
+    EXPECT_EQ(result.likes.size(), 2u);
+    EXPECT_EQ(result.likes[0], "中式");
+    EXPECT_EQ(result.likes[1], "清淡");
+    EXPECT_EQ(result.dislikes.size(), 1u);
+    EXPECT_EQ(result.dislikes[0], "香菜");
+    EXPECT_EQ(result.health_goal, "减脂");
+}
+
+TEST(UserServiceTest, 获取饮食偏好用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, getPreferences(_)).Times(0);
+
+    try {
+        service.getPreferences(999);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
+    }
+}
+
+// ==================== 更新饮食偏好 ====================
+
+TEST(UserServiceTest, 更新饮食偏好成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    UserPreferences prefs;
+    prefs.likes = {"中式", "清淡"};
+    prefs.dislikes = {"香菜"};
+    prefs.health_goal = "减脂";
+    EXPECT_CALL(*repo, updatePreferences(42, _)).Times(1);
+
+    EXPECT_NO_THROW(service.updatePreferences(42, prefs));
+}
+
+TEST(UserServiceTest, 更新饮食偏好用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, updatePreferences(_, _)).Times(0);
+
+    try {
+        service.updatePreferences(999, {});
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
     }
 }

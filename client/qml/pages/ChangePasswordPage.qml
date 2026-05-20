@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import client.styles
+import client
 
 Page {
     id: changePwdPage
