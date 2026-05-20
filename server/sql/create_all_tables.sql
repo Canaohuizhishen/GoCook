@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS shopping_lists         CASCADE;
 DROP TABLE IF EXISTS inventory              CASCADE;
 DROP TABLE IF EXISTS health_profiles        CASCADE;
 DROP TABLE IF EXISTS user_preferences       CASCADE;
+DROP TABLE IF EXISTS recipe_videos          CASCADE;
 DROP TABLE IF EXISTS recipes                CASCADE;
 DROP TABLE IF EXISTS announcements          CASCADE;
 DROP TABLE IF EXISTS users                  CASCADE;
@@ -64,6 +65,18 @@ CREATE TABLE IF NOT EXISTS recipes (
 
 -- 为菜谱名称创建索引（如果不存在）
 CREATE INDEX IF NOT EXISTS idx_recipes_name ON recipes (name);
+
+-- 2b. 菜谱关联视频表
+CREATE TABLE IF NOT EXISTS recipe_videos (
+    id SERIAL PRIMARY KEY,
+    recipe_id INT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    url TEXT NOT NULL,
+    thumbnail_url TEXT,
+    duration_seconds INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
 
 -- 3. 用户偏好与禁忌表
 CREATE TABLE IF NOT EXISTS user_preferences (

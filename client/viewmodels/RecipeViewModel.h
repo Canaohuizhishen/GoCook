@@ -20,6 +20,8 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool searchPerformed READ searchPerformed NOTIFY searchPerformedChanged)
     Q_PROPERTY(QVariantMap nutritionReport READ nutritionReport NOTIFY nutritionReportChanged)
     Q_PROPERTY(bool nutritionLoading READ nutritionLoading NOTIFY nutritionLoadingChanged)
+    Q_PROPERTY(QVariantList recipeVideos READ recipeVideos NOTIFY recipeVideosChanged)
+    Q_PROPERTY(bool videosLoading READ videosLoading NOTIFY videosLoadingChanged)
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -36,6 +38,8 @@ public:
     bool searchPerformed() const;
     QVariantMap nutritionReport() const;
     bool nutritionLoading() const;
+    QVariantList recipeVideos() const;
+    bool videosLoading() const;
 
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 20);
     Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 20);
@@ -49,6 +53,7 @@ public:
     Q_INVOKABLE void searchNextPage();
     Q_INVOKABLE void resetSearch();
     Q_INVOKABLE void loadNutritionReport(int recipeId);
+    Q_INVOKABLE void loadRecipeVideos(int recipeId);
 
 signals:
     void recipesChanged();
@@ -63,6 +68,8 @@ signals:
     void searchPerformedChanged();
     void nutritionReportChanged();
     void nutritionLoadingChanged();
+    void recipeVideosChanged();
+    void videosLoadingChanged();
     void searchErrorOccurred(const QString &error);
     void errorOccurred(const QString &error);
     void recipeSubmitted(int id, const QString& status);
@@ -97,4 +104,8 @@ private:
     // 营养报告状态
     QVariantMap m_nutritionReport;
     bool m_nutritionLoading = false;
+
+    // 视频状态
+    QVariantList m_recipeVideos;
+    bool m_videosLoading = false;
 };

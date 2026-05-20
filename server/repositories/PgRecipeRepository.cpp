@@ -376,8 +376,38 @@ RecipeDetail PgRecipeRepository::findById(int recipeId) {
     }
 }
 
-std::vector<RecipeVideo> PgRecipeRepository::findVideos(int) {
-    throw ServiceException("Not implemented", 501);
+std::vector<RecipeVideo> PgRecipeRepository::findVideos(int recipeId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result r = txn.exec_params(
+            "SELECT id, title, platform, url, thumbnail_url, duration_seconds"
+            " FROM recipe_videos"
+            " WHERE recipe_id = $1"
+            " ORDER BY id",
+            recipeId);
+
+        std::vector<RecipeVideo> videos;
+        for (const auto& row : r) {
+            RecipeVideo v;
+            v.id = row["id"].as<int>();
+            v.title = row["title"].c_str();
+            v.platform = row["platform"].c_str();
+            v.url = row["url"].c_str();
+            v.thumbnail_url = row["thumbnail_url"].as<std::string>("");
+            v.duration_seconds = row["duration_seconds"].as<int>(0);
+            videos.push_back(std::move(v));
+        }
+
+        txn.commit();
+        return videos;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findVideos: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 PagedRatings PgRecipeRepository::findRatings(int, int, int) {

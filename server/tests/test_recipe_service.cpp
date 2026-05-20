@@ -119,11 +119,53 @@ TEST(RecipeServiceTest, 智能推荐未实现) {
     EXPECT_THROW(service.getRecommendedRecipes(1, 1, 20), ServiceException);
 }
 
-TEST(RecipeServiceTest, 关联视频未实现) {
+TEST(RecipeServiceTest, 关联视频查询成功) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getRecipeVideos(1), ServiceException);
+    RecipeDetail recipe = makeDetail(1);
+    EXPECT_CALL(*repo, findById(1)).WillOnce(Return(recipe));
+
+    std::vector<RecipeVideo> fakeVideos;
+    RecipeVideo v1;
+    v1.id = 1;
+    v1.title = "大厨教你做番茄炒蛋";
+    v1.platform = "youtube";
+    v1.url = "https://www.youtube.com/watch?v=example";
+    v1.thumbnail_url = "https://img.youtube.com/vi/example/hqdefault.jpg";
+    v1.duration_seconds = 245;
+    fakeVideos.push_back(v1);
+
+    RecipeVideo v2;
+    v2.id = 2;
+    v2.title = "番茄炒蛋零基础版";
+    v2.platform = "bilibili";
+    v2.url = "https://www.bilibili.com/video/example";
+    v2.duration_seconds = 180;
+    fakeVideos.push_back(v2);
+
+    EXPECT_CALL(*repo, findVideos(1)).WillOnce(Return(fakeVideos));
+
+    auto result = service.getRecipeVideos(1);
+    EXPECT_EQ(result.size(), 2);
+    EXPECT_EQ(result[0].id, 1);
+    EXPECT_EQ(result[0].title, "大厨教你做番茄炒蛋");
+    EXPECT_EQ(result[0].platform, "youtube");
+    EXPECT_EQ(result[0].duration_seconds, 245);
+    EXPECT_EQ(result[1].id, 2);
+    EXPECT_EQ(result[1].title, "番茄炒蛋零基础版");
+}
+
+TEST(RecipeServiceTest, 关联视频菜谱不存在) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, findById(999))
+        .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
+
+    EXPECT_THROW(service.getRecipeVideos(999), ServiceException);
 }
 
 TEST(RecipeServiceTest, 评分评论未实现) {

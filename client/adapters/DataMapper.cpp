@@ -165,6 +165,18 @@ namespace DataMapper {
         return item;
     }
 
+    QVariantMap toMap(const gocook::models::RecipeVideo& video)
+    {
+        QVariantMap map;
+        map["id"] = video.id;
+        map["title"] = QString::fromStdString(video.title);
+        map["platform"] = QString::fromStdString(video.platform);
+        map["url"] = QString::fromStdString(video.url);
+        map["thumbnail_url"] = QString::fromStdString(video.thumbnail_url);
+        map["duration_seconds"] = video.duration_seconds;
+        return map;
+    }
+
     QVariantMap toMap(const gocook::models::SubmitRecipeResponse& resp) {
         QVariantMap map;
         map["id"]     = resp.id;

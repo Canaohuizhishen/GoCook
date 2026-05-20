@@ -69,21 +69,27 @@ void Router::registerRateLimiter(httplib::Server& svr) {
 
 void Router::registerRootRoute(httplib::Server& svr) {
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
-        std::string html = R"(
-<!DOCTYPE html>
-<html>
+        std::string html = R"(<!DOCTYPE html>
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <title>GoCook Server</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GoCook API 接口一览</title>
 </head>
 <body>
-    <h2>GoCook Server is running</h2>
-    <p>以下为公开测试接口（无需认证）：</p>
-    <ul>
-        <li><a href="/api/recipes/public">GET /api/recipes/public</a> — 公开菜谱列表</li>
-        <li><a href="/api/inventory/public">GET /api/inventory/public</a> — 公开库存列表（测试用户）</li>
-        <li><a href="/api/users/public">GET /api/users/public</a> — 公开用户列表</li>
-    </ul>
+<div class="container">
+    <h1>GoCook API</h1>
+    <h2>部分公开接口（用于测试）</h2>
+    <div class="endpoint">GET</span><a href="/api/recipes/public">/api/recipes/public</a>公开菜谱列表</span></div>
+    <div class="endpoint">GET</span><a href="/api/inventory/public">/api/inventory/public</a>公开库存（测试用户）</span></div>
+    <div class="endpoint">GET</span><a href="/api/users/public">/api/users/public</a>公开用户列表</span></div>
+    <div class="endpoint">GET</span><a href="/api/recipes/search?keyword=番茄">/api/recipes/search?keyword=</a>搜索菜谱（搜索关键词：番茄）</span></div>
+    <div class="endpoint">GET</span><a href="/api/recipes/1">/api/recipes/:id</a>菜谱详情（1：番茄炒蛋）</span></div>
+    <div class="endpoint">GET</span><a href="/api/recipes/1/nutrition">/api/recipes/:id/nutrition</a>菜谱营养报告（1：番茄炒蛋）</span></div>
+    <div class="endpoint">GET</span><a href="/api/recipes/1/videos">/api/recipes/:id/videos</a>菜谱关联视频（1：番茄炒蛋）</span></div>
+    <div class="endpoint">GET</span><a href="/api/recipes/1/ratings">/api/recipes/:id/ratings</a>菜谱评分与评论（1：番茄炒蛋）</span><span class="meta"></span></div>
+    <div class="endpoint">GET</span><a href="/api/announcements">/api/announcements</a>系统公告</span><span class="meta"></span></div>
+</div>
 </html>
     )";
         res.set_content(html, "text/html");
