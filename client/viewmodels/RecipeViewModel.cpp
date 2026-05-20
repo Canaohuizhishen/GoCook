@@ -246,3 +246,27 @@ void RecipeViewModel::resetSearch()
     emit searchHasMoreChanged();
     emit searchPerformedChanged();
 }
+
+QVariantMap RecipeViewModel::nutritionReport() const { return m_nutritionReport; }
+bool RecipeViewModel::nutritionLoading() const { return m_nutritionLoading; }
+
+void RecipeViewModel::loadNutritionReport(int recipeId)
+{
+    m_nutritionLoading = true;
+    emit nutritionLoadingChanged();
+
+    m_api->getRecipeNutrition(recipeId,
+        [self = QPointer<RecipeViewModel>(this)](bool success, const gocook::models::NutritionReport& data, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
+                self->m_nutritionLoading = false;
+                emit self->nutritionLoadingChanged();
+                return;
+            }
+            self->m_nutritionReport = DataMapper::toMap(data);
+            self->m_nutritionLoading = false;
+            emit self->nutritionLoadingChanged();
+            emit self->nutritionReportChanged();
+        });
+}

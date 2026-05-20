@@ -474,6 +474,62 @@ PagedUserRatings PgRecipeRepository::findMyRatings(int, int, int) {
     throw ServiceException("Not implemented", 501);
 }
 
-NutritionReport PgRecipeRepository::findNutrition(int) {
-    throw ServiceException("Not implemented", 501);
+NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result r = txn.exec_params(
+            "SELECT r.id, r.name, r.nutrition_info"
+            " FROM recipes r"
+            " WHERE r.id = $1",
+            recipeId);
+
+        if (r.empty()) {
+            throw ServiceException("菜谱不存在", 404);
+        }
+
+        const auto& row = r[0];
+
+        if (row["nutrition_info"].is_null()) {
+            throw ServiceException("该菜谱暂无营养报告", 400);
+        }
+
+        auto nutJson = json::parse(row["nutrition_info"].c_str());
+
+        NutritionReport report;
+        report.recipe_id = row["id"].as<int>();
+        report.recipe_name = row["name"].c_str();
+
+        auto perServing = nutJson["per_serving"];
+        report.per_serving.calories = perServing.value("calories", 0.0);
+        report.per_serving.protein_g = perServing.value("protein_g", 0.0);
+        report.per_serving.fat_g = perServing.value("fat_g", 0.0);
+        report.per_serving.carbs_g = perServing.value("carbs_g", 0.0);
+        report.per_serving.fiber_g = perServing.value("fiber_g", 0.0);
+        report.per_serving.sodium_mg = perServing.value("sodium_mg", 0.0);
+        report.per_serving.vitamin_c_mg = perServing.value("vitamin_c_mg", 0.0);
+
+        if (nutJson.contains("ingredients_breakdown")) {
+            for (const auto& item : nutJson["ingredients_breakdown"]) {
+                NutritionBreakdownItem bi;
+                bi.name = item.value("name", "");
+                bi.calories = item.value("calories", 0.0);
+                bi.protein_g = item.value("protein_g", 0.0);
+                bi.fat_g = item.value("fat_g", 0.0);
+                bi.carbs_g = item.value("carbs_g", 0.0);
+                report.ingredients_breakdown.push_back(std::move(bi));
+            }
+        }
+
+        report.health_notes = nutJson.value("health_notes", "");
+
+        txn.commit();
+        return report;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findNutrition: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }

@@ -28,7 +28,7 @@ Page {
         id: flickable
         anchors.fill: parent
         contentWidth: width
-        contentHeight: detailColumn.implicitHeight + Theme.spacingLarge + navBar.height + bottomBar.height + Theme.spacingMedium
+        contentHeight: detailColumn.implicitHeight + Theme.spacingLarge + navBar.height + bottomBar.height * 2 + Theme.spacingMedium
         clip: true
         topMargin: -navBar.height
         bottomMargin: -bottomBar.height
@@ -347,6 +347,15 @@ Page {
                     Text { text: recipeVM.recipeDetail.nutrition.fat + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
                     Text { text: qsTr("碳水"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
                     Text { text: recipeVM.recipeDetail.nutrition.carbs + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                }
+
+                CustomButton {
+                    width: parent.width
+                    buttonText: "\u2139 " + qsTr("查看详细营养报告")
+                    buttonType: CustomButton.ButtonType.Secondary
+                    onClicked: {
+                        _stackView.push("NutritionReportPage.qml", {recipeId: recipeId, _stackView: _stackView})
+                    }
                 }
             }
         }

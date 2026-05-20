@@ -822,8 +822,42 @@ void HttpGoCookApi::getMyRatings(int page, int size,
 void HttpGoCookApi::getRecipeNutrition(int recipeId,
                                         NutritionReportCallback callback)
 {
-    Q_UNUSED(recipeId);
-    if (callback) callback(false, gocook::models::NutritionReport{}, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1/nutrition").arg(recipeId);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::NutritionReport{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::NutritionReport report;
+        report.recipe_id = obj["recipe_id"].toInt();
+        report.recipe_name = obj["recipe_name"].toString().toStdString();
+
+        QJsonObject ps = obj["per_serving"].toObject();
+        report.per_serving.calories = ps["calories"].toDouble();
+        report.per_serving.protein_g = ps["protein_g"].toDouble();
+        report.per_serving.fat_g = ps["fat_g"].toDouble();
+        report.per_serving.carbs_g = ps["carbs_g"].toDouble();
+        report.per_serving.fiber_g = ps["fiber_g"].toDouble();
+        report.per_serving.sodium_mg = ps["sodium_mg"].toDouble();
+        report.per_serving.vitamin_c_mg = ps["vitamin_c_mg"].toDouble();
+
+        QJsonArray breakdownArr = obj["ingredients_breakdown"].toArray();
+        for (const QJsonValue& val : breakdownArr) {
+            QJsonObject item = val.toObject();
+            gocook::models::NutritionBreakdownItem bi;
+            bi.name = item["name"].toString().toStdString();
+            bi.calories = item["calories"].toDouble();
+            bi.protein_g = item["protein_g"].toDouble();
+            bi.fat_g = item["fat_g"].toDouble();
+            bi.carbs_g = item["carbs_g"].toDouble();
+            report.ingredients_breakdown.push_back(std::move(bi));
+        }
+
+        report.health_notes = obj["health_notes"].toString().toStdString();
+
+        callback(true, report, "");
+    });
 }
 
 // ======================= 库存管理 =======================

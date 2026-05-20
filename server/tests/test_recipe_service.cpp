@@ -182,9 +182,45 @@ TEST(RecipeServiceTest, 我的评分列表未实现) {
     EXPECT_THROW(service.getMyRatings(1, 1, 20), ServiceException);
 }
 
-TEST(RecipeServiceTest, 营养报告未实现) {
+TEST(RecipeServiceTest, 营养报告查询成功) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getRecipeNutrition(1), ServiceException);
+    NutritionReport fake;
+    fake.recipe_id = 1;
+    fake.recipe_name = "番茄炒蛋";
+    fake.per_serving.calories = 350;
+    fake.per_serving.protein_g = 15;
+    fake.per_serving.fat_g = 20;
+    fake.per_serving.carbs_g = 30;
+    fake.health_notes = "健康提示";
+
+    NutritionBreakdownItem item;
+    item.name = "鸡蛋";
+    item.calories = 140;
+    item.protein_g = 12;
+    item.fat_g = 10;
+    item.carbs_g = 2;
+    fake.ingredients_breakdown.push_back(item);
+
+    EXPECT_CALL(*repo, findNutrition(1)).WillOnce(Return(fake));
+
+    auto result = service.getRecipeNutrition(1);
+    EXPECT_EQ(result.recipe_id, 1);
+    EXPECT_EQ(result.recipe_name, "番茄炒蛋");
+    EXPECT_EQ(result.per_serving.calories, 350);
+    EXPECT_EQ(result.ingredients_breakdown.size(), 1);
+    EXPECT_EQ(result.ingredients_breakdown[0].name, "鸡蛋");
+}
+
+TEST(RecipeServiceTest, 营养报告菜谱不存在) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, findNutrition(999))
+        .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
+
+    EXPECT_THROW(service.getRecipeNutrition(999), ServiceException);
 }

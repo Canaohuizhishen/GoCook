@@ -51,6 +51,6 @@ void RecipeServiceImpl::deleteRating(int, int, int) {
 PagedUserRatings RecipeServiceImpl::getMyRatings(int, int, int) {
     throw ServiceException("Not implemented", 501);
 }
-NutritionReport RecipeServiceImpl::getRecipeNutrition(int) {
-    throw ServiceException("Not implemented", 501);
+NutritionReport RecipeServiceImpl::getRecipeNutrition(int recipeId) {
+    return recipeRepo_->findNutrition(recipeId);
 }
