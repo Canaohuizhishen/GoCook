@@ -246,3 +246,47 @@ void RecipeViewModel::resetSearch()
     emit searchHasMoreChanged();
     emit searchPerformedChanged();
 }
+
+void RecipeViewModel::loadFavorites(int page, int size)
+{
+    if (m_favoritesLoading) return;
+    m_favoritesLoading = true;
+    emit favoritesLoadingChanged();
+
+    m_api->getFavorites(page, size, "",
+                        [self = QPointer<RecipeViewModel>(this), page]
+                        (bool success, const gocook::models::PagedFavorites& data,
+                         const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->errorOccurred(QString::fromStdString(error));
+            self->m_favoritesLoading = false;
+            emit self->favoritesLoadingChanged();
+            return;
+        }
+
+        if (page == 1) {
+            self->m_favorites.clear();
+        }
+
+        for (const auto& fav : data.data) {
+            auto item = DataMapper::toMap(fav);
+            self->m_favorites.append(item);
+        }
+
+        self->m_favoritesPage = data.pagination.page;
+        self->m_favoritesTotalPages = data.pagination.total_pages;
+        self->m_favoritesHasMore = (self->m_favoritesPage < self->m_favoritesTotalPages);
+
+        emit self->favoritesChanged();
+        emit self->favoritesHasMoreChanged();
+        self->m_favoritesLoading = false;
+        emit self->favoritesLoadingChanged();
+    });
+}
+
+void RecipeViewModel::loadMoreFavorites()
+{
+    if (m_favoritesLoading || !m_favoritesHasMore) return;
+    loadFavorites(m_favoritesPage + 1, m_pageSize);
+}

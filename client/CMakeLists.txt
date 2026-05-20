@@ -7,7 +7,7 @@ project(client VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat)
+find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat QuickShapes)
 
 # 自动设置所有推荐的策略
 qt_standard_project_setup()
@@ -44,8 +44,10 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
+    QML_FILES qml/pages/PreferencesPage.qml
     QML_FILES qml/pages/ProfileEditPage.qml
     QML_FILES qml/pages/ChangePasswordPage.qml
+    QML_FILES qml/pages/AccountSecurityPage.qml
 )
 
 # 增加头文件查找路径
@@ -72,6 +74,7 @@ target_link_libraries(appclient
         Qt6::Sql
         Qt6::Qml
         Qt6::Core5Compat
+        Qt6::QuickShapes
 )
 
 set_target_properties(appclient PROPERTIES

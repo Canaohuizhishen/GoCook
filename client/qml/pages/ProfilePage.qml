@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import client.styles
+import client
 import "../components"
 
 Page {
@@ -9,7 +9,7 @@ Page {
 
     signal showSubmitRequest()
     signal showProfileEditRequest()
-    signal showChangePasswordRequest()
+    signal showAccountSecurityRequest()
 
     // 页面创建时和每次可见时都加载最新用户资料
     Component.onCompleted: authViewModel.loadProfile()
@@ -17,10 +17,17 @@ Page {
         if (visible) authViewModel.loadProfile()
     }
 
-    ColumnLayout {
+    // 居中容器，限制最大宽度，防止按钮随窗口放大
+    Item {
         anchors.fill: parent
         anchors.margins: Theme.spacingLarge
-        spacing: Theme.spacingMedium
+
+        ColumnLayout {
+            width: Math.min(parent.width, 400)
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            spacing: Theme.spacingMedium
 
         ColumnLayout {
             Layout.alignment: Qt.AlignHCenter
@@ -92,10 +99,10 @@ Page {
 
         CustomButton {
             Layout.fillWidth: true
-            buttonText: qsTr("修改密码")
+            buttonText: qsTr("账号与安全")
             buttonType: CustomButton.ButtonType.Secondary
             visible: authViewModel.loggedIn
-            onClicked: showChangePasswordRequest()
+            onClicked: showAccountSecurityRequest()
         }
 
         CustomButton {
@@ -176,4 +183,6 @@ Page {
             onClicked: authViewModel.logout()
         }
     }
+}
+
 }

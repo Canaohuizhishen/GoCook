@@ -52,6 +52,9 @@ public:
     Q_INVOKABLE void saveProfile(const QString &displayName, const QString &email, const QString &phone);
     Q_INVOKABLE void uploadAvatar(const QString &filePath);
     Q_INVOKABLE void changePassword(const QString &currentPassword, const QString &newPassword);
+    Q_INVOKABLE void deleteAccount();
+    Q_INVOKABLE void loadPreferences();
+    Q_INVOKABLE void savePreferences(const QStringList &likes, const QStringList &dislikes, const QString &healthGoal);
 
 signals:
     void loggedInChanged();
@@ -72,6 +75,12 @@ signals:
     void avatarUploadFailed(const QString &error);
     void passwordChanged();
     void passwordChangeFailed(const QString &error);
+    void accountDeleted();
+    void accountDeleteFailed(const QString &error);
+    void preferencesLoaded(const QStringList &likes, const QStringList &dislikes, const QString &healthGoal);
+    void preferencesLoadFailed(const QString &error);
+    void preferencesSaved();
+    void preferencesSaveFailed(const QString &error);
 
 private:
     void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "");

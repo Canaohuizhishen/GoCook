@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import client.styles
+import client
 
 Rectangle {
     id: loadingIndicator

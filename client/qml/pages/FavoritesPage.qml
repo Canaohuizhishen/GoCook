@@ -1,14 +1,11 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import client.styles
+import client
 import "../components"
 
 Page {
     title: qsTr("我的收藏")
-
-    property bool hasMore: false
-    property bool isLoading: false
 
     Component.onCompleted: {
         recipeVM.loadFavorites()
@@ -18,7 +15,7 @@ Page {
         id: loadingIndicator
         fullscreen: true
         message: qsTr("正在加载收藏...")
-        isLoading: recipeVM.isLoading && recipeVM.favorites.length === 0
+        isLoading: recipeVM.favoritesLoading && recipeVM.favorites.length === 0
     }
 
     ListView {
@@ -38,9 +35,9 @@ Page {
             recipeName: modelData.name
             recipeDescription: modelData.description
             imageSource: modelData.imageUrl || ""
-            prepTime: modelData.prepTime + qsTr("分钟")
-            cookTime: modelData.cookTime + qsTr("分钟")
-            tags: modelData.tags || []
+            prepTime: ""
+            cookTime: ""
+            tags: []
 
             onClicked: {
                 var page = Qt.createComponent("RecipeDetailPage.qml")
@@ -51,7 +48,7 @@ Page {
         }
 
         onAtYEndChanged: {
-            if (atYEnd && !recipeVM.isLoading && recipeVM.favoritesHasMore) {
+            if (atYEnd && !recipeVM.favoritesLoading && recipeVM.favoritesHasMore) {
                 recipeVM.loadMoreFavorites()
             }
         }
@@ -60,7 +57,7 @@ Page {
     Column {
         anchors.centerIn: parent
         spacing: Theme.spacingMedium
-        visible: recipeVM.favorites.length === 0 && !recipeVM.isLoading
+        visible: recipeVM.favorites.length === 0 && !recipeVM.favoritesLoading
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter

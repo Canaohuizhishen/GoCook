@@ -398,13 +398,55 @@ void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& pr
 }
 
 void HttpGoCookApi::getPreferences(PreferencesCallback callback) {
-    if (callback) callback(false, gocook::models::UserPreferences{}, "Not implemented");
+    get("/api/users/me/preferences", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::UserPreferences{}, errorStr.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::UserPreferences prefs;
+        if (obj.contains("likes")) {
+            for (const auto& v : obj["likes"].toArray())
+                prefs.likes.push_back(v.toString().toStdString());
+        }
+        if (obj.contains("dislikes")) {
+            for (const auto& v : obj["dislikes"].toArray())
+                prefs.dislikes.push_back(v.toString().toStdString());
+        }
+        if (obj.contains("health_goal"))
+            prefs.health_goal = obj["health_goal"].toString().toStdString();
+        if (callback) callback(true, prefs, "");
+    });
 }
 
 void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& prefs,
                                       SuccessCallback callback) {
-    Q_UNUSED(prefs);
-    if (callback) callback(false, "Not implemented");
+    QVariantMap data;
+    {
+        QStringList likes;
+        for (const auto& v : prefs.likes) likes << QString::fromStdString(v);
+        data["likes"] = likes;
+    }
+    {
+        QStringList dislikes;
+        for (const auto& v : prefs.dislikes) dislikes << QString::fromStdString(v);
+        data["dislikes"] = dislikes;
+    }
+    data["health_goal"] = QString::fromStdString(prefs.health_goal);
+
+    put("/api/users/me/preferences", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
@@ -544,7 +586,19 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
 
 void HttpGoCookApi::deleteAccount(SuccessCallback callback)
 {
-    if (callback) callback(false, "Not implemented");
+    deleteResource("/api/users/me", {}, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorMsg;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::getFavorites(int page, int size,
