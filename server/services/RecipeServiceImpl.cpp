@@ -24,8 +24,9 @@ RecipeDetail RecipeServiceImpl::getRecipeDetail(int recipeId) {
 SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int userId, const SubmitRecipeRequest& data) {
     return recipeRepo_->create(userId, data);
 }
-std::vector<RecipeVideo> RecipeServiceImpl::getRecipeVideos(int) {
-    throw ServiceException("Not implemented", 501);
+std::vector<RecipeVideo> RecipeServiceImpl::getRecipeVideos(int recipeId) {
+    recipeRepo_->findById(recipeId);  // 验证菜谱存在，不存在自动抛 404
+    return recipeRepo_->findVideos(recipeId);
 }
 PagedRatings RecipeServiceImpl::getRecipeRatings(int, int, int) {
     throw ServiceException("Not implemented", 501);

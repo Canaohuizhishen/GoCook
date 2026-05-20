@@ -690,8 +690,27 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
 
 void HttpGoCookApi::getRecipeVideos(int recipeId,
                                     RecipeVideosCallback callback) {
-    Q_UNUSED(recipeId);
-    if (callback) callback(false, {}, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1/videos").arg(recipeId);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, {}, errorMsg.toStdString());
+            return;
+        }
+        QJsonArray arr = doc.array();
+        std::vector<gocook::models::RecipeVideo> videos;
+        for (const auto& val : arr) {
+            QJsonObject obj = val.toObject();
+            gocook::models::RecipeVideo v;
+            v.id = obj["id"].toInt();
+            v.title = obj["title"].toString().toStdString();
+            v.platform = obj["platform"].toString().toStdString();
+            v.url = obj["url"].toString().toStdString();
+            v.thumbnail_url = obj["thumbnail_url"].toString().toStdString();
+            v.duration_seconds = obj["duration_seconds"].toInt();
+            videos.push_back(std::move(v));
+        }
+        callback(true, videos, "");
+    });
 }
 
 void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,

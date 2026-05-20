@@ -117,6 +117,10 @@ void RecipeViewModel::loadRecommendedRecipes(int page, int size)
 void RecipeViewModel::loadRecipeDetail(int recipeId)
 {
     m_detailLoading = true;
+    m_recipeVideos.clear();
+    m_videosLoading = false;
+    emit recipeVideosChanged();
+    emit videosLoadingChanged();
     emit detailLoadingChanged();
 
     m_api->getRecipeDetail(recipeId,
@@ -249,6 +253,8 @@ void RecipeViewModel::resetSearch()
 
 QVariantMap RecipeViewModel::nutritionReport() const { return m_nutritionReport; }
 bool RecipeViewModel::nutritionLoading() const { return m_nutritionLoading; }
+QVariantList RecipeViewModel::recipeVideos() const { return m_recipeVideos; }
+bool RecipeViewModel::videosLoading() const { return m_videosLoading; }
 
 void RecipeViewModel::loadNutritionReport(int recipeId)
 {
@@ -268,5 +274,29 @@ void RecipeViewModel::loadNutritionReport(int recipeId)
             self->m_nutritionLoading = false;
             emit self->nutritionLoadingChanged();
             emit self->nutritionReportChanged();
+        });
+}
+
+void RecipeViewModel::loadRecipeVideos(int recipeId)
+{
+    m_videosLoading = true;
+    emit videosLoadingChanged();
+
+    m_api->getRecipeVideos(recipeId,
+        [self = QPointer<RecipeViewModel>(this)](bool success, const std::vector<gocook::models::RecipeVideo>& data, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
+                self->m_videosLoading = false;
+                emit self->videosLoadingChanged();
+                return;
+            }
+            QVariantList list;
+            for (const auto& v : data)
+                list.append(DataMapper::toMap(v));
+            self->m_recipeVideos = list;
+            self->m_videosLoading = false;
+            emit self->videosLoadingChanged();
+            emit self->recipeVideosChanged();
         });
 }

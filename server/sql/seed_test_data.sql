@@ -533,5 +533,37 @@ INSERT INTO meal_plans (user_id, recipe_id, date, meal_type) VALUES
     ((SELECT id FROM users WHERE username = 'testuser'), 2, '2026-05-13', 'dinner')
 ON CONFLICT DO NOTHING;
 
+-- 14. 添加菜谱关联视频（23 道菜谱每道至少 1 条，覆盖 youtube + bilibili 双平台）
+INSERT INTO recipe_videos (id, recipe_id, title, platform, url, thumbnail_url, duration_seconds)
+SELECT v.id, v.recipe_id, v.title, v.platform, v.url, v.thumbnail_url, v.duration_seconds
+FROM (VALUES
+    (1,  1,  '厨师长教你西红柿炒蛋的做法',         'youtube',  'https://www.youtube.com/watch?v=2hvQFxZBTVY', 'https://i.ytimg.com/vi/2hvQFxZBTVY/hqdefault.jpg', 503),
+    (2,  1,  '番茄炒蛋零基础版',                   'bilibili', 'https://www.bilibili.com/video/BV1pD9MBfEwg', 'https://i0.hdslb.com/bfs/archive/a38d568dfac2d10187d2124f32de7dd6fdb922b3.jpg', 123),
+    (3,  2,  '西兰花的三种家常做法',               'youtube',  'https://www.youtube.com/watch?v=U_Xkq3Ots3w', 'https://i.ytimg.com/vi/U_Xkq3Ots3w/hqdefault.jpg', 540),
+    (4,  3,  '鸡肉沙拉超美味爽口做法',             'youtube',  'https://www.youtube.com/watch?v=6rm8jGYxIEw', 'https://i.ytimg.com/vi/6rm8jGYxIEw/hqdefault.jpg', 240),
+    (5,  4,  '正宗麻婆豆腐高清重置版',             'youtube',  'https://www.youtube.com/watch?v=USoC8AqirVA', 'https://i.ytimg.com/vi/USoC8AqirVA/hqdefault.jpg', 640),
+    (6,  4,  '家常小灶麻婆豆腐',                   'bilibili', 'https://www.bilibili.com/video/BV1jV41137Sy', 'https://i2.hdslb.com/bfs/archive/e82da03db145b57458ab6802e90cd06d892d5866.jpg', 280),
+    (7,  5,  '糖醋里脊老式经典做法',               'youtube',  'https://www.youtube.com/watch?v=vojPj5eS8uI', 'https://i.ytimg.com/vi/vojPj5eS8uI/hqdefault.jpg', 430),
+    (8,  6,  '创新版宫保鸡丁',                     'youtube',  'https://www.youtube.com/watch?v=jArsVnwbLmc', 'https://i.ytimg.com/vi/jArsVnwbLmc/hqdefault.jpg', 440),
+    (9,  7,  '清蒸鱼创新做法',                     'youtube',  'https://www.youtube.com/watch?v=XJ1YNbSU70w', 'https://i.ytimg.com/vi/XJ1YNbSU70w/hqdefault.jpg', 540),
+    (10, 8,  '炝炒酸辣土豆丝家常做法',             'youtube',  'https://www.youtube.com/watch?v=9HbErcNKAIk', 'https://i.ytimg.com/vi/9HbErcNKAIk/hqdefault.jpg', 540),
+    (11, 9,  '红烧肉的第二种做法肥而不腻',         'youtube',  'https://www.youtube.com/watch?v=cxRM-coyIA8', 'https://i.ytimg.com/vi/cxRM-coyIA8/hqdefault.jpg', 600),
+    (12, 10, '蚝油生菜的家常做法',                 'youtube',  'https://www.youtube.com/watch?v=mIKFC54ZHzU', 'https://i.ytimg.com/vi/mIKFC54ZHzU/hqdefault.jpg', 300),
+    (13, 11, '蒜苗回锅肉正宗做法',                 'youtube',  'https://www.youtube.com/watch?v=v72yoabCHXA', 'https://i.ytimg.com/vi/v72yoabCHXA/hqdefault.jpg', 540),
+    (14, 12, '酸菜水煮鱼的家常做法',               'youtube',  'https://www.youtube.com/watch?v=tWzSkgE274o', 'https://i.ytimg.com/vi/tWzSkgE274o/hqdefault.jpg', 520),
+    (15, 13, '国宴大师蚝油牛肉',                   'youtube',  'https://www.youtube.com/watch?v=qPIsM0vfvDM', 'https://i.ytimg.com/vi/qPIsM0vfvDM/hqdefault.jpg', 360),
+    (16, 14, '醋溜大白菜的家常做法',               'youtube',  'https://www.youtube.com/watch?v=jjyd_l0S85E', 'https://i.ytimg.com/vi/jjyd_l0S85E/hqdefault.jpg', 300),
+    (17, 15, '干煸四季豆家常做法',                 'youtube',  'https://www.youtube.com/watch?v=4WU7xDeRZQc', 'https://i.ytimg.com/vi/4WU7xDeRZQc/hqdefault.jpg', 540),
+    (18, 16, '葱爆羊肉家常做法',                   'youtube',  'https://www.youtube.com/watch?v=BdTZURT3uL4', 'https://i.ytimg.com/vi/BdTZURT3uL4/hqdefault.jpg', 380),
+    (19, 17, '紫菜蛋花汤正确做法',                 'youtube',  'https://www.youtube.com/watch?v=tV-Pi10wBEk', 'https://i.ytimg.com/vi/tV-Pi10wBEk/hqdefault.jpg', 200),
+    (20, 18, '鱼香肉丝家常做法',                   'youtube',  'https://www.youtube.com/watch?v=wOtheXhqOAI', 'https://i.ytimg.com/vi/wOtheXhqOAI/hqdefault.jpg', 480),
+    (21, 19, '西红柿炖牛肉家常做法',               'youtube',  'https://www.youtube.com/watch?v=c7WdU8vyTTE', 'https://i.ytimg.com/vi/c7WdU8vyTTE/hqdefault.jpg', 540),
+    (22, 20, '蒜蓉粉丝开背虾做法',                 'youtube',  'https://www.youtube.com/watch?v=o-I645If8rc', 'https://i.ytimg.com/vi/o-I645If8rc/hqdefault.jpg', 420),
+    (23, 21, '地三鲜的简单做法',                   'youtube',  'https://www.youtube.com/watch?v=TKw5uYB1Vrw', 'https://i.ytimg.com/vi/TKw5uYB1Vrw/hqdefault.jpg', 360),
+    (24, 22, '口水鸡的正宗做法',                   'youtube',  'https://www.youtube.com/watch?v=99nspRiav-A', 'https://i.ytimg.com/vi/99nspRiav-A/hqdefault.jpg', 540),
+    (25, 23, '蛋炒饭的家常做法',                   'youtube',  'https://www.youtube.com/watch?v=EvE5cYNXufY', 'https://i.ytimg.com/vi/EvE5cYNXufY/hqdefault.jpg', 360)
+) AS v(id, recipe_id, title, platform, url, thumbnail_url, duration_seconds)
+WHERE NOT EXISTS (SELECT 1 FROM recipe_videos WHERE id = v.id);
+
 -- 完成提示
 \echo 'Test data seeded successfully!'

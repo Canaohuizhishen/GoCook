@@ -25,6 +25,7 @@ namespace DataMapper {
     QVariantMap toMap(const gocook::models::RecipeSummary& recipe);
     QVariantMap toMap(const gocook::models::RecommendedRecipe& recipe);
     QVariantMap toMap(const gocook::models::RecipeDetail& detail);
+    QVariantMap toMap(const gocook::models::RecipeVideo& video);
     QVariantMap toMap(const gocook::models::SubmitRecipeResponse& resp);
 
     // ========== 营养报告（v2.8 新增） ==========

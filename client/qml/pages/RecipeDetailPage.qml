@@ -9,6 +9,8 @@ Page {
 
     property int recipeId: 0
     property bool isFavorited: false
+    property bool videosAttempted: false
+    readonly property var recipeTags: recipeVM.recipeDetail.tags || []
     readonly property real imageHeight: Math.min(250, (flickable.width - Theme.spacingMedium * 2) * 0.6)
     readonly property real navThreshold: imageHeight - navBar.height
 
@@ -71,8 +73,6 @@ Page {
                 width: parent.width
                 spacing: Theme.spacingSmall
                 visible: recipeTags != null && recipeTags.length > 0
-
-                property var recipeTags: recipeVM.recipeDetail.tags || []
 
                 Repeater {
                     model: recipeTags
@@ -358,6 +358,165 @@ Page {
                     }
                 }
             }
+
+            // ---- 关联视频区域 ----
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Theme.dividerColor
+                visible: recipeVM.recipeVideos.length > 0 || recipeVM.videosLoading
+            }
+
+            Column {
+                width: parent.width
+                spacing: Theme.spacingSmall
+
+                Text {
+                    text: qsTr("关联视频")
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSizeH3
+                    font.weight: Theme.fontWeightMedium
+                    color: Theme.textPrimary
+                    visible: recipeVM.recipeVideos.length > 0
+                }
+
+                // 加载按钮（首次点击触发加载）
+                CustomButton {
+                    width: parent.width
+                    buttonText: "\u25B6 " + qsTr("查看关联视频")
+                    buttonType: CustomButton.ButtonType.Secondary
+                    visible: recipeVM.recipeVideos.length === 0 && !recipeVM.videosLoading
+                    onClicked: {
+                        videosAttempted = true
+                        recipeVM.loadRecipeVideos(recipeId)
+                    }
+                }
+
+                BusyIndicator {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    running: recipeVM.videosLoading
+                    width: 40
+                    height: 40
+                    palette.dark: Theme.primaryColor
+                    visible: recipeVM.videosLoading
+                }
+
+                // 视频卡片列表
+                Repeater {
+                    id: videosRepeater
+                    model: 0
+
+                    Rectangle {
+                        width: parent ? parent.width : 200
+                        height: 72
+                        color: Theme.cardBackground
+                        radius: Theme.radiusMedium
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (modelData && modelData.url)
+                                    Qt.openUrlExternally(modelData.url)
+                            }
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: Theme.spacingSmall
+                            spacing: Theme.spacingSmall
+
+                            // 缩略图
+                            Rectangle {
+                                Layout.preferredWidth: 96
+                                Layout.preferredHeight: 54
+                                radius: Theme.radiusSmall
+                                color: Theme.dividerColor
+                                clip: true
+
+                                Image {
+                                    id: thumbImage
+                                    anchors.fill: parent
+                                    source: (modelData && modelData.thumbnail_url) ? modelData.thumbnail_url : ""
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    visible: status === Image.Ready
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: Theme.dividerColor
+                                        visible: thumbImage.status === Image.Error || thumbImage.source === ""
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "\uD83C\uDFAC"
+                                            font.pointSize: 16
+                                        }
+                                    }
+                                }
+                            }
+
+                            Column {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 2
+
+                                Text {
+                                    width: parent.width
+                                    text: (modelData && modelData.title) ? modelData.title : ""
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSizeBody
+                                    font.weight: Theme.fontWeightMedium
+                                    color: Theme.textPrimary
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 2
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                RowLayout {
+                                    spacing: Theme.spacingXSmall
+
+                                    Rectangle {
+                                        radius: Theme.radiusSmall
+                                        color: (modelData && modelData.platform === "youtube") ? "#FF0000" :
+                                               (modelData && modelData.platform === "bilibili") ? "#FB7299" : Theme.dividerColor
+                                        width: platformText.implicitWidth + 10
+                                        height: platformText.implicitHeight + 2
+
+                                        Text {
+                                            id: platformText
+                                            anchors.centerIn: parent
+                                            text: (modelData && modelData.platform) ? modelData.platform : ""
+                                            font.family: Theme.fontFamily
+                                            font.pointSize: Theme.fontSizeSmall
+                                            color: "#FFFFFF"
+                                        }
+                                    }
+
+                                    Text {
+                                        text: (modelData && modelData.duration_seconds > 0) ?
+                                                  Math.floor((modelData.duration_seconds || 0) / 60) + ":" +
+                                                  ("0" + ((modelData.duration_seconds || 0) % 60)).slice(-2) : ""
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSizeSmall
+                                        color: Theme.textHint
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 空状态提示
+                Text {
+                    width: parent.width
+                    text: qsTr("该菜谱暂无关联视频")
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSizeBody
+                    color: Theme.textHint
+                    horizontalAlignment: Text.AlignHCenter
+                    visible: recipeVM.recipeVideos.length === 0 && !recipeVM.videosLoading && videosAttempted
+                }
+            }
         }
     }
 
@@ -532,6 +691,9 @@ Page {
             stepsRepeater.model = stps
             noIngredientsText.visible = (ings.length === 0)
             noStepsText.visible = (stps.length === 0)
+        }
+        function onRecipeVideosChanged() {
+            videosRepeater.model = recipeVM.recipeVideos || []
         }
         function onErrorOccurred(error) {
             console.log("RecipeDetail error:", error)

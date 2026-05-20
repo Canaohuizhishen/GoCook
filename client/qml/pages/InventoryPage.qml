@@ -119,8 +119,7 @@ Page {
                     }
 
                     BusyIndicator {
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                         running: inventoryVM.deletingId === modelData.id
                         width: 20
                         height: 20
