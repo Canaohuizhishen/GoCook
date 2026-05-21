@@ -82,6 +82,9 @@ Page {
             }
 
             FavoritesPage {
+                onShowDetailRequest: (recipeId) => {
+                    homePage.showDetailRequest(recipeId)
+                }
             }
 
             ProfilePage {

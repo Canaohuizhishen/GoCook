@@ -55,6 +55,8 @@ public:
     Q_INVOKABLE void deleteAccount();
     Q_INVOKABLE void loadPreferences();
     Q_INVOKABLE void savePreferences(const QStringList &likes, const QStringList &dislikes, const QString &healthGoal);
+    Q_INVOKABLE void saveHealthProfile(int heightCm, double weightKg, const QStringList &conditions);
+    Q_INVOKABLE void loadHealthProfile();
 
 signals:
     void loggedInChanged();
@@ -81,6 +83,10 @@ signals:
     void preferencesLoadFailed(const QString &error);
     void preferencesSaved();
     void preferencesSaveFailed(const QString &error);
+    void healthProfileSaved(const QVariantList &avoidances);
+    void healthProfileSaveFailed(const QString &error);
+    void healthProfileLoaded(int heightCm, double weightKg, const QStringList &conditions, const QVariantList &avoidances);
+    void healthProfileLoadFailed(const QString &error);
 
 private:
     void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "");

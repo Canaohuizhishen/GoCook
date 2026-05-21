@@ -83,6 +83,7 @@ json toJson(const RecipeDetail& detail) {
     item["cook_time_minutes"] = detail.cook_time_minutes;
     item["view_count"] = detail.view_count;
     item["avg_rating"] = detail.avg_rating;
+    item["is_favorited"] = detail.is_favorited;
     json ingredients = json::array();
     for (const auto& ing : detail.ingredients)
         ingredients.push_back(toJson(ing));
@@ -183,10 +184,18 @@ json toJson(const UserPreferences& prefs) {
 }
 
 json toJson(const HealthProfileResponse& resp) {
+    json j;
+    if (resp.height_cm.has_value())
+        j["height_cm"] = resp.height_cm.value();
+    if (resp.weight_kg.has_value())
+        j["weight_kg"] = resp.weight_kg.value();
+    if (!resp.conditions.empty())
+        j["conditions"] = resp.conditions;
     json arr = json::array();
     for (const auto& item : resp.suggested_avoidances)
         arr.push_back(toJson(item));
-    return {{"suggested_avoidances", arr}};
+    j["suggested_avoidances"] = arr;
+    return j;
 }
 
 json toJson(const AvatarUploadResponse& resp) {
@@ -199,6 +208,7 @@ json toJson(const AvatarUploadResponse& resp) {
 json toJson(const FavoriteItem& item) {
     return {
         {"id", item.id},
+        {"recipe_id", item.recipe_id},
         {"name", item.name},
         {"description", item.description},
         {"image_url", item.image_url},

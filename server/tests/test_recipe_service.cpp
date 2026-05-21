@@ -24,7 +24,7 @@ namespace {
 
     RecipeDetail makeDetail(int id = 1) {
         return {id, "Test Recipe", "Detailed description", "img.jpg",
-                "炒", "清淡", 10, 20, 100, 4.5, {}, {}, {}, {"test"}, 1, "Chef", "2026-01-01"};
+                "炒", "清淡", 10, 20, 100, 4.5, false, {}, {}, {}, {"test"}, 1, "Chef", "2026-01-01"};
     }
 
     SubmitRecipeRequest makeSubmitReq() {
@@ -54,7 +54,7 @@ TEST(RecipeServiceTest, 菜谱详情正确委派) {
     RecipeServiceImpl service(std::move(mock));
 
     auto expected = makeDetail(5);
-    EXPECT_CALL(*repo, findById(5)).WillOnce(Return(expected));
+    EXPECT_CALL(*repo, findById(5, testing::_)).WillOnce(Return(expected));
 
     auto result = service.getRecipeDetail(5);
     EXPECT_EQ(result.id, 5);
@@ -145,13 +145,6 @@ TEST(RecipeServiceTest, 编辑菜谱未实现) {
     RecipeServiceImpl service(std::move(mock));
 
     EXPECT_THROW(service.editRecipe(1, 1, {}), ServiceException);
-}
-
-TEST(RecipeServiceTest, 切换收藏未实现) {
-    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
-    RecipeServiceImpl service(std::move(mock));
-
-    EXPECT_THROW(service.toggleFavorite(1, 1), ServiceException);
 }
 
 TEST(RecipeServiceTest, 评分菜谱未实现) {

@@ -34,14 +34,27 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("inventoryVM", &inventoryVM);
 
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
+
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreationFailed,
+        &app,
+        [](const QUrl &url) {
+            qCritical("CRITICAL: Failed to load QML: %s", qPrintable(url.toString()));
+        });
+
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreated,
         &app,
         [url](QObject *obj, const QUrl &objUrl) {
-            if (!obj && url == objUrl) QCoreApplication::exit(-1);
+            if (!obj && url == objUrl) {
+                qCritical("CRITICAL: objectCreated returned null for %s", qPrintable(url.toString()));
+                QCoreApplication::exit(-1);
+            }
         },
         Qt::QueuedConnection);
+
     engine.load(url);
 
     authViewModel.checkAutoLogin();

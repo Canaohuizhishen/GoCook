@@ -310,6 +310,20 @@ void UserHandler::updateHealthProfile(const httplib::Request& req, httplib::Resp
     }
 }
 
+void UserHandler::getHealthProfile(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        auto respData = service_.getHealthProfile(info.userId);
+        res.status = 200;
+        res.body = JsonSerializer::toJson(respData).dump();
+    } catch (const gocook::services::ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
 void UserHandler::getFavorites(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;

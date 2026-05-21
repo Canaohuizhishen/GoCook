@@ -36,6 +36,7 @@ public:
                            const gocook::models::UserPreferences& prefs) override;
     gocook::models::HealthProfileResponse updateHealthProfile(
         int userId, const gocook::models::HealthProfileRequest& healthProfile) override;
+    gocook::models::HealthProfileResponse getHealthProfile(int userId) override;
     gocook::models::PagedFavorites getFavorites(int userId, int page, int size,
                                                 const std::string& group = "") override;
     std::vector<gocook::models::FavoriteGroup> getFavoriteGroups(int userId) override;

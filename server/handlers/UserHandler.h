@@ -38,6 +38,8 @@ public:
     void updatePreferences(const httplib::Request& req, httplib::Response& res);
     // 录入/更新健康指标（需认证）
     void updateHealthProfile(const httplib::Request& req, httplib::Response& res);
+    // 获取健康指标（需认证）
+    void getHealthProfile(const httplib::Request& req, httplib::Response& res);
     // 获取用户收藏列表（分页，需认证）
     void getFavorites(const httplib::Request& req, httplib::Response& res);
 

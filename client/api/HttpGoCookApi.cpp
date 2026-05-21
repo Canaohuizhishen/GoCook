@@ -451,8 +451,75 @@ void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& pre
 
 void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                                         HealthProfileCallback callback) {
-    Q_UNUSED(healthProfile);
-    if (callback) callback(false, gocook::models::HealthProfileResponse{}, "Not implemented");
+    QVariantMap data;
+    if (healthProfile.height_cm.has_value())
+        data["height_cm"] = healthProfile.height_cm.value();
+    if (healthProfile.weight_kg.has_value())
+        data["weight_kg"] = healthProfile.weight_kg.value();
+    {
+        QStringList conditions;
+        for (const auto& v : healthProfile.conditions)
+            conditions << QString::fromStdString(v);
+        data["conditions"] = conditions;
+    }
+
+    put("/api/users/me/health-profile", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, gocook::models::HealthProfileResponse{}, err.toStdString());
+            return;
+        }
+
+        gocook::models::HealthProfileResponse resp;
+        QJsonObject obj = doc.object();
+        if (obj.contains("suggested_avoidances")) {
+            QJsonArray arr = obj["suggested_avoidances"].toArray();
+            for (const auto& v : arr) {
+                QJsonObject item = v.toObject();
+                gocook::models::AvoidanceItem ai;
+                ai.ingredient = item["ingredient"].toString().toStdString();
+                ai.reason = item["reason"].toString().toStdString();
+                resp.suggested_avoidances.push_back(ai);
+            }
+        }
+        if (callback) callback(true, resp, "");
+    });
+}
+
+void HttpGoCookApi::getHealthProfile(HealthProfileCallback callback) {
+    get("/api/users/me/health-profile", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::HealthProfileResponse{}, errorStr.toStdString());
+            return;
+        }
+
+        gocook::models::HealthProfileResponse resp;
+        QJsonObject obj = doc.object();
+        if (obj.contains("height_cm"))
+            resp.height_cm = obj["height_cm"].toInt();
+        if (obj.contains("weight_kg"))
+            resp.weight_kg = obj["weight_kg"].toDouble();
+        if (obj.contains("conditions")) {
+            for (const auto& v : obj["conditions"].toArray())
+                resp.conditions.push_back(v.toString().toStdString());
+        }
+        if (obj.contains("suggested_avoidances")) {
+            QJsonArray arr = obj["suggested_avoidances"].toArray();
+            for (const auto& v : arr) {
+                QJsonObject item = v.toObject();
+                gocook::models::AvoidanceItem ai;
+                ai.ingredient = item["ingredient"].toString().toStdString();
+                ai.reason = item["reason"].toString().toStdString();
+                resp.suggested_avoidances.push_back(ai);
+            }
+        }
+        if (callback) callback(true, resp, "");
+    });
 }
 
 void HttpGoCookApi::uploadAvatar(const std::string& filePath,
@@ -461,9 +528,10 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
     // 调试日志写到文件 /tmp/gocook_avatar_debug.log
     auto avLog = [](const QString& msg) {
         QFile f("/tmp/gocook_avatar_debug.log");
-        f.open(QIODevice::Append | QIODevice::Text);
-        f.write(("[CLIENT] " + msg + "\n").toUtf8());
-        f.close();
+        if (f.open(QIODevice::Append | QIODevice::Text)) {
+            f.write(("[CLIENT] " + msg + "\n").toUtf8());
+            f.close();
+        }
     };
     avLog("=== HttpGoCookApi::uploadAvatar ===");
     avLog("filePath: " + QString::fromStdString(filePath));
@@ -604,52 +672,158 @@ void HttpGoCookApi::deleteAccount(SuccessCallback callback)
 void HttpGoCookApi::getFavorites(int page, int size,
                                  const std::string& group,
                                  FavoritesCallback callback) {
-    Q_UNUSED(page); Q_UNUSED(size); Q_UNUSED(group);
-    if (callback) callback(false, gocook::models::PagedFavorites{}, "Not implemented");
+    QString path = QString("/api/users/me/favorites?page=%1&size=%2").arg(page).arg(size);
+    if (!group.empty())
+        path += "&group=" + QString::fromStdString(group);
+    get(path, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::PagedFavorites{}, errorStr.toStdString());
+            return;
+        }
+        gocook::models::PagedFavorites result;
+        QJsonObject obj = doc.object();
+        if (obj.contains("pagination")) {
+            QJsonObject p = obj["pagination"].toObject();
+            result.pagination.page = p["page"].toInt();
+            result.pagination.size = p["size"].toInt();
+            result.pagination.total = p["total"].toInt();
+            result.pagination.total_pages = p["total_pages"].toInt();
+        }
+        if (obj.contains("data")) {
+            for (const auto& v : obj["data"].toArray()) {
+                QJsonObject item = v.toObject();
+                gocook::models::FavoriteItem fi;
+                fi.id = item["id"].toInt();
+                fi.recipe_id = item["recipe_id"].toInt();
+                fi.name = item["name"].toString().toStdString();
+                fi.description = item["description"].toString().toStdString();
+                fi.image_url = item["image_url"].toString().toStdString();
+                fi.group_name = item["group_name"].toString().toStdString();
+                fi.is_public = item["is_public"].toBool();
+                fi.favorited_at = item["favorited_at"].toString().toStdString();
+                result.data.push_back(fi);
+            }
+        }
+        if (callback) callback(true, result, "");
+    });
 }
 
-void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback)
-{
-    if (callback) callback(false, std::vector<gocook::models::FavoriteGroup>{}, "Not implemented");
+void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback) {
+    get("/api/users/me/favorites/groups", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, std::vector<gocook::models::FavoriteGroup>{}, errorStr.toStdString());
+            return;
+        }
+        std::vector<gocook::models::FavoriteGroup> groups;
+        QJsonArray arr = doc.array();
+        for (const auto& v : arr) {
+            QJsonObject item = v.toObject();
+            gocook::models::FavoriteGroup g;
+            g.id = item["id"].toInt();
+            g.name = item["name"].toString().toStdString();
+            g.sort_order = item["sort_order"].toInt();
+            g.count = item["count"].toInt();
+            groups.push_back(g);
+        }
+        if (callback) callback(true, groups, "");
+    });
 }
 
 void HttpGoCookApi::createFavoriteGroup(const gocook::models::CreateGroupRequest& request,
-                                        FavoriteGroupCallback callback)
-{
-    Q_UNUSED(request);
-    if (callback) callback(false, gocook::models::FavoriteGroup{}, "Not implemented");
+                                        FavoriteGroupCallback callback) {
+    QVariantMap data;
+    data["name"] = QString::fromStdString(request.name);
+    post("/api/users/me/favorites/groups", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::FavoriteGroup{}, errorStr.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::FavoriteGroup group;
+        group.id = obj["id"].toInt();
+        group.name = obj["name"].toString().toStdString();
+        group.sort_order = obj["sort_order"].toInt();
+        group.count = obj["count"].toInt();
+        if (callback) callback(true, group, "");
+    });
 }
 
 void HttpGoCookApi::updateFavoriteGroup(int groupId,
                                         const gocook::models::UpdateGroupRequest& request,
-                                        SuccessCallback callback)
-{
-    Q_UNUSED(groupId);
-    Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+                                        SuccessCallback callback) {
+    QVariantMap data;
+    data["name"] = QString::fromStdString(request.name);
+    put(QString("/api/users/me/favorites/groups/%1").arg(groupId), data,
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+        if (!success) {
+            QString err = errorStr;
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::deleteFavoriteGroup(int groupId,
-                                        SuccessCallback callback)
-{
-    Q_UNUSED(groupId);
-    if (callback) callback(false, "Not implemented");
+                                        SuccessCallback callback) {
+    deleteResource(QString("/api/users/me/favorites/groups/%1").arg(groupId), {},
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+        if (!success) {
+            if (callback) callback(false, errorStr.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::updateFavoriteItem(int favoriteId,
                                        const gocook::models::UpdateFavoriteRequest& request,
-                                       SuccessCallback callback)
-{
-    Q_UNUSED(favoriteId);
-    Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+                                       SuccessCallback callback) {
+    QVariantMap data;
+    if (request.group_id.has_value())
+        data["group_id"] = request.group_id.value();
+    if (request.is_public.has_value())
+        data["is_public"] = request.is_public.value();
+
+    QUrl url(m_baseUrl + QString("/api/users/me/favorites/%1").arg(favoriteId));
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_token.isEmpty())
+        req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+
+    QByteArray body = QJsonDocument(QJsonObject::fromVariantMap(data)).toJson();
+    QNetworkReply *reply = m_nam.sendCustomRequest(req, "PATCH", body);
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        QByteArray responseData = reply->readAll();
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        bool success = (statusCode >= 200 && statusCode < 300);
+        if (callback) {
+            if (success)
+                callback(true, "");
+            else
+                callback(false, QString::fromUtf8(responseData).toStdString());
+        }
+        reply->deleteLater();
+    });
 }
 
 void HttpGoCookApi::batchDeleteFavorites(const gocook::models::BatchDeleteFavoritesRequest& request,
-                                         SuccessCallback callback)
-{
-    Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+                                         SuccessCallback callback) {
+    QVariantMap data;
+    QVariantList ids;
+    for (const auto& fid : request.favorite_ids)
+        ids.append(fid);
+    data["favorite_ids"] = ids;
+    // 使用 POST 而非 DELETE，httplib 对 POST body 支持更可靠
+    post(QStringLiteral("/api/users/me/favorites/batch"), data,
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+        if (!success) {
+            if (callback) callback(false, errorStr.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::getNotifications(int page, int size,
@@ -894,6 +1068,7 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
         }
         detail.author_id = obj["author_id"].toInt();
         detail.author_name = obj["author_name"].toString().toStdString();
+        detail.is_favorited = obj["is_favorited"].toBool();
         detail.created_at = obj["created_at"].toString().toStdString();
         callback(true, detail, "");
     });
@@ -993,8 +1168,19 @@ void HttpGoCookApi::toggleFavorite(int recipeId,
                                    std::optional<int> groupId,
                                    std::optional<bool> isPublic,
                                    SuccessCallback callback) {
-    Q_UNUSED(recipeId); Q_UNUSED(groupId); Q_UNUSED(isPublic);
-    if (callback) callback(false, "Not implemented");
+    QVariantMap data;
+    if (groupId.has_value())
+        data["group_id"] = groupId.value();
+    if (isPublic.has_value())
+        data["is_public"] = isPublic.value();
+    post(QString("/api/recipes/%1/favorite").arg(recipeId), data,
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+        if (!success) {
+            if (callback) callback(false, errorStr.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::rateRecipe(int recipeId,

@@ -276,6 +276,73 @@ void AuthViewModel::savePreferences(const QStringList &likes,
     });
 }
 
+void AuthViewModel::saveHealthProfile(int heightCm, double weightKg, const QStringList &conditions) {
+    if (!m_loggedIn) {
+        emit healthProfileSaveFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
+    gocook::models::HealthProfileRequest req;
+    req.height_cm = heightCm;
+    req.weight_kg = weightKg;
+    for (const auto& v : conditions)
+        req.conditions.push_back(v.toStdString());
+
+    m_api->updateHealthProfile(req, [self = QPointer<AuthViewModel>(this)]
+                               (bool success,
+                                const gocook::models::HealthProfileResponse& resp,
+                                const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->healthProfileSaveFailed(QString::fromStdString(
+                error.empty() ? "保存失败" : error));
+            return;
+        }
+
+        // Convert avoidance items to QVariantList for QML
+        QVariantList avoidances;
+        for (const auto& item : resp.suggested_avoidances) {
+            QVariantMap ai;
+            ai["ingredient"] = QString::fromStdString(item.ingredient);
+            ai["reason"] = QString::fromStdString(item.reason);
+            avoidances.append(ai);
+        }
+        emit self->healthProfileSaved(avoidances);
+    });
+}
+
+void AuthViewModel::loadHealthProfile() {
+    if (!m_loggedIn) {
+        emit healthProfileLoadFailed(QStringLiteral("未登录，请先登录"));
+        return;
+    }
+    m_api->getHealthProfile([self = QPointer<AuthViewModel>(this)]
+                            (bool success,
+                             const gocook::models::HealthProfileResponse& resp,
+                             const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->healthProfileLoadFailed(QString::fromStdString(
+                error.empty() ? "获取健康指标失败" : error));
+            return;
+        }
+
+        // Convert to QML-friendly types
+        int height = resp.height_cm.has_value() ? resp.height_cm.value() : 0;
+        double weight = resp.weight_kg.has_value() ? resp.weight_kg.value() : 0.0;
+        QStringList conditions;
+        for (const auto& c : resp.conditions)
+            conditions << QString::fromStdString(c);
+        QVariantList avoidances;
+        for (const auto& item : resp.suggested_avoidances) {
+            QVariantMap ai;
+            ai["ingredient"] = QString::fromStdString(item.ingredient);
+            ai["reason"] = QString::fromStdString(item.reason);
+            avoidances.append(ai);
+        }
+        emit self->healthProfileLoaded(height, weight, conditions, avoidances);
+    });
+}
+
 QString AuthViewModel::apiBaseUrl() const {
     // 返回 API 基础 URL，供 QML 拼接头像等静态资源 URL 使用
     // 实际从 HttpGoCookApi 获取，确保与 API 配置一致

@@ -247,13 +247,13 @@ void RecipeViewModel::resetSearch()
     emit searchPerformedChanged();
 }
 
-void RecipeViewModel::loadFavorites(int page, int size)
+void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
 {
     if (m_favoritesLoading) return;
     m_favoritesLoading = true;
     emit favoritesLoadingChanged();
 
-    m_api->getFavorites(page, size, "",
+    m_api->getFavorites(page, size, group.toStdString(),
                         [self = QPointer<RecipeViewModel>(this), page]
                         (bool success, const gocook::models::PagedFavorites& data,
                          const std::string& error) {
@@ -276,6 +276,7 @@ void RecipeViewModel::loadFavorites(int page, int size)
 
         self->m_favoritesPage = data.pagination.page;
         self->m_favoritesTotalPages = data.pagination.total_pages;
+        self->m_favoritesTotal = data.pagination.total;
         self->m_favoritesHasMore = (self->m_favoritesPage < self->m_favoritesTotalPages);
 
         emit self->favoritesChanged();
@@ -289,4 +290,174 @@ void RecipeViewModel::loadMoreFavorites()
 {
     if (m_favoritesLoading || !m_favoritesHasMore) return;
     loadFavorites(m_favoritesPage + 1, m_pageSize);
+}
+
+void RecipeViewModel::toggleFavorite(int recipeId, int groupId)
+{
+    std::optional<int> optGroupId = (groupId > 0) ? std::optional<int>(groupId) : std::nullopt;
+    m_api->toggleFavorite(recipeId, optGroupId, std::nullopt,
+        [self = QPointer<RecipeViewModel>(this), recipeId]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            emit self->favoriteToggleSuccess(recipeId, true);
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "操作失败" : error));
+        }
+    });
+}
+
+void RecipeViewModel::loadFavoriteGroups()
+{
+    m_api->getFavoriteGroups([self = QPointer<RecipeViewModel>(this)]
+                             (bool success,
+                              const std::vector<gocook::models::FavoriteGroup>& groups,
+                              const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->favoriteOperationFailed(QString::fromStdString(error));
+            return;
+        }
+        QVariantList list;
+        for (const auto& g : groups) {
+            QVariantMap item;
+            item["id"] = g.id;
+            item["name"] = QString::fromStdString(g.name);
+            item["sort_order"] = g.sort_order;
+            item["count"] = g.count;
+            list.append(item);
+        }
+        self->m_favoriteGroups = list;
+        emit self->favoriteGroupsChanged();
+    });
+}
+
+void RecipeViewModel::createFavoriteGroup(const QString &name)
+{
+    gocook::models::CreateGroupRequest req;
+    req.name = name.toStdString();
+    m_api->createFavoriteGroup(req,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const gocook::models::FavoriteGroup&, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            self->loadFavoriteGroups();
+            emit self->favoriteGroupCreated();
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "创建失败" : error));
+        }
+    });
+}
+
+void RecipeViewModel::deleteFavoriteGroup(int groupId)
+{
+    m_api->deleteFavoriteGroup(groupId,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            self->loadFavoriteGroups();
+            emit self->favoriteGroupDeleted();
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "删除失败" : error));
+        }
+    });
+}
+
+void RecipeViewModel::removeFavorite(int favoriteId)
+{
+    gocook::models::BatchDeleteFavoritesRequest req;
+    req.favorite_ids = {favoriteId};
+    m_api->batchDeleteFavorites(req,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            self->loadFavorites(1, 20);
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "取消收藏失败" : error));
+        }
+    });
+}
+
+void RecipeViewModel::batchRemoveFavorites(const QVariantList &favoriteIds)
+{
+    gocook::models::BatchDeleteFavoritesRequest req;
+    for (const auto &v : favoriteIds)
+        req.favorite_ids.push_back(v.toInt());
+    if (req.favorite_ids.empty()) return;
+    m_api->batchDeleteFavorites(req,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            self->loadFavorites(1, 20);
+            self->loadFavoriteGroups();
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "批量删除失败" : error));
+        }
+    });
+}
+
+void RecipeViewModel::moveFavorite(int favoriteId, int groupId)
+{
+    gocook::models::UpdateFavoriteRequest req;
+    req.group_id = groupId;
+    m_api->updateFavoriteItem(favoriteId, req,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            self->loadFavorites(1, 20);
+            self->loadFavoriteGroups();
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "移动失败" : error));
+        }
+    });
+}
+
+void RecipeViewModel::batchMoveFavorites(const QVariantList &favoriteIds, int groupId)
+{
+    if (favoriteIds.isEmpty()) return;
+    gocook::models::UpdateFavoriteRequest req;
+    req.group_id = groupId;
+    auto self = QPointer<RecipeViewModel>(this);
+    std::shared_ptr<int> pending = std::make_shared<int>(favoriteIds.size());
+    for (int i = 0; i < favoriteIds.size(); ++i) {
+        m_api->updateFavoriteItem(favoriteIds[i].toInt(), req,
+            [self, pending](bool success, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->favoriteOperationFailed(QString::fromStdString(
+                    error.empty() ? "批量移动失败" : error));
+            }
+            if (--(*pending) == 0) {
+                self->loadFavorites(1, 20);
+                self->loadFavoriteGroups();
+            }
+        });
+    }
+}
+
+void RecipeViewModel::updateFavoriteGroupName(int groupId, const QString &name)
+{
+    gocook::models::UpdateGroupRequest req;
+    req.name = name.toStdString();
+    m_api->updateFavoriteGroup(groupId, req,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            self->loadFavoriteGroups();
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "更新失败" : error));
+        }
+    });
 }

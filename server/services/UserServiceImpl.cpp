@@ -16,6 +16,37 @@
 using namespace gocook::models;
 using namespace gocook::services;
 
+namespace {
+    void populateAvoidanceSuggestions(
+        const std::vector<std::string>& conditions,
+        std::vector<AvoidanceItem>& out)
+    {
+        for (const auto& c : conditions) {
+            if (c == "高血压") {
+                out.push_back({"高钠食物", "高血压患者应限制钠摄入"});
+                out.push_back({"动物内脏", "含较高胆固醇，不利于血压控制"});
+                out.push_back({"腌制食品", "含盐量高，可能导致血压升高"});
+            } else if (c == "高血脂") {
+                out.push_back({"油炸食品", "高脂肪含量，不利于血脂控制"});
+                out.push_back({"肥肉", "饱和脂肪酸含量高"});
+                out.push_back({"动物内脏", "胆固醇含量较高"});
+            } else if (c == "糖尿病") {
+                out.push_back({"高糖食品", "含添加糖，不利于血糖控制"});
+                out.push_back({"精制米面", "升糖指数高，建议选择全谷物"});
+                out.push_back({"含糖饮料", "高糖饮品，应避免"});
+            } else if (c == "胃炎") {
+                out.push_back({"辛辣食物", "刺激胃黏膜，可能加重炎症"});
+                out.push_back({"生冷食物", "不易消化，增加胃负担"});
+                out.push_back({"酒精", "刺激胃黏膜，应避免饮酒"});
+            } else if (c == "痛风") {
+                out.push_back({"高嘌呤食物", "如动物内脏、浓汤等"});
+                out.push_back({"海鲜", "嘌呤含量较高"});
+                out.push_back({"啤酒", "影响尿酸排泄"});
+            }
+        }
+    }
+}
+
 std::string UserServiceImpl::generateToken(int userId, const std::string& username, const std::string& role) {
     auto now = std::chrono::system_clock::now();
     auto exp = now + std::chrono::hours(24 * 7);
@@ -232,29 +263,75 @@ void UserServiceImpl::updatePreferences(int userId, const UserPreferences& prefs
     }
     userRepo_->updatePreferences(userId, prefs);
 }
-HealthProfileResponse UserServiceImpl::updateHealthProfile(int, const HealthProfileRequest&) {
-    throw ServiceException("Not implemented", 501);
+HealthProfileResponse UserServiceImpl::updateHealthProfile(int userId, const HealthProfileRequest& req) {
+    // Verify user exists first
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+
+    // Save health profile to database
+    userRepo_->updateHealthProfile(userId, req);
+
+    // Generate avoidance suggestions based on user's health conditions
+    HealthProfileResponse resp;
+    // Populate saved fields in case the caller needs them
+    resp.height_cm = req.height_cm;
+    resp.weight_kg = req.weight_kg;
+    resp.conditions = req.conditions;
+    // Populate avoidance suggestions
+    populateAvoidanceSuggestions(req.conditions, resp.suggested_avoidances);
+    return resp;
 }
-PagedFavorites UserServiceImpl::getFavorites(int, int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+
+HealthProfileResponse UserServiceImpl::getHealthProfile(int userId) {
+    // Verify user exists
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+
+    // Load health profile from database
+    auto resp = userRepo_->getHealthProfile(userId);
+
+    // Generate avoidance suggestions based on saved conditions
+    populateAvoidanceSuggestions(resp.conditions, resp.suggested_avoidances);
+
+    return resp;
 }
-std::vector<FavoriteGroup> UserServiceImpl::getFavoriteGroups(int) {
-    throw ServiceException("Not implemented", 501);
+
+PagedFavorites UserServiceImpl::getFavorites(int userId, int page, int size, const std::string& group) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    return userRepo_->getFavorites(userId, page, size, group);
 }
-FavoriteGroup UserServiceImpl::createFavoriteGroup(int, const CreateGroupRequest&) {
-    throw ServiceException("Not implemented", 501);
+std::vector<FavoriteGroup> UserServiceImpl::getFavoriteGroups(int userId) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    return userRepo_->getFavoriteGroups(userId);
 }
-void UserServiceImpl::updateFavoriteGroup(int, int, const UpdateGroupRequest&) {
-    throw ServiceException("Not implemented", 501);
+FavoriteGroup UserServiceImpl::createFavoriteGroup(int userId, const CreateGroupRequest& req) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    return userRepo_->createFavoriteGroup(userId, req);
 }
-void UserServiceImpl::deleteFavoriteGroup(int, int) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::updateFavoriteGroup(int userId, int groupId, const UpdateGroupRequest& req) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->updateFavoriteGroup(userId, groupId, req);
 }
-void UserServiceImpl::updateFavoriteItem(int, int, const UpdateFavoriteRequest&) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::deleteFavoriteGroup(int userId, int groupId) {
+    userRepo_->deleteFavoriteGroup(userId, groupId);
 }
-void UserServiceImpl::batchDeleteFavorites(int, const BatchDeleteFavoritesRequest&) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::updateFavoriteItem(int userId, int favoriteId, const UpdateFavoriteRequest& req) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->updateFavoriteItem(userId, favoriteId, req);
+}
+void UserServiceImpl::batchDeleteFavorites(int userId, const BatchDeleteFavoritesRequest& req) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->batchDeleteFavorites(userId, req);
 }
 PagedNotifications UserServiceImpl::getNotifications(int, int, int, const std::string&) {
     throw ServiceException("Not implemented", 501);

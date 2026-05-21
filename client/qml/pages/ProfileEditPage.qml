@@ -10,6 +10,7 @@ Page {
     title: qsTr("编辑个人资料")
 
     signal showPreferencesRequest()
+    signal showHealthProfileRequest()
 
     function goBack() {
         var item = profileEditPage.parent
@@ -231,6 +232,22 @@ Page {
                     }
                     onClicked: {
                         profileEditPage.showPreferencesRequest()
+                    }
+                }
+
+                // ========== 健康指标设置入口 ==========
+                Button {
+                    id: healthBtn; width: parent.width; height: 50
+                    text: qsTr("健康指标")
+                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.searchBarBackground; border.color: Theme.dividerColor; border.width: 1 }
+                    contentItem: Text {
+                        text: healthBtn.text; font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
+                        color: Theme.textPrimary; horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: {
+                        profileEditPage.showHealthProfileRequest()
                     }
                 }
 

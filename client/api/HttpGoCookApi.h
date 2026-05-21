@@ -97,6 +97,7 @@ public:
                            SuccessCallback callback) override;
     void updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                              HealthProfileCallback callback) override;
+    void getHealthProfile(HealthProfileCallback callback) override;
     void uploadAvatar(const std::string& filePath,
                       AvatarUploadCallback callback) override;
     void changePassword(const std::string& currentPassword,

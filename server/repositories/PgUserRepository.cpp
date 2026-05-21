@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cctype>
 
+using json = nlohmann::json;
 using namespace gocook::models;
 using namespace gocook::repository;
 using namespace gocook::services;
@@ -350,36 +351,339 @@ void PgUserRepository::updatePreferences(int userId, const UserPreferences& pref
     }
 }
 
-HealthProfileResponse PgUserRepository::updateHealthProfile(int, const HealthProfileRequest&) {
-    throw ServiceException("Not implemented", 501);
+HealthProfileResponse PgUserRepository::updateHealthProfile(int userId, const HealthProfileRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // Build conditions JSON array
+        std::string conditionsJson = "[]";
+        if (!req.conditions.empty()) {
+            json arr = json::array();
+            for (const auto& c : req.conditions)
+                arr.push_back(c);
+            conditionsJson = arr.dump();
+        }
+
+        // Two-step approach: ensure a row exists, then update fields
+        txn.exec_params(
+            "INSERT INTO health_profiles (user_id, conditions, created_at, updated_at) "
+            "VALUES ($1, $2::jsonb, NOW(), NOW()) "
+            "ON CONFLICT (user_id) DO UPDATE SET conditions = $2::jsonb, updated_at = NOW()",
+            userId, conditionsJson
+        );
+
+        // Then update individual fields if provided
+        if (req.height_cm.has_value()) {
+            txn.exec_params(
+                "UPDATE health_profiles SET height_cm = $1, updated_at = NOW() WHERE user_id = $2",
+                req.height_cm.value(), userId
+            );
+        }
+        if (req.weight_kg.has_value()) {
+            txn.exec_params(
+                "UPDATE health_profiles SET weight_kg = $1, updated_at = NOW() WHERE user_id = $2",
+                req.weight_kg.value(), userId
+            );
+        }
+
+        txn.commit();
+        return HealthProfileResponse{};
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updateHealthProfile: %s", e.what());
+        throw ServiceException("健康指标保存失败");
+    }
 }
 
-PagedFavorites PgUserRepository::getFavorites(int, int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+HealthProfileResponse PgUserRepository::getHealthProfile(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        pqxx::result r = txn.exec_params(
+            "SELECT height_cm, weight_kg, conditions FROM health_profiles WHERE user_id = $1",
+            userId
+        );
+        txn.commit();
+
+        HealthProfileResponse resp;
+        if (!r.empty()) {
+            auto row = r[0];
+            if (!row["height_cm"].is_null())
+                resp.height_cm = row["height_cm"].as<int>();
+            if (!row["weight_kg"].is_null())
+                resp.weight_kg = row["weight_kg"].as<double>();
+
+            std::string condJson = row["conditions"].c_str();
+            if (!condJson.empty() && condJson != "[]") {
+                json arr = json::parse(condJson);
+                for (const auto& c : arr)
+                    resp.conditions.push_back(c.get<std::string>());
+            }
+        }
+        return resp;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in getHealthProfile: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-std::vector<FavoriteGroup> PgUserRepository::getFavoriteGroups(int) {
-    throw ServiceException("Not implemented", 501);
+PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, const std::string& group) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        bool filterByDefault = (!group.empty() && group == "默认收藏夹");
+        bool filterByGroup = (!group.empty() && !filterByDefault);
+        int offset = (page - 1) * size;
+
+        std::string countSql = "SELECT COUNT(*) FROM favorites f "
+                "JOIN recipes r ON f.recipe_id = r.id "
+                "LEFT JOIN favorite_groups g ON f.group_id = g.id "
+                "WHERE f.user_id = $1";
+        std::string dataSql =
+            "SELECT f.id, r.id AS recipe_id, r.name, COALESCE(r.description,'') AS description, "
+            "COALESCE(r.image_url,'') AS image_url, "
+            "COALESCE(g.name,'默认收藏夹') AS group_name, "
+            "f.is_public, f.created_at::text AS favorited_at "
+            "FROM favorites f "
+            "JOIN recipes r ON f.recipe_id = r.id "
+            "LEFT JOIN favorite_groups g ON f.group_id = g.id "
+            "WHERE f.user_id = $1";
+
+        if (filterByDefault) {
+            countSql += " AND f.group_id IS NULL";
+            dataSql += " AND f.group_id IS NULL";
+        } else if (filterByGroup) {
+            countSql += " AND g.name = $2";
+            dataSql += " AND g.name = $2";
+        }
+        dataSql += " ORDER BY f.created_at DESC LIMIT $"
+                + pqxx::to_string(filterByGroup ? 3 : (filterByDefault ? 2 : 2))
+                + " OFFSET $"
+                + pqxx::to_string(filterByGroup ? 4 : 3);
+
+        PagedFavorites result;
+        pqxx::result countR;
+        pqxx::result dataR;
+
+        if (filterByGroup) {
+            countR = txn.exec_params(countSql, userId, group);
+            dataR = txn.exec_params(dataSql, userId, group, size, offset);
+        } else {
+            countR = txn.exec_params(countSql, userId);
+            dataR = txn.exec_params(dataSql, userId, size, offset);
+        }
+
+        result.pagination.total = countR[0][0].as<int>();
+        for (const auto& row : dataR) {
+            FavoriteItem item;
+            item.id = row["id"].as<int>();
+            item.recipe_id = row["recipe_id"].as<int>();
+            item.name = row["name"].c_str();
+            item.description = row["description"].c_str();
+            item.image_url = row["image_url"].c_str();
+            item.group_name = row["group_name"].c_str();
+            item.is_public = row["is_public"].as<bool>();
+            item.favorited_at = row["favorited_at"].c_str();
+            result.data.push_back(item);
+        }
+
+        txn.commit();
+        result.pagination.page = page;
+        result.pagination.size = size;
+        result.pagination.total_pages = (result.pagination.total + size - 1) / size;
+        return result;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in getFavorites: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-FavoriteGroup PgUserRepository::createFavoriteGroup(int, const CreateGroupRequest&) {
-    throw ServiceException("Not implemented", 501);
+std::vector<FavoriteGroup> PgUserRepository::getFavoriteGroups(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // Count favorites in the default group (group_id IS NULL)
+        pqxx::result defaultCount = txn.exec_params(
+            "SELECT COUNT(*) FROM favorites WHERE user_id = $1 AND group_id IS NULL",
+            userId
+        );
+
+        pqxx::result r = txn.exec_params(
+            "SELECT g.id, g.name, g.sort_order, COUNT(f.id) AS count "
+            "FROM favorite_groups g "
+            "LEFT JOIN favorites f ON f.group_id = g.id "
+            "WHERE g.user_id = $1 "
+            "GROUP BY g.id, g.name, g.sort_order "
+            "ORDER BY g.sort_order",
+            userId
+        );
+        txn.commit();
+
+        // Synthetic default group (always present)
+        std::vector<FavoriteGroup> groups;
+        FavoriteGroup defaultGroup;
+        defaultGroup.id = 0;
+        defaultGroup.name = "默认收藏夹";
+        defaultGroup.sort_order = 0;
+        defaultGroup.count = defaultCount[0][0].as<int>();
+        groups.push_back(defaultGroup);
+
+        for (const auto& row : r) {
+            FavoriteGroup g;
+            g.id = row["id"].as<int>();
+            g.name = row["name"].c_str();
+            g.sort_order = row["sort_order"].as<int>();
+            g.count = row["count"].as<int>();
+            groups.push_back(g);
+        }
+        return groups;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in getFavoriteGroups: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-void PgUserRepository::updateFavoriteGroup(int, int, const UpdateGroupRequest&) {
-    throw ServiceException("Not implemented", 501);
+FavoriteGroup PgUserRepository::createFavoriteGroup(int userId, const CreateGroupRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // Check for duplicate name
+        pqxx::result dupCheck = txn.exec_params(
+            "SELECT id FROM favorite_groups WHERE user_id = $1 AND name = $2",
+            userId, req.name
+        );
+        if (!dupCheck.empty())
+            throw ServiceException("分组名已存在", 409);
+
+        // Get next sort_order
+        pqxx::result maxR = txn.exec_params(
+            "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM favorite_groups WHERE user_id = $1",
+            userId
+        );
+        int nextOrder = maxR[0][0].as<int>();
+
+        // Advance sequence to avoid PK conflict with seed data
+        txn.exec_params(
+            "SELECT setval('favorite_groups_id_seq', COALESCE((SELECT MAX(id) FROM favorite_groups), 0) + 1, false)"
+        );
+
+        pqxx::result r = txn.exec_params(
+            "INSERT INTO favorite_groups (user_id, name, sort_order) VALUES ($1, $2, $3) RETURNING id, name, sort_order",
+            userId, req.name, nextOrder
+        );
+        txn.commit();
+
+        FavoriteGroup group;
+        group.id = r[0]["id"].as<int>();
+        group.name = r[0]["name"].c_str();
+        group.sort_order = r[0]["sort_order"].as<int>();
+        group.count = 0;
+        return group;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in createFavoriteGroup: %s", e.what());
+        throw ServiceException("创建分组失败");
+    }
 }
 
-void PgUserRepository::deleteFavoriteGroup(int, int) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::updateFavoriteGroup(int userId, int groupId, const UpdateGroupRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        auto r = txn.exec_params(
+            "UPDATE favorite_groups SET name = $1 WHERE id = $2 AND user_id = $3",
+            req.name, groupId, userId
+        );
+        if (r.affected_rows() == 0)
+            throw ServiceException("分组不存在", 404);
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updateFavoriteGroup: %s", e.what());
+        throw ServiceException("更新分组失败");
+    }
 }
 
-void PgUserRepository::updateFavoriteItem(int, int, const UpdateFavoriteRequest&) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::deleteFavoriteGroup(int userId, int groupId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        // Move favorites to default group (set group_id to NULL)
+        txn.exec_params(
+            "UPDATE favorites SET group_id = NULL WHERE group_id = $1 AND user_id = $2",
+            groupId, userId
+        );
+        // Delete the group
+        auto r = txn.exec_params(
+            "DELETE FROM favorite_groups WHERE id = $1 AND user_id = $2",
+            groupId, userId
+        );
+        if (r.affected_rows() == 0)
+            throw ServiceException("分组不存在", 404);
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in deleteFavoriteGroup: %s", e.what());
+        throw ServiceException("删除分组失败");
+    }
 }
 
-void PgUserRepository::batchDeleteFavorites(int, const BatchDeleteFavoritesRequest&) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::updateFavoriteItem(int userId, int favoriteId, const UpdateFavoriteRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        if (req.group_id.has_value()) {
+            int gid = req.group_id.value();
+            if (gid > 0) {
+                // Verify the group belongs to the user
+                auto g = txn.exec_params(
+                    "SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2",
+                    gid, userId
+                );
+                if (g.empty())
+                    throw ServiceException("分组不存在", 404);
+                txn.exec_params(
+                    "UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3",
+                    gid, favoriteId, userId
+                );
+            } else {
+                // group_id = 0 表示移到默认收藏夹（设置 NULL）
+                txn.exec_params(
+                    "UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2",
+                    favoriteId, userId
+                );
+            }
+        }
+        if (req.is_public.has_value()) {
+            txn.exec_params(
+                "UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3",
+                req.is_public.value(), favoriteId, userId
+            );
+        }
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updateFavoriteItem: %s", e.what());
+        throw ServiceException("更新收藏项失败");
+    }
+}
+
+void PgUserRepository::batchDeleteFavorites(int userId, const BatchDeleteFavoritesRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        for (const auto& fid : req.favorite_ids) {
+            txn.exec_params(
+                "DELETE FROM favorites WHERE id = $1 AND user_id = $2",
+                fid, userId
+            );
+        }
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in batchDeleteFavorites: %s", e.what());
+        throw ServiceException("批量删除失败");
+    }
 }
 
 PagedNotifications PgUserRepository::getNotifications(int, int, int, const std::string&) {
