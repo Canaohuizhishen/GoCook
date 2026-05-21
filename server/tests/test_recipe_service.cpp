@@ -196,11 +196,66 @@ TEST(RecipeServiceTest, 我的投稿列表正确委派) {
     EXPECT_EQ(result.pagination.total, 2);
 }
 
-TEST(RecipeServiceTest, 编辑菜谱未实现) {
+TEST(RecipeServiceTest, 编辑菜谱成功委派) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.editRecipe(1, 1, {}), ServiceException);
+    EditRecipeRequest updates;
+    updates.name = "Modified Recipe";
+    updates.description = "Modified description";
+
+    EXPECT_CALL(*repo, update(42, 1, ::testing::_))
+        .WillOnce(Return(std::string("pending")));
+
+    std::string newStatus = service.editRecipe(42, 1, updates);
+    EXPECT_EQ(newStatus, "pending");
+}
+
+TEST(RecipeServiceTest, 编辑已通过菜谱后进入pending) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, update(42, 1, ::testing::_))
+        .WillOnce(Return(std::string("pending")));
+
+    std::string newStatus = service.editRecipe(42, 1, {});
+    EXPECT_EQ(newStatus, "pending");
+}
+
+TEST(RecipeServiceTest, 编辑他人菜谱返回403) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, update(99, 1, ::testing::_))
+        .WillOnce(Throw(ServiceException("仅可编辑自己投稿的菜谱", 403)));
+
+    try {
+        service.editRecipe(99, 1, {});
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 403);
+        EXPECT_STREQ(e.what(), "仅可编辑自己投稿的菜谱");
+    }
+}
+
+TEST(RecipeServiceTest, 编辑不存在的菜谱返回404) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, update(42, 999, ::testing::_))
+        .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
+
+    try {
+        service.editRecipe(42, 999, {});
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "菜谱不存在");
+    }
 }
 
 TEST(RecipeServiceTest, 切换收藏未实现) {

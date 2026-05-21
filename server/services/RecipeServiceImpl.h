@@ -31,8 +31,8 @@ public:
                                                           int page, int size,
                                                           const std::string& status = "") override;
 
-    void editRecipe(int userId, int recipeId,
-                    const gocook::models::EditRecipeRequest& updates) override;
+    std::string editRecipe(int userId, int recipeId,
+                             const gocook::models::EditRecipeRequest& updates) override;
 
     void toggleFavorite(int userId, int recipeId,
                         std::optional<int> groupId = std::nullopt,

@@ -186,6 +186,7 @@ void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response&
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
+        LOG_ERROR("submitRecipe failed: %s", e.what());
         handleStandardException(e, res);
     }
 }
@@ -236,9 +237,22 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
                 updates.steps.push_back(step);
             }
         }
-        service_.editRecipe(info.userId, recipeId, updates);
+        if (reqJson.contains("nutrition")) {
+            Nutrition nut;
+            nut.calories = reqJson["nutrition"].value("calories", 0.0);
+            nut.protein = reqJson["nutrition"].value("protein", 0.0);
+            nut.fat = reqJson["nutrition"].value("fat", 0.0);
+            nut.carbs = reqJson["nutrition"].value("carbs", 0.0);
+            updates.nutrition = nut;
+        }
+        if (reqJson.contains("tags")) updates.tags = reqJson["tags"].get<std::vector<std::string>>();
+        if (reqJson.contains("cooking_method")) updates.cooking_method = reqJson["cooking_method"];
+        if (reqJson.contains("flavor")) updates.flavor = reqJson["flavor"];
+        if (reqJson.contains("ingredient_type")) updates.ingredient_type = reqJson["ingredient_type"];
+
+        std::string newStatus = service_.editRecipe(info.userId, recipeId, updates);
         res.status = 200;
-        res.body = json{{"message", "Recipe updated"}}.dump();
+        res.body = json{{"message", "Recipe updated"}, {"status", newStatus}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

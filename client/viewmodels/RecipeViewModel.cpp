@@ -184,6 +184,72 @@ void RecipeViewModel::submitRecipe(const QString& name, const QString& descripti
     });
 }
 
+void RecipeViewModel::editRecipe(int recipeId, const QString& name, const QString& description,
+                                  const QString& imageUrl, const QVariantList& ingredients,
+                                  const QVariantList& steps, const QVariantList& tags)
+{
+    gocook::models::EditRecipeRequest req;
+    req.name = name.toStdString();
+    req.description = description.toStdString();
+    req.image_url = imageUrl.toStdString();
+
+    for (const auto& v : ingredients) {
+        QVariantMap m = v.toMap();
+        gocook::models::Ingredient ing;
+        ing.name = m["name"].toString().toStdString();
+        ing.quantity = m["quantity"].toDouble();
+        ing.unit = m["unit"].toString().toStdString();
+        req.ingredients.push_back(ing);
+    }
+
+    for (const auto& v : steps) {
+        QVariantMap m = v.toMap();
+        gocook::models::CookingStep step;
+        step.order = m["order"].toInt();
+        step.description = m["description"].toString().toStdString();
+        if (m.contains("duration"))
+            step.duration = m["duration"].toInt();
+        req.steps.push_back(step);
+    }
+
+    for (const auto& v : tags) {
+        req.tags.push_back(v.toString().toStdString());
+    }
+
+    m_api->editRecipe(recipeId, req, [self = QPointer<RecipeViewModel>(this)](bool success,
+                                 const std::string& error) {
+        if (!self) return;
+        if (!success) {
+            emit self->editFailed(QString::fromStdString(error));
+            return;
+        }
+        emit self->recipeEdited();
+    });
+}
+
+void RecipeViewModel::loadRecipeForEdit(int recipeId)
+{
+    m_detailLoading = true;
+    emit detailLoadingChanged();
+
+    m_api->getRecipeDetail(recipeId, [self = QPointer<RecipeViewModel>(this)](bool success,
+                                 const gocook::models::RecipeDetail& data,
+                                 const std::string& error) {
+        if (!self) return;
+        self->m_detailLoading = false;
+        emit self->detailLoadingChanged();
+
+        if (!success) {
+            emit self->errorOccurred(QString::fromStdString(error));
+            return;
+        }
+
+        self->m_recipeDetail = DataMapper::toMap(data);
+        emit self->recipeDetailChanged();
+        emit self->editFormDataReady();
+    });
+}
+
 void RecipeViewModel::searchRecipes(const QString& keyword, int page, int size)
 {
     if (keyword.trimmed().isEmpty())

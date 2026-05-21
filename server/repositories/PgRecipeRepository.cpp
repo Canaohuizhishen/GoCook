@@ -91,7 +91,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
-        std::string where = "WHERE 1=1";
+        std::string where = "WHERE r.status = 'approved'";
         ParamBuilder pb;
 
         applyRecipeFilters(filters, where, pb);
@@ -137,8 +137,8 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
             recipe.id = row["id"].as<int>();
             recipe.name = row["name"].c_str();
             recipe.description = row["description"].c_str();
-            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>();
-            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>();
+            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>(0);
+            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>(0);
             if (!row["image_url"].is_null())
                 recipe.image_url = row["image_url"].c_str();
 
@@ -188,7 +188,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
-        std::string where = "WHERE 1=1";
+        std::string where = "WHERE r.status = 'approved'";
         ParamBuilder pb;
 
         // 关键词搜索：匹配菜名、描述、食材名称（ingredients 是 JSONB 数组）
@@ -243,8 +243,8 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             recipe.id = row["id"].as<int>();
             recipe.name = row["name"].c_str();
             recipe.description = row["description"].c_str();
-            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>();
-            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>();
+            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>(0);
+            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>(0);
             if (!row["image_url"].is_null())
                 recipe.image_url = row["image_url"].c_str();
 
@@ -576,8 +576,81 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
     return result;
 }
 
-void PgRecipeRepository::update(int, int, const EditRecipeRequest&) {
-    throw ServiceException("Not implemented", 501);
+std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecipeRequest& updates) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 1. 验证菜谱存在、归属以及是否可编辑
+        pqxx::result r = txn.exec_params(
+            "SELECT author_id, status FROM recipes WHERE id = $1", recipeId);
+
+        if (r.empty()) {
+            throw ServiceException("菜谱不存在", 404);
+        }
+
+        int authorId = r[0]["author_id"].as<int>();
+        std::string status = r[0]["status"].c_str();
+
+        if (authorId != userId) {
+            throw ServiceException("仅可编辑自己投稿的菜谱", 403);
+        }
+
+        // 2. 序列化 JSON 字段
+        json ingredientsJson = json::array();
+        for (const auto& ing : updates.ingredients)
+            ingredientsJson.push_back({{"name", ing.name}, {"quantity", ing.quantity}, {"unit", ing.unit}});
+
+        json stepsJson = json::array();
+        for (const auto& s : updates.steps) {
+            json step;
+            step["order"] = s.order;
+            step["description"] = s.description;
+            if (s.duration.has_value())
+                step["duration"] = s.duration.value();
+            stepsJson.push_back(step);
+        }
+
+        json nutritionJson;
+        if (updates.nutrition.has_value()) {
+            nutritionJson["calories"] = updates.nutrition->calories;
+            nutritionJson["protein"]  = updates.nutrition->protein;
+            nutritionJson["fat"]      = updates.nutrition->fat;
+            nutritionJson["carbs"]    = updates.nutrition->carbs;
+        } else {
+            nutritionJson = json::object();
+        }
+
+        // 3. 更新菜谱，编辑后始终回到 pending 状态等待重新审核
+        pqxx::result updateResult = txn.exec_params(
+            "UPDATE recipes SET"
+            " name = $1, description = $2, image_url = $3,"
+            " ingredients = $4, steps = $5, nutrition_info = $6,"
+            " tags = $7, cooking_method = $8, flavor = $9, ingredient_type = $10,"
+            " status = 'pending', updated_at = NOW()"
+            " WHERE id = $11"
+            " RETURNING status",
+            updates.name,
+            updates.description,
+            updates.image_url,
+            ingredientsJson.dump(),
+            stepsJson.dump(),
+            nutritionJson.dump(),
+            updates.tags,
+            updates.cooking_method.has_value() ? updates.cooking_method.value() : "",
+            updates.flavor.has_value() ? updates.flavor.value() : "",
+            updates.ingredient_type.has_value() ? updates.ingredient_type.value() : "",
+            recipeId);
+
+        std::string newStatus = updateResult[0]["status"].c_str();
+        txn.commit();
+        return newStatus;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in update recipe: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 void PgRecipeRepository::toggleFavorite(int, int, std::optional<int>, std::optional<bool>) {
