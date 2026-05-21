@@ -10,6 +10,7 @@ Page {
 
     signal showDetailRequest(int recipeId)
     signal showSubmitRequest()
+    signal showMyRecipesRequest()
     signal showSearchRequest()
 
     ColumnLayout {
@@ -85,6 +86,9 @@ Page {
             ProfilePage {
                 onShowSubmitRequest: {
                     homePage.showSubmitRequest()
+                }
+                onShowMyRecipesRequest: {
+                    homePage.showMyRecipesRequest()
                 }
             }
         }

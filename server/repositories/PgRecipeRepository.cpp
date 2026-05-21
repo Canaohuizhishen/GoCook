@@ -476,8 +476,61 @@ SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRe
     }
 }
 
-PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int, int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, int size, const std::string& status) {
+    PagedMyRecipes result;
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        int offset = (page > 0) ? (page - 1) * size : 0;
+
+        std::string where = "WHERE author_id = $1";
+        ParamBuilder pb;
+        pb.addInt(userId);
+
+        if (!status.empty()) {
+            where += " AND status = " + pb.next();
+            pb.add(status);
+        }
+
+        std::string countSql = "SELECT COUNT(*) FROM recipes " + where;
+        int total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
+                        [0][0].as<int>();
+
+        where += " ORDER BY submitted_at DESC LIMIT " + pb.next();
+        pb.addInt(size);
+        where += " OFFSET " + pb.next();
+        pb.addInt(offset);
+
+        std::string dataSql = "SELECT id, name, status, reject_reason, submitted_at"
+                              " FROM recipes " + where;
+
+        auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
+
+        for (const auto& row : rows) {
+            MyRecipeStatus item;
+            item.id = row["id"].as<int>();
+            item.name = row["name"].c_str();
+            item.status = row["status"].c_str();
+            if (!row["reject_reason"].is_null())
+                item.reject_reason = row["reject_reason"].c_str();
+            item.submitted_at = row["submitted_at"].c_str();
+            result.data.push_back(std::move(item));
+        }
+
+        result.pagination.page = page;
+        result.pagination.size = size;
+        result.pagination.total = total;
+        result.pagination.total_pages = (total + size - 1) / size;
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findMySubmittedRecipes: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+    return result;
 }
 
 void PgRecipeRepository::update(int, int, const EditRecipeRequest&) {

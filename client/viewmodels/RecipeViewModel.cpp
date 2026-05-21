@@ -255,6 +255,9 @@ QVariantMap RecipeViewModel::nutritionReport() const { return m_nutritionReport;
 bool RecipeViewModel::nutritionLoading() const { return m_nutritionLoading; }
 QVariantList RecipeViewModel::recipeVideos() const { return m_recipeVideos; }
 bool RecipeViewModel::videosLoading() const { return m_videosLoading; }
+QVariantList RecipeViewModel::myRecipes() const { return m_myRecipes; }
+bool RecipeViewModel::myRecipesLoading() const { return m_myRecipesLoading; }
+bool RecipeViewModel::myRecipesHasMore() const { return m_myRecipesHasMore; }
 
 void RecipeViewModel::loadNutritionReport(int recipeId)
 {
@@ -299,4 +302,54 @@ void RecipeViewModel::loadRecipeVideos(int recipeId)
             emit self->videosLoadingChanged();
             emit self->recipeVideosChanged();
         });
+}
+
+void RecipeViewModel::loadMyRecipes(int page, int size, const QString& status)
+{
+    if (m_myRecipesLoading) return;
+
+    m_myRecipesPage = page;
+    m_myRecipesStatus = status;
+    m_myRecipesLoading = true;
+    if (page == 1) {
+        m_myRecipes.clear();
+        emit myRecipesChanged();
+    }
+    emit myRecipesLoadingChanged();
+
+    m_api->getMySubmittedRecipes(page, size, status.toStdString(),
+        [self = QPointer<RecipeViewModel>(this), page]
+        (bool success, const gocook::models::PagedMyRecipes& data, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
+                self->m_myRecipesLoading = false;
+                emit self->myRecipesLoadingChanged();
+                return;
+            }
+
+            if (page == 1) {
+                self->m_myRecipes.clear();
+            }
+
+            for (const auto& item : data.data) {
+                auto map = DataMapper::toMap(item);
+                self->m_myRecipes.append(map);
+            }
+
+            self->m_myRecipesPage = data.pagination.page;
+            self->m_myRecipesTotalPages = data.pagination.total_pages;
+            self->m_myRecipesHasMore = (self->m_myRecipesPage < self->m_myRecipesTotalPages);
+
+            emit self->myRecipesChanged();
+            emit self->myRecipesHasMoreChanged();
+            self->m_myRecipesLoading = false;
+            emit self->myRecipesLoadingChanged();
+        });
+}
+
+void RecipeViewModel::loadMyRecipesNextPage()
+{
+    if (m_myRecipesLoading || !m_myRecipesHasMore) return;
+    loadMyRecipes(m_myRecipesPage + 1, 20, m_myRecipesStatus);
 }

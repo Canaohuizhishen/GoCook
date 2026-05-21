@@ -150,6 +150,9 @@ ApplicationWindow {
             onShowSubmitRequest: () => {
                 stackView.push(submitRecipePage)
             }
+            onShowMyRecipesRequest: () => {
+                stackView.push(myRecipesPage)
+            }
             onShowSearchRequest: () => {
                 stackView.push(searchPage)
             }
@@ -166,6 +169,13 @@ ApplicationWindow {
     Component {
         id: submitRecipePage
         SubmitRecipePage {
+            property var _stackView: stackView
+        }
+    }
+
+    Component {
+        id: myRecipesPage
+        MyRecipesPage {
             property var _stackView: stackView
         }
     }

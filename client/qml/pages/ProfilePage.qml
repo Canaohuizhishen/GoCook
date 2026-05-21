@@ -8,6 +8,7 @@ Page {
     title: qsTr("个人中心")
 
     signal showSubmitRequest()
+    signal showMyRecipesRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -64,6 +65,14 @@ Page {
             buttonType: CustomButton.ButtonType.Primary
             visible: authViewModel.loggedIn
             onClicked: showSubmitRequest()
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            buttonText: qsTr("📝 我的投稿")
+            buttonType: CustomButton.ButtonType.Secondary
+            visible: authViewModel.loggedIn
+            onClicked: showMyRecipesRequest()
         }
 
         Item { Layout.fillHeight: true }

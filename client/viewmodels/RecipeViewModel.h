@@ -22,6 +22,9 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool nutritionLoading READ nutritionLoading NOTIFY nutritionLoadingChanged)
     Q_PROPERTY(QVariantList recipeVideos READ recipeVideos NOTIFY recipeVideosChanged)
     Q_PROPERTY(bool videosLoading READ videosLoading NOTIFY videosLoadingChanged)
+    Q_PROPERTY(QVariantList myRecipes READ myRecipes NOTIFY myRecipesChanged)
+    Q_PROPERTY(bool myRecipesLoading READ myRecipesLoading NOTIFY myRecipesLoadingChanged)
+    Q_PROPERTY(bool myRecipesHasMore READ myRecipesHasMore NOTIFY myRecipesHasMoreChanged)
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -40,6 +43,9 @@ public:
     bool nutritionLoading() const;
     QVariantList recipeVideos() const;
     bool videosLoading() const;
+    QVariantList myRecipes() const;
+    bool myRecipesLoading() const;
+    bool myRecipesHasMore() const;
 
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 20);
     Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 20);
@@ -54,6 +60,8 @@ public:
     Q_INVOKABLE void resetSearch();
     Q_INVOKABLE void loadNutritionReport(int recipeId);
     Q_INVOKABLE void loadRecipeVideos(int recipeId);
+    Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");
+    Q_INVOKABLE void loadMyRecipesNextPage();
 
 signals:
     void recipesChanged();
@@ -70,6 +78,9 @@ signals:
     void nutritionLoadingChanged();
     void recipeVideosChanged();
     void videosLoadingChanged();
+    void myRecipesChanged();
+    void myRecipesLoadingChanged();
+    void myRecipesHasMoreChanged();
     void searchErrorOccurred(const QString &error);
     void errorOccurred(const QString &error);
     void recipeSubmitted(int id, const QString& status);
@@ -108,4 +119,12 @@ private:
     // 视频状态
     QVariantList m_recipeVideos;
     bool m_videosLoading = false;
+
+    // 我的投稿状态
+    QVariantList m_myRecipes;
+    bool m_myRecipesLoading = false;
+    bool m_myRecipesHasMore = false;
+    int m_myRecipesPage = 1;
+    int m_myRecipesTotalPages = 0;
+    QString m_myRecipesStatus;
 };
