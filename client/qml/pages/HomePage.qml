@@ -11,6 +11,7 @@ Page {
     signal showDetailRequest(int recipeId)
     signal showSubmitRequest()
     signal showSearchRequest()
+    signal showShoppingListRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -77,6 +78,9 @@ Page {
             }
 
             InventoryPage {
+                onShowShoppingListRequest: {
+                    homePage.showShoppingListRequest()
+                }
             }
 
             FavoritesPage {

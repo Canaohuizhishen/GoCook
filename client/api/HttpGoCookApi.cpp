@@ -896,14 +896,60 @@ void HttpGoCookApi::deleteInventoryItem(int itemId,
 // ======================= 购物清单 / 膳食计划 =======================
 void HttpGoCookApi::getShoppingLists(ShoppingListsCallback callback)
 {
-    if (callback) callback(false, std::vector<gocook::models::ShoppingListSummary>{}, "Not implemented");
+    get("/api/inventory/shopping-lists", [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, std::vector<gocook::models::ShoppingListSummary>{}, errorMsg.toStdString());
+            return;
+        }
+        std::vector<gocook::models::ShoppingListSummary> result;
+        const QJsonArray arr = doc.array();
+        for (const QJsonValue& val : arr) {
+            QJsonObject obj = val.toObject();
+            gocook::models::ShoppingListSummary summary;
+            summary.id = obj["id"].toInt();
+            summary.name = obj["name"].toString().toStdString();
+            summary.item_count = obj["item_count"].toInt();
+            summary.created_at = obj["created_at"].toString().toStdString();
+            result.push_back(std::move(summary));
+        }
+        if (callback) callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListRequest& request,
                                         ShoppingListCallback callback)
 {
-    Q_UNUSED(request);
-    if (callback) callback(false, gocook::models::ShoppingList{}, "Not implemented");
+    QVariantMap data;
+    data["name"] = QString::fromStdString(request.name);
+    if (request.plan_id.has_value())
+        data["plan_id"] = QString::fromStdString(request.plan_id.value());
+
+    post("/api/inventory/shopping-lists", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
+            return;
+        }
+        gocook::models::ShoppingList list;
+        QJsonObject obj = doc.object();
+        list.id = obj["id"].toInt();
+        list.name = obj["name"].toString().toStdString();
+        if (obj.contains("items") && obj["items"].isArray()) {
+            const QJsonArray itemsArr = obj["items"].toArray();
+            for (const QJsonValue& val : itemsArr) {
+                QJsonObject itemObj = val.toObject();
+                gocook::models::ShoppingListItem item;
+                item.id = itemObj["id"].toInt();
+                item.ingredient_name = itemObj["ingredient_name"].toString().toStdString();
+                item.required_quantity = itemObj["required_quantity"].toDouble();
+                item.inventory_quantity = itemObj["inventory_quantity"].toDouble();
+                item.to_buy_quantity = itemObj["to_buy_quantity"].toDouble();
+                item.unit = itemObj["unit"].toString().toStdString();
+                item.checked = itemObj["checked"].toBool();
+                list.items.push_back(std::move(item));
+            }
+        }
+        if (callback) callback(true, list, "");
+    });
 }
 
 void HttpGoCookApi::getShoppingListDetail(int listId,

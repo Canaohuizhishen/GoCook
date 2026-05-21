@@ -118,16 +118,106 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
     }
 }
 
-std::vector<ShoppingListSummary> PgInventoryRepository::findShoppingLists(int) {
-    throw ServiceException("Not implemented", 501);
+std::vector<ShoppingListSummary> PgInventoryRepository::findShoppingLists(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result rows = txn.exec_params(
+            "SELECT sl.id, sl.name, COUNT(sli.id) AS item_count, sl.created_at "
+            "FROM shopping_lists sl "
+            "LEFT JOIN shopping_list_items sli ON sli.list_id = sl.id "
+            "WHERE sl.user_id = $1 "
+            "GROUP BY sl.id ORDER BY sl.created_at DESC",
+            userId);
+
+        std::vector<ShoppingListSummary> result;
+        for (const auto& row : rows) {
+            ShoppingListSummary summary;
+            summary.id = row["id"].as<int>();
+            summary.name = row["name"].c_str();
+            summary.item_count = row["item_count"].as<int>();
+            summary.created_at = row["created_at"].c_str();
+            result.push_back(std::move(summary));
+        }
+
+        txn.commit();
+        return result;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-int PgInventoryRepository::createShoppingList(int, const CreateShoppingListRequest&) {
-    throw ServiceException("Not implemented", 501);
+int PgInventoryRepository::createShoppingList(int userId, const CreateShoppingListRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        pqxx::result res;
+        if (req.plan_id.has_value()) {
+            res = txn.exec_params(
+                "INSERT INTO shopping_lists (user_id, name, plan_id) VALUES ($1, $2, $3) RETURNING id",
+                userId, req.name, req.plan_id.value());
+        } else {
+            res = txn.exec_params(
+                "INSERT INTO shopping_lists (user_id, name) VALUES ($1, $2) RETURNING id",
+                userId, req.name);
+        }
+        int id = res[0]["id"].as<int>();
+        txn.commit();
+        return id;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-ShoppingList PgInventoryRepository::findShoppingListDetail(int, int) {
-    throw ServiceException("Not implemented", 501);
+ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result listRes = txn.exec_params(
+            "SELECT id, name FROM shopping_lists WHERE id = $1 AND user_id = $2",
+            listId, userId);
+        if (listRes.empty()) {
+            throw ServiceException("购物清单不存在", 404);
+        }
+
+        ShoppingList result;
+        result.id = listRes[0]["id"].as<int>();
+        result.name = listRes[0]["name"].c_str();
+
+        pqxx::result itemsRes = txn.exec_params(
+            "SELECT id, ingredient_name, required_quantity, inventory_quantity, "
+            "to_buy_quantity, unit, checked "
+            "FROM shopping_list_items WHERE list_id = $1 ORDER BY id",
+            listId);
+
+        for (const auto& row : itemsRes) {
+            ShoppingListItem item;
+            item.id = row["id"].as<int>();
+            item.ingredient_name = row["ingredient_name"].c_str();
+            item.required_quantity = row["required_quantity"].as<double>();
+            item.inventory_quantity = row["inventory_quantity"].as<double>();
+            item.to_buy_quantity = row["to_buy_quantity"].as<double>();
+            item.unit = row["unit"].c_str();
+            item.checked = row["checked"].as<bool>();
+            result.items.push_back(std::move(item));
+        }
+
+        txn.commit();
+        return result;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 void PgInventoryRepository::deleteShoppingList(int, int) {

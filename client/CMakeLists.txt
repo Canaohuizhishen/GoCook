@@ -34,11 +34,13 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeGridCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
     QML_FILES qml/pages/FavoritesPage.qml
+    QML_FILES qml/pages/ShoppingListPage.qml
     SOURCES ../contracts/include/gocook/DataModels.h
     SOURCES ../contracts/include/gocook/IGoCookApi.h
     SOURCES viewmodels/RecipeViewModel.cpp viewmodels/RecipeViewModel.h
     SOURCES viewmodels/AuthViewModel.cpp viewmodels/AuthViewModel.h
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
+    SOURCES viewmodels/ShoppingListViewModel.cpp viewmodels/ShoppingListViewModel.h
     SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml

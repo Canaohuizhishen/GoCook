@@ -16,14 +16,14 @@ void InventoryServiceImpl::deleteInventoryItem(int userId, int itemId) {
 }
 
 // 购物清单方法暂时未实现
-std::vector<ShoppingListSummary> InventoryServiceImpl::getShoppingLists(int) {
-    throw ServiceException("Not implemented", 501);
+std::vector<ShoppingListSummary> InventoryServiceImpl::getShoppingLists(int userId) {
+    return inventoryRepo_->findShoppingLists(userId);
 }
-int InventoryServiceImpl::createShoppingList(int, const CreateShoppingListRequest&) {
-    throw ServiceException("Not implemented", 501);
+int InventoryServiceImpl::createShoppingList(int userId, const CreateShoppingListRequest& request) {
+    return inventoryRepo_->createShoppingList(userId, request);
 }
-ShoppingList InventoryServiceImpl::getShoppingListDetail(int, int) {
-    throw ServiceException("Not implemented", 501);
+ShoppingList InventoryServiceImpl::getShoppingListDetail(int userId, int listId) {
+    return inventoryRepo_->findShoppingListDetail(userId, listId);
 }
 void InventoryServiceImpl::deleteShoppingList(int, int) {
     throw ServiceException("Not implemented", 501);

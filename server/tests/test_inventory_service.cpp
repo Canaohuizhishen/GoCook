@@ -76,25 +76,50 @@ TEST(InventoryServiceTest, 删除库存正确委派) {
 
 // ==================== 未实现的方法 ====================
 
-TEST(InventoryServiceTest, 购物清单列表未实现) {
+TEST(InventoryServiceTest, 购物清单列表正确委派) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getShoppingLists(1), ServiceException);
+    std::vector<gocook::models::ShoppingListSummary> expected;
+    expected.push_back({1, "周末采购", 3, "2026-05-10T14:30:00Z"});
+    EXPECT_CALL(*repo, findShoppingLists(1)).WillOnce(Return(expected));
+
+    auto result = service.getShoppingLists(1);
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].name, "周末采购");
+    EXPECT_EQ(result[0].item_count, 3);
 }
 
-TEST(InventoryServiceTest, 创建购物清单未实现) {
+TEST(InventoryServiceTest, 创建购物清单正确委派) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.createShoppingList(1, {}), ServiceException);
+    gocook::models::CreateShoppingListRequest req;
+    req.name = "周末采购";
+    EXPECT_CALL(*repo, createShoppingList(1, Truly([](const auto& r) {
+        return r.name == "周末采购";
+    }))).WillOnce(Return(42));
+
+    int id = service.createShoppingList(1, req);
+    EXPECT_EQ(id, 42);
 }
 
-TEST(InventoryServiceTest, 购物清单详情未实现) {
+TEST(InventoryServiceTest, 购物清单详情正确委派) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getShoppingListDetail(1, 1), ServiceException);
+    gocook::models::ShoppingList expected;
+    expected.id = 42;
+    expected.name = "周末采购";
+    EXPECT_CALL(*repo, findShoppingListDetail(1, 42))
+        .WillOnce(Return(expected));
+
+    auto result = service.getShoppingListDetail(1, 42);
+    EXPECT_EQ(result.id, 42);
+    EXPECT_EQ(result.name, "周末采购");
 }
 
 TEST(InventoryServiceTest, 删除购物清单未实现) {
