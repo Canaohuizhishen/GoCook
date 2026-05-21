@@ -5,9 +5,45 @@ import client.styles
 import "../components"
 
 Page {
-    title: qsTr("提交菜谱")
+    id: page
+    title: recipeId > 0 ? qsTr("编辑菜谱") : qsTr("提交菜谱")
 
+    property int recipeId: 0
+    property var _stackView
     property bool submitting: false
+
+    Component.onCompleted: {
+        if (recipeId > 0) {
+            recipeVM.loadRecipeForEdit(recipeId)
+        }
+    }
+
+    function prePopulateForm() {
+        var detail = recipeVM.recipeDetail
+        if (!detail || Object.keys(detail).length === 0) return
+
+        nameField.text = detail.name || ""
+        descField.text = detail.description || ""
+        imageUrlField.text = detail.imageUrl || ""
+
+        // 预填充食材
+        ingredientListModel.clear()
+        var ingredients = detail.ingredients
+        if (ingredients && ingredients.length) {
+            for (var i = 0; i < ingredients.length; i++) {
+                ingredientListModel.append(ingredients[i])
+            }
+        }
+
+        // 预填充步骤
+        stepListModel.clear()
+        var steps = detail.steps
+        if (steps && steps.length) {
+            for (var j = 0; j < steps.length; j++) {
+                stepListModel.append(steps[j])
+            }
+        }
+    }
 
     header: ToolBar {
         RowLayout {
@@ -38,8 +74,8 @@ Page {
             }
             Label {
                 Layout.fillWidth: true
-                text: qsTr("提交菜谱")
-                font.pointSize: Theme.fontSizeBody
+                text: recipeId > 0 ? qsTr("编辑菜谱") : qsTr("提交菜谱")
+                font.pointSize: Theme.fontSizeH1
                 font.weight: Theme.fontWeightMedium
                 elide: Label.ElideRight
                 horizontalAlignment: Qt.AlignHCenter
@@ -196,7 +232,7 @@ Page {
 
             CustomButton {
                 width: parent.width
-                buttonText: submitting ? qsTr("提交中...") : qsTr("提交菜谱")
+                buttonText: submitting ? qsTr("提交中...") : (recipeId > 0 ? qsTr("保存修改") : qsTr("提交菜谱"))
                 enabled: nameField.text.trim() !== "" && !submitting
                         && ingredientListModel.count > 0 && stepListModel.count > 0
                 onClicked: {
@@ -211,14 +247,26 @@ Page {
                         var s = stepListModel.get(j)
                         steps.push({order: s.order, description: s.description})
                     }
-                    recipeVM.submitRecipe(
-                        nameField.text.trim(),
-                        descField.text.trim(),
-                        imageUrlField.text.trim(),
-                        ingredients,
-                        steps,
-                        []
-                    )
+                    if (recipeId > 0) {
+                        recipeVM.editRecipe(
+                            recipeId,
+                            nameField.text.trim(),
+                            descField.text.trim(),
+                            imageUrlField.text.trim(),
+                            ingredients,
+                            steps,
+                            []
+                        )
+                    } else {
+                        recipeVM.submitRecipe(
+                            nameField.text.trim(),
+                            descField.text.trim(),
+                            imageUrlField.text.trim(),
+                            ingredients,
+                            steps,
+                            []
+                        )
+                    }
                 }
             }
 
@@ -307,45 +355,94 @@ Page {
         target: recipeVM
         function onRecipeSubmitted(id, status) {
             submitting = false
-            snackBar.show(qsTr("提交成功！ID: %1").arg(id))
+            var name = nameField.text.trim() || qsTr("菜谱")
+            snackBar.show(qsTr("提交成功，等待审核"), "success")
             popTimer.start()
         }
         function onSubmitFailed(error) {
             submitting = false
-            snackBar.show(qsTr("提交失败: %1").arg(error))
+            snackBar.show(qsTr("提交失败，请稍后重试"), "error")
+        }
+        function onRecipeEdited() {
+            submitting = false
+            var name = nameField.text.trim() || qsTr("菜谱")
+            snackBar.show(qsTr("更新成功，等待重新审核"), "success")
+            popTimer.start()
+        }
+        function onEditFailed(error) {
+            submitting = false
+            snackBar.show(qsTr("修改失败，请稍后重试"), "error")
+        }
+        function onEditFormDataReady() {
+            page.prePopulateForm()
         }
     }
 
     Timer {
         id: popTimer
-        interval: 1500
-        onTriggered: _stackView.pop()
+        interval: 400
+        onTriggered: {
+            snackBar.hide()
+            _stackView.pop()
+        }
     }
 
-    Rectangle {
+    Item {
         id: snackBar
-        anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottomMargin: Theme.spacingLarge
-        width: Math.min(parent.width * 0.9, 350)
-        height: msgText.implicitHeight + Theme.spacingMedium
-        radius: Theme.radiusMedium
-        color: Theme.textPrimary
+        y: parent.height * 0.382 - height / 2
+        width: shadow.width
+        height: shadow.height
         opacity: 0
         visible: opacity > 0
 
-        function show(msg) {
-            msgText.text = msg
-            opacity = 0.9
+        Rectangle {
+            id: shadow
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: 4
+            width: card.width
+            height: card.height
+            radius: Theme.radiusLarge
+            color: Theme.cardShadowColor
+        }
+
+        Rectangle {
+            id: card
+            anchors.centerIn: parent
+            width: Math.min(Math.max(msgText.implicitWidth + Theme.spacingLarge * 3, 200), 300)
+            height: msgText.implicitHeight + Theme.spacingLarge * 2 + Theme.spacingMedium
+            radius: Theme.radiusLarge
+            color: Theme.cardBackground
+            border.width: 2
+            border.color: Theme.accentColor
+            Behavior on border.color { ColorAnimation { duration: Theme.durationShort } }
         }
 
         Text {
             id: msgText
-            anchors.centerIn: parent
-            color: "white"
-            font.pointSize: Theme.fontSizeCaption
+            anchors.centerIn: card
+            width: card.width - Theme.spacingLarge * 2
+            color: Theme.textPrimary
+            font.pointSize: Theme.fontSizeH3
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            wrapMode: Text.WordWrap
+            lineHeight: 1.4
         }
 
-        Behavior on opacity { NumberAnimation { duration: 300 } }
+        function show(msg, type) {
+            msgText.text = msg
+            if (type === "error") {
+                card.border.color = Theme.errorColor
+            } else {
+                card.border.color = Theme.accentColor
+            }
+            opacity = 1
+        }
+        function hide() {
+            opacity = 0
+        }
+
+        Behavior on opacity { NumberAnimation { duration: Theme.durationMedium } }
     }
 }

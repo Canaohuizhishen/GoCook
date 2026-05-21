@@ -56,8 +56,8 @@ namespace gocook::services {
                                                              const std::string& status = "") = 0;
 
         /// 编辑未审核的菜谱（需认证）
-        virtual void editRecipe(int userId, int recipeId,
-                                const models::EditRecipeRequest& updates) = 0;
+        virtual std::string editRecipe(int userId, int recipeId,
+                                         const models::EditRecipeRequest& updates) = 0;
 
         /// 切换收藏状态（需认证）
         /// @param groupId 可选分组ID，不传则使用默认分组

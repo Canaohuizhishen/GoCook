@@ -69,6 +69,10 @@ public:
     Q_INVOKABLE void submitRecipe(const QString& name, const QString& description,
                                    const QString& imageUrl, const QVariantList& ingredients,
                                    const QVariantList& steps, const QVariantList& tags);
+    Q_INVOKABLE void editRecipe(int recipeId, const QString& name, const QString& description,
+                                 const QString& imageUrl, const QVariantList& ingredients,
+                                 const QVariantList& steps, const QVariantList& tags);
+    Q_INVOKABLE void loadRecipeForEdit(int recipeId);
     Q_INVOKABLE void searchRecipes(const QString& keyword, int page = 1, int size = 20);
     Q_INVOKABLE void searchNextPage();
     Q_INVOKABLE void resetSearch();
@@ -118,6 +122,9 @@ signals:
     void errorOccurred(const QString &error);
     void recipeSubmitted(int id, const QString& status);
     void submitFailed(const QString& error);
+    void recipeEdited();
+    void editFailed(const QString& error);
+    void editFormDataReady();
 
 private:
     enum class LoadMode { Public, Recommended };

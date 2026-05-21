@@ -31,8 +31,8 @@ public:
     gocook::models::PagedMyRecipes findMySubmittedRecipes(
         int userId, int page, int size, const std::string& status) override;
 
-    void update(int userId, int recipeId,
-                const gocook::models::EditRecipeRequest& updates) override;
+    std::string update(int userId, int recipeId,
+                       const gocook::models::EditRecipeRequest& updates) override;
 
     void toggleFavorite(int userId, int recipeId,
                         std::optional<int> groupId,

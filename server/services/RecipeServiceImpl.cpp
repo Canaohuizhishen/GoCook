@@ -35,8 +35,8 @@ PagedRatings RecipeServiceImpl::getRecipeRatings(int recipeId, int page, int siz
 PagedMyRecipes RecipeServiceImpl::getMySubmittedRecipes(int userId, int page, int size, const std::string& status) {
     return recipeRepo_->findMySubmittedRecipes(userId, page, size, status);
 }
-void RecipeServiceImpl::editRecipe(int, int, const EditRecipeRequest&) {
-    throw ServiceException("Not implemented", 501);
+std::string RecipeServiceImpl::editRecipe(int userId, int recipeId, const EditRecipeRequest& updates) {
+    return recipeRepo_->update(userId, recipeId, updates);
 }
 void RecipeServiceImpl::toggleFavorite(int, int, std::optional<int>, std::optional<bool>) {
     throw ServiceException("Not implemented", 501);

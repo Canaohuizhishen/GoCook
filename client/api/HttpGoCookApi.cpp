@@ -894,8 +894,65 @@ void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
 void HttpGoCookApi::editRecipe(int recipeId,
                                const gocook::models::EditRecipeRequest& updates,
                                SuccessCallback callback) {
-    Q_UNUSED(recipeId); Q_UNUSED(updates);
-    if (callback) callback(false, "Not implemented");
+    QVariantMap data;
+    data["name"] = QString::fromStdString(updates.name);
+    data["description"] = QString::fromStdString(updates.description);
+    data["image_url"] = QString::fromStdString(updates.image_url);
+
+    QVariantList ingredients;
+    for (const auto& ing : updates.ingredients) {
+        QVariantMap ingMap;
+        ingMap["name"] = QString::fromStdString(ing.name);
+        ingMap["quantity"] = ing.quantity;
+        ingMap["unit"] = QString::fromStdString(ing.unit);
+        ingredients.append(ingMap);
+    }
+    data["ingredients"] = ingredients;
+
+    QVariantList steps;
+    for (const auto& s : updates.steps) {
+        QVariantMap stepMap;
+        stepMap["order"] = s.order;
+        stepMap["description"] = QString::fromStdString(s.description);
+        if (s.duration.has_value())
+            stepMap["duration"] = s.duration.value();
+        steps.append(stepMap);
+    }
+    data["steps"] = steps;
+
+    if (updates.nutrition.has_value()) {
+        QVariantMap nutMap;
+        nutMap["calories"] = updates.nutrition->calories;
+        nutMap["protein"] = updates.nutrition->protein;
+        nutMap["fat"] = updates.nutrition->fat;
+        nutMap["carbs"] = updates.nutrition->carbs;
+        data["nutrition"] = nutMap;
+    }
+
+    if (!updates.tags.empty()) {
+        QStringList tagList;
+        for (const auto& t : updates.tags)
+            tagList << QString::fromStdString(t);
+        data["tags"] = tagList;
+    }
+
+    if (updates.cooking_method.has_value())
+        data["cooking_method"] = QString::fromStdString(updates.cooking_method.value());
+    if (updates.flavor.has_value())
+        data["flavor"] = QString::fromStdString(updates.flavor.value());
+    if (updates.ingredient_type.has_value())
+        data["ingredient_type"] = QString::fromStdString(updates.ingredient_type.value());
+
+    QString endpoint = QString("/api/recipes/%1").arg(recipeId);
+    put(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (!success) {
+            if (callback)
+                callback(false, errorMsg.toStdString());
+            return;
+        }
+        if (callback)
+            callback(true, "");
+    });
 }
 
 void HttpGoCookApi::toggleFavorite(int recipeId,

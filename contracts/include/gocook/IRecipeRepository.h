@@ -35,8 +35,8 @@ public:
     virtual models::PagedMyRecipes findMySubmittedRecipes(
         int userId, int page, int size, const std::string& status) = 0;
 
-    virtual void update(int userId, int recipeId,
-                        const models::EditRecipeRequest& updates) = 0;
+    virtual std::string update(int userId, int recipeId,
+                                const models::EditRecipeRequest& updates) = 0;
 
     virtual void toggleFavorite(int userId, int recipeId,
                                 std::optional<int> groupId,

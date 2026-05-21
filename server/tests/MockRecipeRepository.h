@@ -18,7 +18,7 @@ public:
                 (int, const gocook::models::SubmitRecipeRequest&), (override));
     MOCK_METHOD(gocook::models::PagedMyRecipes, findMySubmittedRecipes,
                 (int, int, int, const std::string&), (override));
-    MOCK_METHOD(void, update,
+    MOCK_METHOD(std::string, update,
                 (int, int, const gocook::models::EditRecipeRequest&), (override));
     MOCK_METHOD(void, toggleFavorite,
                 (int, int, std::optional<int>, std::optional<bool>), (override));
