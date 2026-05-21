@@ -1085,9 +1085,29 @@ void HttpGoCookApi::exportShoppingList(int listId,
                                         const std::string& format,
                                         std::function<void(bool, const std::string&, const std::string&)> callback)
 {
-    Q_UNUSED(listId);
-    Q_UNUSED(format);
-    if (callback) callback(false, "", "Not implemented");
+    QString endpoint = QString("/api/inventory/shopping-lists/%1/export?format=%2")
+        .arg(listId).arg(QString::fromStdString(format));
+    QUrl url(m_baseUrl + endpoint);
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    if (!m_token.isEmpty()) {
+        req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    }
+
+    QNetworkReply* reply = m_nam.get(req);
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray body = reply->readAll();
+        reply->deleteLater();
+
+        if (callback) {
+            if (statusCode == 200) {
+                callback(true, QString::fromUtf8(body).toStdString(), "");
+            } else {
+                callback(false, "", QString::fromUtf8(body).toStdString());
+            }
+        }
+    });
 }
 
 // ======================= 膳食计划 =======================

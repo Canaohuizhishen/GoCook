@@ -30,6 +30,7 @@ public:
     Q_INVOKABLE void deleteShoppingList(int listId);
     Q_INVOKABLE void createShoppingList(const QString& name);
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void exportShoppingList(int listId);
 
 signals:
     void shoppingListsChanged();
@@ -45,6 +46,7 @@ signals:
     void itemUpdated();
     void shoppingListDeleted(int listId);
     void deletingListIdChanged();
+    void exportReady(const QString& content);
 
 private:
     void beginLoad();

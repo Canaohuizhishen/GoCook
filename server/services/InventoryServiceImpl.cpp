@@ -35,6 +35,6 @@ void InventoryServiceImpl::updateShoppingListItem(int userId, int listId, int it
 BatchShoppingResponse InventoryServiceImpl::batchAddShoppingItems(int userId, int listId, const std::vector<BatchShoppingItem>& items) {
     return inventoryRepo_->batchAddShoppingItems(userId, listId, items);
 }
-std::string InventoryServiceImpl::exportShoppingList(int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+std::string InventoryServiceImpl::exportShoppingList(int userId, int listId, const std::string& format) {
+    return inventoryRepo_->exportShoppingList(userId, listId, format);
 }

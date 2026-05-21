@@ -31,6 +31,23 @@ void ShoppingListViewModel::refresh()
     loadShoppingLists();
 }
 
+void ShoppingListViewModel::exportShoppingList(int listId)
+{
+    beginLoad();
+
+    m_api->exportShoppingList(listId, "text",
+        [self = QPointer<ShoppingListViewModel>(this)](bool success, const std::string& content, const std::string& error) {
+            if (!self) return;
+            self->endLoad();
+
+            if (success) {
+                emit self->exportReady(QString::fromStdString(content));
+            } else {
+                emit self->errorOccurred(QString::fromStdString(error));
+            }
+        });
+}
+
 void ShoppingListViewModel::loadShoppingLists()
 {
     beginLoad();

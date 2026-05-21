@@ -26,6 +26,12 @@ Button {
     flat: true
     hoverEnabled: true
 
+    // 按下/抬起缩放动效
+    scale: control.pressed ? 0.95 : 1.0
+    Behavior on scale {
+        NumberAnimation { duration: 80; easing.type: Easing.InOutQuad }
+    }
+
     // 背景
     background: Rectangle {
         implicitWidth: control.implicitWidth
@@ -38,10 +44,15 @@ Button {
                 if (control.hovered) return control.buttonColor.a > 0 ? Qt.lighter(control.buttonColor) : Theme.primaryLightColor
                 return control.buttonColor.a > 0 ? control.buttonColor : Theme.primaryColor
             }
+            if (control.buttonType === CustomButton.ButtonType.Secondary) {
+                if (control.pressed) return Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                if (control.hovered) return Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.1)
+            }
             return "transparent"
         }
         border.color: {
             if (control.buttonType === CustomButton.ButtonType.Secondary) {
+                if (control.hovered) return Qt.lighter(Theme.primaryColor, 1.2)
                 return Theme.primaryColor
             }
             return "transparent"

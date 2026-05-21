@@ -73,7 +73,7 @@ Page {
         anchors.margins: Theme.spacingMedium
         spacing: Theme.spacingSmall
 
-        // 顶部：返回 + 标题
+        // 顶部：返回 + 操作按钮
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.spacingSmall
@@ -90,15 +90,76 @@ Page {
                 onClicked: root.goBack()
             }
 
-            Text {
-                text: shoppingListVM.currentList.name || qsTr("购物清单详情")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.bold: true
-                color: Theme.textPrimary
-                elide: Text.ElideRight
-                Layout.fillWidth: true
-                verticalAlignment: Text.AlignVCenter
+            Item { Layout.fillWidth: true }
+
+            CustomButton {
+                id: exportBtn
+                buttonText: qsTr("导出")
+                buttonType: CustomButton.ButtonType.Secondary
+                onClicked: exportMenu.open()
+            }
+
+            Popup {
+                id: exportMenu
+                y: exportBtn.height + 4
+                x: exportBtn.x
+                width: 140
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                padding: 0
+
+                background: Rectangle {
+                    color: Theme.cardBackground
+                    radius: Theme.radiusSmall
+                    border.color: Theme.dividerColor
+                    border.width: 1
+                }
+
+                ColumnLayout {
+                    spacing: 0
+                    width: parent.width
+
+                    Repeater {
+                        model: [
+                            { text: qsTr("导出文本"), icon: "📄" },
+                            { text: qsTr("导出图片"), icon: "🖼" }
+                        ]
+                        delegate: Rectangle {
+                            id: menuItemRoot
+                            Layout.fillWidth: true
+                            height: 40
+                            color: menuItemMa.pressed ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
+                                 : menuItemMa.containsMouse ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.08)
+                                 : "transparent"
+                            scale: menuItemMa.pressed ? 0.96 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 60; easing.type: Easing.InOutQuad } }
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.icon + "  " + modelData.text
+                                font.family: Theme.fontFamily
+                                font.pointSize: Theme.fontSizeBody
+                                color: Theme.textPrimary
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            MouseArea {
+                                id: menuItemMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    exportMenu.close()
+                                    if (index === 0) {
+                                        shoppingListVM.exportShoppingList(root.listId)
+                                    } else {
+                                        exportAsImage()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             CustomButton {
@@ -106,6 +167,17 @@ Page {
                 buttonType: CustomButton.ButtonType.Secondary
                 onClicked: addItemDialog.open()
             }
+        }
+
+        // 清单名称（独占一行，完整显示不截断）
+        Text {
+            text: shoppingListVM.currentList.name || qsTr("购物清单详情")
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSizeH3
+            font.bold: true
+            color: Theme.textPrimary
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
         }
 
         // 表头 + 食材列表——包裹在水平可滑动的 Flickable 中
@@ -141,8 +213,7 @@ Page {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 0
 
-                        Text {
-                            width: maxNameWidth
+                        Text { width: maxNameWidth; height: 32
                             text: qsTr("食材")
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
@@ -292,11 +363,18 @@ Page {
             console.log("ShoppingList detail error:", error)
         }
         function onBatchAddComplete(message) {
-            // 添加成功，表格已自动刷新
-            console.log("Batch add success:", message)
+            feedbackToast.show(qsTr("✓ 已添加"), "#4caf50")
         }
         function onBatchAddFailed(error) {
             console.log("Batch add failed:", error)
+        }
+        function onExportReady(content) {
+            var ta = textArea
+            ta.text = content
+            ta.selectAll()
+            ta.copy()
+            var listName = shoppingListVM.currentList.name || ""
+            feedbackToast.show(qsTr("✓ 清单「%1」已复制到剪贴板").arg(listName), Theme.primaryColor)
         }
     }
 
@@ -392,6 +470,18 @@ Page {
         }
     }
 
+    function exportAsImage() {
+        tableColumn.grabToImage(function(result) {
+            var listName = (shoppingListVM.currentList.name || "shopping-list").replace(/[\\/:*?\"<>|]/g, "_")
+            var timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "")
+            var fileName = "GoCook-" + listName + "-" + timestamp + ".png"
+            var filePath = "/tmp/" + fileName
+            result.saveToFile(filePath)
+            exportDoneDialog.filePath = filePath
+            exportDoneDialog.open()
+        })
+    }
+
     function confirmAddItem() {
         var name = itemNameField.text.trim()
         var qty = parseFloat(itemQtyField.text.trim())
@@ -409,4 +499,135 @@ Page {
         itemUnitField.clear()
         addItemDialog.close()
     }
+
+    // ===== 导出图片完成对话框 =====
+    Dialog {
+        id: exportDoneDialog
+        title: qsTr("导出完成")
+        anchors.centerIn: parent
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        width: Math.min(parent.width * 0.75, 380)
+        height: exportDoneLayout.implicitHeight + 80
+
+        property string filePath: ""
+
+        background: Rectangle {
+            color: Theme.cardBackground
+            radius: Theme.radiusMedium
+            border.color: Theme.dividerColor
+            border.width: 1
+        }
+
+        ColumnLayout {
+            id: exportDoneLayout
+            spacing: Theme.spacingMedium
+            anchors.left: parent.left
+            anchors.leftMargin: 20
+            anchors.right: parent.right
+            anchors.rightMargin: 20
+            anchors.top: parent.top
+            anchors.topMargin: 20
+
+            Text {
+                text: qsTr("图片已保存")
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeH3
+                font.bold: true
+                color: Theme.primaryColor
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
+                text: exportDoneDialog.filePath
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeBody
+                color: Theme.textSecondary
+                Layout.fillWidth: true
+                wrapMode: Text.WrapAnywhere
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            CustomButton {
+                Layout.fillWidth: true
+                buttonText: qsTr("确定")
+                buttonType: CustomButton.ButtonType.Primary
+                onClicked: exportDoneDialog.close()
+            }
+        }
+    }
+
+    // 隐藏的 TextArea 用于复制到剪贴板
+    TextArea {
+        id: textArea
+        visible: false
+    }
+
+    // 反馈提示条
+    Rectangle {
+        id: feedbackToast
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 80
+        width: parent.width * 0.75
+        height: toastLabel.lineCount > 1 ? 68 : 48
+        radius: 18
+        visible: false
+        opacity: 0
+        z: 999
+
+        property string toastMsg: ""
+        property color toastClr: Theme.primaryColor
+
+        function show(msg, clr) {
+            toastMsg = msg
+            toastClr = clr
+            visible = true
+            opacity = 1.0
+            fadeTimer.restart()
+        }
+
+        color: toastClr
+
+        Text {
+            id: toastLabel
+            anchors.left: parent.left
+            anchors.leftMargin: 14
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            text: feedbackToast.toastMsg
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSizeBody
+            color: "white"
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Behavior on opacity { NumberAnimation { duration: 400 } }
+
+        Timer {
+            id: fadeTimer
+            interval: 2000
+            onTriggered: {
+                feedbackToast.opacity = 0
+            }
+        }
+
+        onOpacityChanged: {
+            if (opacity === 0 && visible) {
+                hideTimer.start()
+            }
+        }
+        Timer {
+            id: hideTimer
+            interval: 400
+            onTriggered: {
+                feedbackToast.visible = false
+            }
+        }
+    }
+
 }

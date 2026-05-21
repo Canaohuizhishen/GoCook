@@ -162,9 +162,14 @@ TEST(InventoryServiceTest, 批量添加清单正确委派Repositories) {
     EXPECT_EQ(result.message, "");
 }
 
-TEST(InventoryServiceTest, 导出购物清单未实现) {
+TEST(InventoryServiceTest, 导出购物清单正确委派Repositories) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto& repo = *mock;
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.exportShoppingList(1, 1, "text"), ServiceException);
+    EXPECT_CALL(repo, exportShoppingList(1, 42, "text"))
+        .WillOnce(Return(std::string("GoCook 购物清单：test\n\n[ ] item  1个\n")));
+
+    auto result = service.exportShoppingList(1, 42, "text");
+    EXPECT_EQ(result, "GoCook 购物清单：test\n\n[ ] item  1个\n");
 }
