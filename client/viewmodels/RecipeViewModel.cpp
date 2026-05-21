@@ -506,3 +506,56 @@ void RecipeViewModel::loadMyRecipesNextPage()
     if (m_myRecipesLoading || !m_myRecipesHasMore) return;
     loadMyRecipes(m_myRecipesPage + 1, 20, m_myRecipesStatus);
 }
+
+QVariantList RecipeViewModel::myRatings() const { return m_myRatings; }
+bool RecipeViewModel::myRatingsLoading() const { return m_myRatingsLoading; }
+bool RecipeViewModel::myRatingsHasMore() const { return m_myRatingsHasMore; }
+
+void RecipeViewModel::loadMyRatings(int page, int size)
+{
+    if (m_myRatingsLoading) return;
+
+    m_myRatingsPage = page;
+    m_myRatingsLoading = true;
+    if (page == 1) {
+        m_myRatings.clear();
+        emit myRatingsChanged();
+    }
+    emit myRatingsLoadingChanged();
+
+    m_api->getMyRatings(page, size,
+        [self = QPointer<RecipeViewModel>(this), page]
+        (bool success, const gocook::models::PagedUserRatings& data, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
+                self->m_myRatingsLoading = false;
+                emit self->myRatingsLoadingChanged();
+                return;
+            }
+
+            if (page == 1) {
+                self->m_myRatings.clear();
+            }
+
+            for (const auto& item : data.data) {
+                auto map = DataMapper::toMap(item);
+                self->m_myRatings.append(map);
+            }
+
+            self->m_myRatingsPage = data.pagination.page;
+            self->m_myRatingsTotalPages = data.pagination.total_pages;
+            self->m_myRatingsHasMore = (self->m_myRatingsPage < self->m_myRatingsTotalPages);
+
+            emit self->myRatingsChanged();
+            emit self->myRatingsHasMoreChanged();
+            self->m_myRatingsLoading = false;
+            emit self->myRatingsLoadingChanged();
+        });
+}
+
+void RecipeViewModel::loadMyRatingsNextPage()
+{
+    if (m_myRatingsLoading || !m_myRatingsHasMore) return;
+    loadMyRatings(m_myRatingsPage + 1, 20);
+}

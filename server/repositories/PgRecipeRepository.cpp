@@ -720,8 +720,53 @@ std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int rec
     }
 }
 
-PagedUserRatings PgRecipeRepository::findMyRatings(int, int, int) {
-    throw ServiceException("Not implemented", 501);
+PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int size) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 总数
+        pqxx::result countResult = txn.exec_params(
+            "SELECT COUNT(*) FROM ratings WHERE user_id = $1",
+            userId);
+        int total = countResult[0][0].as<int>();
+
+        // 分页数据
+        int offset = (page - 1) * size;
+        pqxx::result rows = txn.exec_params(
+            "SELECT r.id, r.recipe_id, rec.name AS recipe_name,"
+            "       r.rating, r.comment, r.created_at, r.updated_at"
+            " FROM ratings r"
+            " JOIN recipes rec ON r.recipe_id = rec.id"
+            " WHERE r.user_id = $1"
+            " ORDER BY r.created_at DESC"
+            " LIMIT $2 OFFSET $3",
+            userId, size, offset);
+
+        PagedUserRatings result;
+        for (const auto& row : rows) {
+            UserRatingItem item;
+            item.rating_id = row["id"].as<int>();
+            item.recipe_id = row["recipe_id"].as<int>();
+            item.recipe_name = row["recipe_name"].c_str();
+            item.rating = row["rating"].as<int>();
+            item.comment = row["comment"].as<std::string>("");
+            item.created_at = row["created_at"].as<std::string>("");
+            item.updated_at = row["updated_at"].as<std::string>("");
+            result.data.push_back(std::move(item));
+        }
+
+        int totalPages = (size > 0) ? (total + size - 1) / size : 0;
+        result.pagination = {page, size, total, totalPages};
+
+        txn.commit();
+        return result;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findMyRatings: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 NutritionReport PgRecipeRepository::findNutrition(int recipeId) {

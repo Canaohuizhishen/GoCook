@@ -17,6 +17,7 @@ Page {
     property int editRatingValue: 0
     property string editComment: ""
     readonly property var recipeTags: recipeVM.recipeDetail.tags || []
+    readonly property var nutrition: recipeVM.recipeDetail.nutrition || {}
     readonly property real imageHeight: Math.min(250, (flickable.width - Theme.spacingMedium * 2) * 0.6)
     readonly property real navThreshold: imageHeight - navBar.height
 
@@ -324,13 +325,13 @@ Page {
                 width: parent.width
                 height: 1
                 color: Theme.dividerColor
-                visible: recipeVM.recipeDetail.nutrition && recipeVM.recipeDetail.nutrition.calories > 0
+                visible: nutrition.calories > 0
             }
 
             Column {
                 width: parent.width
                 spacing: Theme.spacingXSmall
-                visible: recipeVM.recipeDetail.nutrition && recipeVM.recipeDetail.nutrition.calories > 0
+                visible: nutrition.calories > 0
 
                 Text {
                     text: qsTr("营养信息")
@@ -346,13 +347,13 @@ Page {
                     spacing: 4
 
                     Text { text: qsTr("热量"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.calories + " kcal"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: (nutrition.calories || 0) + " kcal"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
                     Text { text: qsTr("蛋白质"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.protein + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: (nutrition.protein || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
                     Text { text: qsTr("脂肪"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.fat + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: (nutrition.fat || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
                     Text { text: qsTr("碳水"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: recipeVM.recipeDetail.nutrition.carbs + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
+                    Text { text: (nutrition.carbs || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
                 }
 
                 CustomButton {

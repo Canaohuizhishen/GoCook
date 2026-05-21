@@ -29,6 +29,9 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(QVariantList myRecipes READ myRecipes NOTIFY myRecipesChanged)
     Q_PROPERTY(bool myRecipesLoading READ myRecipesLoading NOTIFY myRecipesLoadingChanged)
     Q_PROPERTY(bool myRecipesHasMore READ myRecipesHasMore NOTIFY myRecipesHasMoreChanged)
+    Q_PROPERTY(QVariantList myRatings READ myRatings NOTIFY myRatingsChanged)
+    Q_PROPERTY(bool myRatingsLoading READ myRatingsLoading NOTIFY myRatingsLoadingChanged)
+    Q_PROPERTY(bool myRatingsHasMore READ myRatingsHasMore NOTIFY myRatingsHasMoreChanged)
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -54,6 +57,9 @@ public:
     QVariantList myRecipes() const;
     bool myRecipesLoading() const;
     bool myRecipesHasMore() const;
+    QVariantList myRatings() const;
+    bool myRatingsLoading() const;
+    bool myRatingsHasMore() const;
 
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 20);
     Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 20);
@@ -76,6 +82,8 @@ public:
     Q_INVOKABLE void deleteRating(int recipeId, int ratingId);
     Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");
     Q_INVOKABLE void loadMyRecipesNextPage();
+    Q_INVOKABLE void loadMyRatings(int page = 1, int size = 20);
+    Q_INVOKABLE void loadMyRatingsNextPage();
 
 signals:
     void recipesChanged();
@@ -103,6 +111,9 @@ signals:
     void myRecipesChanged();
     void myRecipesLoadingChanged();
     void myRecipesHasMoreChanged();
+    void myRatingsChanged();
+    void myRatingsLoadingChanged();
+    void myRatingsHasMoreChanged();
     void searchErrorOccurred(const QString &error);
     void errorOccurred(const QString &error);
     void recipeSubmitted(int id, const QString& status);
@@ -158,4 +169,11 @@ private:
     int m_myRecipesPage = 1;
     int m_myRecipesTotalPages = 0;
     QString m_myRecipesStatus;
+
+    // 我的评论状态
+    QVariantList m_myRatings;
+    bool m_myRatingsLoading = false;
+    bool m_myRatingsHasMore = false;
+    int m_myRatingsPage = 1;
+    int m_myRatingsTotalPages = 0;
 };

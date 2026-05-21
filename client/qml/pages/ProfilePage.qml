@@ -9,6 +9,7 @@ Page {
 
     signal showSubmitRequest()
     signal showMyRecipesRequest()
+    signal showMyRatingsRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -73,6 +74,14 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             visible: authViewModel.loggedIn
             onClicked: showMyRecipesRequest()
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            buttonText: qsTr("⭐ 我的评论")
+            buttonType: CustomButton.ButtonType.Secondary
+            visible: authViewModel.loggedIn
+            onClicked: showMyRatingsRequest()
         }
 
         Item { Layout.fillHeight: true }
