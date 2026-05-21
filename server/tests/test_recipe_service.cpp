@@ -168,13 +168,6 @@ TEST(RecipeServiceTest, 关联视频菜谱不存在) {
     EXPECT_THROW(service.getRecipeVideos(999), ServiceException);
 }
 
-TEST(RecipeServiceTest, 评分评论未实现) {
-    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
-    RecipeServiceImpl service(std::move(mock));
-
-    EXPECT_THROW(service.getRecipeRatings(1, 1, 20), ServiceException);
-}
-
 TEST(RecipeServiceTest, 我的投稿列表正确委派) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
     auto* repo = mock.get();
@@ -215,27 +208,6 @@ TEST(RecipeServiceTest, 切换收藏未实现) {
     RecipeServiceImpl service(std::move(mock));
 
     EXPECT_THROW(service.toggleFavorite(1, 1), ServiceException);
-}
-
-TEST(RecipeServiceTest, 评分菜谱未实现) {
-    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
-    RecipeServiceImpl service(std::move(mock));
-
-    EXPECT_THROW(service.rateRecipe(1, 1, {}), ServiceException);
-}
-
-TEST(RecipeServiceTest, 修改评分未实现) {
-    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
-    RecipeServiceImpl service(std::move(mock));
-
-    EXPECT_THROW(service.updateRating(1, 1, 1, {}), ServiceException);
-}
-
-TEST(RecipeServiceTest, 删除评分未实现) {
-    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
-    RecipeServiceImpl service(std::move(mock));
-
-    EXPECT_THROW(service.deleteRating(1, 1, 1), ServiceException);
 }
 
 TEST(RecipeServiceTest, 我的评分列表未实现) {
@@ -286,4 +258,140 @@ TEST(RecipeServiceTest, 营养报告菜谱不存在) {
         .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
 
     EXPECT_THROW(service.getRecipeNutrition(999), ServiceException);
+}
+
+namespace {
+    PagedRatings makePagedRatings(int count = 2) {
+        PagedRatings result;
+        for (int i = 1; i <= count; ++i) {
+            RecipeRating r;
+            r.id = i;
+            r.user_id = 100 + i;
+            r.username = "user_" + std::to_string(i);
+            r.rating = (i % 5) + 1;
+            r.comment = "Comment " + std::to_string(i);
+            r.created_at = std::string("2026-04-") + (i < 10 ? "0" : "") + std::to_string(i) + "T10:00:00Z";
+            result.data.push_back(std::move(r));
+        }
+        result.pagination = {1, count, 10, 5};
+        return result;
+    }
+}
+
+TEST(RecipeServiceTest, 获取评分列表成功) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    RecipeDetail dummy = makeDetail(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(dummy));
+
+    auto fakeRatings = makePagedRatings(3);
+    EXPECT_CALL(*repo, findRatings(42, 1, 10)).WillOnce(Return(fakeRatings));
+
+    auto result = service.getRecipeRatings(42, 1, 10);
+    ASSERT_EQ(result.data.size(), 3);
+    EXPECT_EQ(result.data[0].id, 1);
+    EXPECT_EQ(result.data[0].username, "user_1");
+    EXPECT_EQ(result.data[0].rating, 2);
+    EXPECT_EQ(result.data[0].comment, "Comment 1");
+    EXPECT_EQ(result.data[1].username, "user_2");
+    EXPECT_EQ(result.data[2].username, "user_3");
+    EXPECT_EQ(result.pagination.total, 10);
+    EXPECT_EQ(result.pagination.page, 1);
+}
+
+TEST(RecipeServiceTest, 获取评分列表菜谱不存在) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, findById(999))
+        .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
+
+    EXPECT_THROW(service.getRecipeRatings(999, 1, 10), ServiceException);
+}
+
+// ==================== 评分与评论操作 ====================
+
+TEST(RecipeServiceTest, 评分菜谱成功) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    RateRecipeRequest req{5, "非常好吃"};
+
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeDetail(42)));
+    EXPECT_CALL(*repo, rateRecipe(1, 42, Truly([](const auto& r) {
+        return r.rating == 5 && r.comment == "非常好吃";
+    }))).Times(1);
+
+    service.rateRecipe(1, 42, req);
+}
+
+TEST(RecipeServiceTest, 评分菜谱重复提交) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeDetail(42)));
+    EXPECT_CALL(*repo, rateRecipe(1, 42, _))
+        .WillOnce(Throw(ServiceException("您已评过分", 409)));
+
+    EXPECT_THROW(service.rateRecipe(1, 42, {5, ""}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 评分菜谱不存在) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, findById(999))
+        .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
+
+    EXPECT_THROW(service.rateRecipe(1, 999, {5, ""}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 修改评分成功) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, updateRating(1, 42, 101, Truly([](const auto& r) {
+        return r.rating == 4 && r.comment == "改评";
+    }))).Times(1);
+
+    service.updateRating(1, 42, 101, {4, "改评"});
+}
+
+TEST(RecipeServiceTest, 修改评分越权) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, updateRating(2, 42, 101, _))
+        .WillOnce(Throw(ServiceException("无权限操作他人的评论", 403)));
+
+    EXPECT_THROW(service.updateRating(2, 42, 101, {4, ""}), ServiceException);
+}
+
+TEST(RecipeServiceTest, 删除评分成功) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, deleteRating(1, 42, 101)).Times(1);
+
+    service.deleteRating(1, 42, 101);
+}
+
+TEST(RecipeServiceTest, 删除评分越权) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(*repo, deleteRating(2, 42, 101))
+        .WillOnce(Throw(ServiceException("无权限操作他人的评论", 403)));
+
+    EXPECT_THROW(service.deleteRating(2, 42, 101), ServiceException);
 }

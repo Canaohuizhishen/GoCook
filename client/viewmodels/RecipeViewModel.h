@@ -22,6 +22,10 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool nutritionLoading READ nutritionLoading NOTIFY nutritionLoadingChanged)
     Q_PROPERTY(QVariantList recipeVideos READ recipeVideos NOTIFY recipeVideosChanged)
     Q_PROPERTY(bool videosLoading READ videosLoading NOTIFY videosLoadingChanged)
+    Q_PROPERTY(QVariantList recipeRatings READ recipeRatings NOTIFY recipeRatingsChanged)
+    Q_PROPERTY(bool ratingsLoading READ ratingsLoading NOTIFY ratingsLoadingChanged)
+    Q_PROPERTY(bool ratingsHasMore READ ratingsHasMore NOTIFY ratingsHasMoreChanged)
+    Q_PROPERTY(QVariantMap myRating READ myRating NOTIFY myRatingChanged)
     Q_PROPERTY(QVariantList myRecipes READ myRecipes NOTIFY myRecipesChanged)
     Q_PROPERTY(bool myRecipesLoading READ myRecipesLoading NOTIFY myRecipesLoadingChanged)
     Q_PROPERTY(bool myRecipesHasMore READ myRecipesHasMore NOTIFY myRecipesHasMoreChanged)
@@ -43,6 +47,10 @@ public:
     bool nutritionLoading() const;
     QVariantList recipeVideos() const;
     bool videosLoading() const;
+    QVariantList recipeRatings() const;
+    bool ratingsLoading() const;
+    bool ratingsHasMore() const;
+    QVariantMap myRating() const;
     QVariantList myRecipes() const;
     bool myRecipesLoading() const;
     bool myRecipesHasMore() const;
@@ -60,6 +68,12 @@ public:
     Q_INVOKABLE void resetSearch();
     Q_INVOKABLE void loadNutritionReport(int recipeId);
     Q_INVOKABLE void loadRecipeVideos(int recipeId);
+    Q_INVOKABLE void loadRecipeRatings(int recipeId, int page = 1, int size = 10);
+    Q_INVOKABLE void loadMoreRatings();
+    Q_INVOKABLE void loadMyRecipeRating(int recipeId);
+    Q_INVOKABLE void rateRecipe(int recipeId, int rating, const QString& comment);
+    Q_INVOKABLE void updateRating(int recipeId, int ratingId, int rating, const QString& comment);
+    Q_INVOKABLE void deleteRating(int recipeId, int ratingId);
     Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");
     Q_INVOKABLE void loadMyRecipesNextPage();
 
@@ -78,6 +92,14 @@ signals:
     void nutritionLoadingChanged();
     void recipeVideosChanged();
     void videosLoadingChanged();
+    void recipeRatingsChanged();
+    void ratingsLoadingChanged();
+    void ratingsHasMoreChanged();
+    void myRatingChanged();
+    void ratingSubmitted();
+    void ratingUpdated(int ratingId);
+    void ratingDeleted(int ratingId);
+    void ratingError(const QString& error);
     void myRecipesChanged();
     void myRecipesLoadingChanged();
     void myRecipesHasMoreChanged();
@@ -119,6 +141,15 @@ private:
     // 视频状态
     QVariantList m_recipeVideos;
     bool m_videosLoading = false;
+
+    // 评分评论状态
+    QVariantList m_recipeRatings;
+    bool m_ratingsLoading = false;
+    bool m_ratingsHasMore = false;
+    QVariantMap m_myRating;
+    int m_ratingsPage = 1;
+    int m_ratingsTotalPages = 0;
+    int m_ratingsRecipeId = 0;
 
     // 我的投稿状态
     QVariantList m_myRecipes;

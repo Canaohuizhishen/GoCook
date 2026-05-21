@@ -258,6 +258,10 @@ bool RecipeViewModel::videosLoading() const { return m_videosLoading; }
 QVariantList RecipeViewModel::myRecipes() const { return m_myRecipes; }
 bool RecipeViewModel::myRecipesLoading() const { return m_myRecipesLoading; }
 bool RecipeViewModel::myRecipesHasMore() const { return m_myRecipesHasMore; }
+QVariantList RecipeViewModel::recipeRatings() const { return m_recipeRatings; }
+bool RecipeViewModel::ratingsLoading() const { return m_ratingsLoading; }
+bool RecipeViewModel::ratingsHasMore() const { return m_ratingsHasMore; }
+QVariantMap RecipeViewModel::myRating() const { return m_myRating; }
 
 void RecipeViewModel::loadNutritionReport(int recipeId)
 {
@@ -301,6 +305,155 @@ void RecipeViewModel::loadRecipeVideos(int recipeId)
             self->m_videosLoading = false;
             emit self->videosLoadingChanged();
             emit self->recipeVideosChanged();
+        });
+}
+
+void RecipeViewModel::loadRecipeRatings(int recipeId, int page, int size)
+{
+    // 同步清空旧数据，防止二次打开时残留显示
+    if (page == 1 && !m_recipeRatings.isEmpty()) {
+        m_recipeRatings.clear();
+        emit recipeRatingsChanged();
+    }
+    m_ratingsLoading = true;
+    m_ratingsRecipeId = recipeId;
+    emit ratingsLoadingChanged();
+
+    m_api->getRecipeRatings(recipeId, page, size,
+        [self = QPointer<RecipeViewModel>(this), page](bool success, const gocook::models::PagedRatings& data, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
+                self->m_ratingsLoading = false;
+                emit self->ratingsLoadingChanged();
+                return;
+            }
+
+            QVariantMap mapped = DataMapper::toMap(data);
+            QVariantList ratings = mapped["data"].toList();
+            QVariantMap pag = mapped["pagination"].toMap();
+
+            if (page == 1)
+                self->m_recipeRatings.clear();
+
+            for (const auto& r : ratings)
+                self->m_recipeRatings.append(r);
+
+            self->m_ratingsPage = pag["page"].toInt();
+            self->m_ratingsTotalPages = pag["total_pages"].toInt();
+            self->m_ratingsHasMore = (self->m_ratingsPage < self->m_ratingsTotalPages);
+
+            self->m_ratingsLoading = false;
+            emit self->ratingsLoadingChanged();
+            emit self->recipeRatingsChanged();
+            emit self->ratingsHasMoreChanged();
+        });
+}
+
+void RecipeViewModel::loadMoreRatings()
+{
+    if (m_ratingsLoading || !m_ratingsHasMore || m_ratingsRecipeId == 0) return;
+    loadRecipeRatings(m_ratingsRecipeId, m_ratingsPage + 1, 10);
+}
+
+void RecipeViewModel::loadMyRecipeRating(int recipeId)
+{
+    m_api->getMyRecipeRating(recipeId,
+        [self = QPointer<RecipeViewModel>(this)](bool success,
+                 const std::optional<gocook::models::RecipeRating>& data,
+                 const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                // 404 表示未评分，清空并静默处理
+                self->m_myRating = QVariantMap();
+                emit self->myRatingChanged();
+                return;
+            }
+            if (data.has_value()) {
+                self->m_myRating = DataMapper::toMap(data.value());
+            } else {
+                self->m_myRating = QVariantMap();
+            }
+            emit self->myRatingChanged();
+        });
+}
+
+void RecipeViewModel::rateRecipe(int recipeId, int rating, const QString& comment)
+{
+    gocook::models::RateRecipeRequest req;
+    req.rating = rating;
+    req.comment = comment.toStdString();
+
+    m_api->rateRecipe(recipeId, req,
+        [self = QPointer<RecipeViewModel>(this)](bool success, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->ratingError(QString::fromStdString(error));
+                return;
+            }
+            emit self->ratingSubmitted();
+        });
+}
+
+void RecipeViewModel::updateRating(int recipeId, int ratingId, int rating, const QString& comment)
+{
+    gocook::models::RateRecipeRequest req;
+    req.rating = rating;
+    req.comment = comment.toStdString();
+
+    m_api->updateRating(recipeId, ratingId, req,
+        [self = QPointer<RecipeViewModel>(this), ratingId](bool success, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->ratingError(QString::fromStdString(error));
+                return;
+            }
+            emit self->ratingUpdated(ratingId);
+        });
+}
+
+void RecipeViewModel::deleteRating(int recipeId, int ratingId)
+{
+    // 乐观删除：保存旧值用于回滚
+    QVariantMap oldMyRating = m_myRating;
+    QVariantList oldRatings = m_recipeRatings;
+
+    // 1. 立即清除本人的 myRating
+    if (!m_myRating.isEmpty()) {
+        m_myRating = QVariantMap();
+        emit myRatingChanged();
+    }
+
+    // 2. 从列表中移除对应的评分项
+    bool removed = false;
+    for (int i = 0; i < m_recipeRatings.size(); ++i) {
+        auto item = m_recipeRatings[i].toMap();
+        if (item.value("id").toInt() == ratingId) {
+            m_recipeRatings.removeAt(i);
+            removed = true;
+            break;
+        }
+    }
+    if (removed)
+        emit recipeRatingsChanged();
+
+    // 3. 发 API 请求
+    m_api->deleteRating(recipeId, ratingId,
+        [self = QPointer<RecipeViewModel>(this), recipeId, ratingId,
+         oldMyRating, oldRatings](bool success, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                // 失败 → 回滚
+                self->m_myRating = oldMyRating;
+                if (!oldMyRating.isEmpty())
+                    emit self->myRatingChanged();
+                self->m_recipeRatings = oldRatings;
+                emit self->recipeRatingsChanged();
+                emit self->ratingError(QString::fromStdString(error));
+                return;
+            }
+            // 成功 → 从服务端刷新确认（此时列表已乐观清除，直接重新加载）
+            emit self->ratingDeleted(ratingId);
         });
 }
 
