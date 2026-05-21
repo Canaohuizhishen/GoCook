@@ -11,6 +11,7 @@ Page {
     signal showDetailRequest(int recipeId)
     signal showSubmitRequest()
     signal showMyRecipesRequest()
+    signal showMyRatingsRequest()
     signal showSearchRequest()
 
     ColumnLayout {
@@ -89,6 +90,9 @@ Page {
                 }
                 onShowMyRecipesRequest: {
                     homePage.showMyRecipesRequest()
+                }
+                onShowMyRatingsRequest: {
+                    homePage.showMyRatingsRequest()
                 }
             }
         }

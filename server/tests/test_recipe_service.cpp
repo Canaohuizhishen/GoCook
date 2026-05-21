@@ -210,11 +210,35 @@ TEST(RecipeServiceTest, 切换收藏未实现) {
     EXPECT_THROW(service.toggleFavorite(1, 1), ServiceException);
 }
 
-TEST(RecipeServiceTest, 我的评分列表未实现) {
+TEST(RecipeServiceTest, 我的评分列表查询成功) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getMyRatings(1, 1, 20), ServiceException);
+    PagedUserRatings expected;
+    UserRatingItem item;
+    item.rating_id = 201;
+    item.recipe_id = 10;
+    item.recipe_name = "番茄炒蛋";
+    item.rating = 5;
+    item.comment = "简单易做，味道好极了！";
+    item.created_at = "2026-04-20T18:30:00Z";
+    item.updated_at = "2026-04-21T09:00:00Z";
+    expected.data.push_back(item);
+    expected.pagination = {1, 20, 1, 1};
+
+    EXPECT_CALL(*repo, findMyRatings(1, 1, 20))
+        .WillOnce(Return(expected));
+
+    auto result = service.getMyRatings(1, 1, 20);
+    ASSERT_EQ(result.data.size(), 1);
+    EXPECT_EQ(result.data[0].rating_id, 201);
+    EXPECT_EQ(result.data[0].recipe_id, 10);
+    EXPECT_EQ(result.data[0].recipe_name, "番茄炒蛋");
+    EXPECT_EQ(result.data[0].rating, 5);
+    EXPECT_EQ(result.data[0].comment, "简单易做，味道好极了！");
+    EXPECT_EQ(result.data[0].created_at, "2026-04-20T18:30:00Z");
+    EXPECT_EQ(result.pagination.total, 1);
 }
 
 TEST(RecipeServiceTest, 营养报告查询成功) {

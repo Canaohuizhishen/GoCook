@@ -58,8 +58,8 @@ std::optional<RecipeRating> RecipeServiceImpl::getMyRating(int userId, int recip
     return recipeRepo_->findMyRating(userId, recipeId);
 }
 
-PagedUserRatings RecipeServiceImpl::getMyRatings(int, int, int) {
-    throw ServiceException("Not implemented", 501);
+PagedUserRatings RecipeServiceImpl::getMyRatings(int userId, int page, int size) {
+    return recipeRepo_->findMyRatings(userId, page, size);
 }
 NutritionReport RecipeServiceImpl::getRecipeNutrition(int recipeId) {
     return recipeRepo_->findNutrition(recipeId);

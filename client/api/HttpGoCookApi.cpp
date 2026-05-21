@@ -943,9 +943,50 @@ void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
 void HttpGoCookApi::getMyRatings(int page, int size,
                                   PagedUserRatingsCallback callback)
 {
-    Q_UNUSED(page);
-    Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedUserRatings{}, "Not implemented");
+    QVariantMap params;
+    params["page"] = page;
+    params["size"] = size;
+
+    QUrlQuery query;
+    for (auto it = params.begin(); it != params.end(); ++it)
+        query.addQueryItem(it.key(), it.value().toString());
+    QString endpoint = "/api/users/me/ratings";
+    if (!query.isEmpty())
+        endpoint += "?" + query.toString(QUrl::FullyEncoded);
+
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::PagedUserRatings{},
+                                   errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+            return;
+        }
+        QJsonObject root = doc.object();
+        gocook::models::PagedUserRatings result;
+
+        // 解析 pagination
+        QJsonObject paginationObj = root["pagination"].toObject();
+        result.pagination.page = paginationObj["page"].toInt(1);
+        result.pagination.size = paginationObj["size"].toInt(20);
+        result.pagination.total = paginationObj["total"].toInt(0);
+        result.pagination.total_pages = paginationObj["total_pages"].toInt(0);
+
+        // 解析 data 数组
+        QJsonArray dataArr = root["data"].toArray();
+        for (const auto& val : dataArr) {
+            QJsonObject obj = val.toObject();
+            gocook::models::UserRatingItem item;
+            item.rating_id = obj["rating_id"].toInt();
+            item.recipe_id = obj["recipe_id"].toInt();
+            item.recipe_name = obj["recipe_name"].toString().toStdString();
+            item.rating = obj["rating"].toInt();
+            item.comment = obj["comment"].toString().toStdString();
+            item.created_at = obj["created_at"].toString().toStdString();
+            item.updated_at = obj["updated_at"].toString().toStdString();
+            result.data.push_back(std::move(item));
+        }
+
+        if (callback) callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::getRecipeNutrition(int recipeId,
