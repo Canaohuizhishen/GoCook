@@ -241,6 +241,7 @@ public:
      */
     virtual void updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                                      HealthProfileCallback callback) = 0;
+    virtual void getHealthProfile(HealthProfileCallback callback) = 0;
 
     /**
      * @brief 上传头像

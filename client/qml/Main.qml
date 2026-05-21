@@ -192,12 +192,20 @@ ApplicationWindow {
             onShowPreferencesRequest: () => {
                 stackView.push(preferencesPage)
             }
+            onShowHealthProfileRequest: () => {
+                stackView.push(healthProfilePage)
+            }
         }
     }
 
     Component {
         id: preferencesPage
         PreferencesPage { }
+    }
+
+    Component {
+        id: healthProfilePage
+        HealthProfilePage { }
     }
 
     Component {

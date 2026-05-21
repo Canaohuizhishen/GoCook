@@ -462,7 +462,15 @@ Page {
             buttonText: isFavorited ? "\u2605 " + qsTr("已收藏此菜谱") : "\u2606 " + qsTr("收藏此菜谱")
             buttonType: isFavorited ? CustomButton.ButtonType.Secondary : CustomButton.ButtonType.Primary
             onClicked: {
-                isFavorited = !isFavorited
+                if (isFavorited) {
+                    // 已收藏 → 直接取消收藏
+                    isFavorited = false
+                    recipeVM.toggleFavorite(recipeId, 0)
+                } else {
+                    // 未收藏 → 弹出分组选择
+                    recipeVM.loadFavoriteGroups()
+                    groupDialog.open()
+                }
             }
         }
     }
@@ -489,7 +497,14 @@ Page {
                 verticalAlignment: Text.AlignVCenter
             }
             onClicked: {
-                isFavorited = !isFavorited
+                moreMenu.close()
+                if (isFavorited) {
+                    isFavorited = false
+                    recipeVM.toggleFavorite(recipeId, 0)
+                } else {
+                    recipeVM.loadFavoriteGroups()
+                    groupDialog.open()
+                }
             }
         }
 
@@ -523,9 +538,133 @@ Page {
             stepsRepeater.model = stps
             noIngredientsText.visible = (ings.length === 0)
             noStepsText.visible = (stps.length === 0)
+            if (d && d.isFavorited !== undefined)
+                isFavorited = d.isFavorited
         }
         function onErrorOccurred(error) {
             console.log("RecipeDetail error:", error)
+        }
+    }
+
+    // ========== 收藏分组选择弹窗 ==========
+    Dialog {
+        id: groupDialog
+        modal: true
+        standardButtons: Dialog.NoButton
+        closePolicy: Popup.CloseOnEscape
+        x: (parent.width - width) / 2
+        y: (parent.height - height) / 2
+        width: Math.min(parent.width * 0.8, 320)
+
+        background: Rectangle {
+            radius: Theme.radiusMedium
+            color: Theme.cardBackground
+            border.color: Theme.dividerColor
+        }
+
+        Column {
+            width: parent.width
+            spacing: Theme.spacingMedium
+            topPadding: Theme.spacingMedium
+            bottomPadding: Theme.spacingMedium
+
+            Text {
+                text: qsTr("选择收藏分组")
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeH3
+                font.weight: Theme.fontWeightBold
+                color: Theme.textPrimary
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            Item { width: 1; height: 1 } // spacer
+
+            // 分组列表（包含"默认收藏夹" + 自定义分组）
+            Repeater {
+                id: groupRepeater
+                width: parent.width
+                model: recipeVM.favoriteGroups
+
+                Rectangle {
+                    width: parent.width
+                    height: 44
+                    radius: Theme.radiusSmall
+                    color: groupHovered ? Theme.searchBarBackground : "transparent"
+                    property bool groupHovered: false
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.spacingMedium
+                        anchors.rightMargin: Theme.spacingMedium
+                        spacing: Theme.spacingSmall
+
+                        Text {
+                            text: "\u2606"
+                            font.pointSize: Theme.fontSizeBody
+                            color: Theme.accentColor
+                        }
+
+                        Text {
+                            text: modelData.name || ""
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSizeBody
+                            color: Theme.textPrimary
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            text: "(" + (modelData.count || 0) + ")"
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSizeCaption
+                            color: Theme.textHint
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: parent.groupHovered = true
+                        onExited: parent.groupHovered = false
+                        onClicked: {
+                            isFavorited = true
+                            recipeVM.toggleFavorite(recipeId, modelData.id)
+                            groupDialog.close()
+                        }
+                    }
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        height: 1
+                        color: Theme.dividerColor
+                        opacity: 0.3
+                    }
+                }
+            }
+
+            // 取消按钮
+            Rectangle {
+                width: parent.width
+                height: 44
+                radius: Theme.radiusMedium
+                color: "transparent"
+                border.color: Theme.dividerColor
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("取消")
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSizeBody
+                    color: Theme.textSecondary
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: groupDialog.close()
+                }
+            }
         }
     }
 }

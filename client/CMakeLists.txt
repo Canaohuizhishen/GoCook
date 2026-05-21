@@ -45,6 +45,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
     QML_FILES qml/pages/PreferencesPage.qml
+    QML_FILES qml/pages/HealthProfilePage.qml
     QML_FILES qml/pages/ProfileEditPage.qml
     QML_FILES qml/pages/ChangePasswordPage.qml
     QML_FILES qml/pages/AccountSecurityPage.qml

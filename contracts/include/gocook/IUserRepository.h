@@ -41,6 +41,7 @@ public:
                                    const models::UserPreferences& prefs) = 0;
     virtual models::HealthProfileResponse updateHealthProfile(
         int userId, const models::HealthProfileRequest& req) = 0;
+    virtual models::HealthProfileResponse getHealthProfile(int userId) = 0;
 
     virtual models::PagedFavorites getFavorites(int userId, int page, int size,
                                                 const std::string& group) = 0;

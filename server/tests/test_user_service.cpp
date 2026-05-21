@@ -205,6 +205,58 @@ TEST(UserServiceTest, 获取用户不存在) {
     }
 }
 
+// ==================== 健康指标 ====================
+
+TEST(UserServiceTest, 录入健康指标成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, updateHealthProfile(42, _)).Times(1);
+
+    HealthProfileRequest req;
+    req.height_cm = 175;
+    req.weight_kg = 70.0;
+    req.conditions = {"高血压"};
+
+    auto resp = service.updateHealthProfile(42, req);
+    EXPECT_GT(resp.suggested_avoidances.size(), 0);
+
+    // 验证高血压忌口建议
+    bool hasHighSodium = false;
+    for (const auto& item : resp.suggested_avoidances) {
+        if (item.ingredient == "高钠食物") {
+            hasHighSodium = true;
+            EXPECT_EQ(item.reason, "高血压患者应限制钠摄入");
+            break;
+        }
+    }
+    EXPECT_TRUE(hasHighSodium);
+}
+
+TEST(UserServiceTest, 录入健康指标用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, updateHealthProfile(_, _)).Times(0);
+
+    HealthProfileRequest req;
+    req.height_cm = 175;
+    req.weight_kg = 70.0;
+
+    try {
+        service.updateHealthProfile(999, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
+    }
+}
+
 // ==================== 未实现的方法 ====================
 
 TEST(UserServiceTest, 未实现方法返回501) {
@@ -214,14 +266,6 @@ TEST(UserServiceTest, 未实现方法返回501) {
     EXPECT_THROW(service.requestPasswordReset("a@b.com"), ServiceException);
     EXPECT_THROW(service.resetPassword("tok", "pw"), ServiceException);
     EXPECT_THROW(service.changePassword(1, "old", "new"), ServiceException);
-    EXPECT_THROW(service.updateHealthProfile(1, {}), ServiceException);
-    EXPECT_THROW(service.getFavorites(1, 1, 20, ""), ServiceException);
-    EXPECT_THROW(service.getFavoriteGroups(1), ServiceException);
-    EXPECT_THROW(service.createFavoriteGroup(1, {}), ServiceException);
-    EXPECT_THROW(service.updateFavoriteGroup(1, 1, {}), ServiceException);
-    EXPECT_THROW(service.deleteFavoriteGroup(1, 1), ServiceException);
-    EXPECT_THROW(service.updateFavoriteItem(1, 1, {}), ServiceException);
-    EXPECT_THROW(service.batchDeleteFavorites(1, {}), ServiceException);
     EXPECT_THROW(service.getNotifications(1, 1, 20, ""), ServiceException);
     EXPECT_THROW(service.markNotificationRead(1, 1), ServiceException);
     EXPECT_THROW(service.markAllNotificationsRead(1), ServiceException);

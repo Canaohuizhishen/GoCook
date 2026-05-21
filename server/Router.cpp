@@ -249,6 +249,9 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Put("/api/users/me/health-profile", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateHealthProfile(req, res);
     });
+    svr.Get("/api/users/me/health-profile", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.getHealthProfile(req, res);
+    });
     svr.Get("/api/users/me/favorites", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getFavorites(req, res);
     });
@@ -266,6 +269,9 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     });
     svr.Patch(R"(/api/users/me/favorites/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateFavoriteItem(req, res);
+    });
+    svr.Post("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.batchDeleteFavorites(req, res);
     });
     svr.Delete("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.batchDeleteFavorites(req, res);

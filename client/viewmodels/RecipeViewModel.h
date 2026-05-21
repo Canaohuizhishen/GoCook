@@ -19,8 +19,10 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool searchHasMore READ searchHasMore NOTIFY searchHasMoreChanged)
     Q_PROPERTY(bool searchPerformed READ searchPerformed NOTIFY searchPerformedChanged)
     Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
+    Q_PROPERTY(int favoritesTotalCount READ favoritesTotalCount NOTIFY favoritesChanged)
     Q_PROPERTY(bool favoritesHasMore READ favoritesHasMore NOTIFY favoritesHasMoreChanged)
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoritesLoadingChanged)
+    Q_PROPERTY(QVariantList favoriteGroups READ favoriteGroups NOTIFY favoriteGroupsChanged)
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -36,8 +38,10 @@ public:
     bool searchHasMore() const;
     bool searchPerformed() const;
     QVariantList favorites() const { return m_favorites; }
+    int favoritesTotalCount() const { return m_favoritesTotal; }
     bool favoritesHasMore() const { return m_favoritesHasMore; }
     bool favoritesLoading() const { return m_favoritesLoading; }
+    QVariantList favoriteGroups() const { return m_favoriteGroups; }
 
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 20);
     Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 20);
@@ -51,8 +55,17 @@ public:
     Q_INVOKABLE void searchNextPage();
     Q_INVOKABLE void resetSearch();
 
-    Q_INVOKABLE void loadFavorites(int page = 1, int size = 20);
+    Q_INVOKABLE void loadFavorites(int page = 1, int size = 20, const QString &group = "");
     Q_INVOKABLE void loadMoreFavorites();
+    Q_INVOKABLE void toggleFavorite(int recipeId, int groupId = 0);
+    Q_INVOKABLE void loadFavoriteGroups();
+    Q_INVOKABLE void createFavoriteGroup(const QString &name);
+    Q_INVOKABLE void deleteFavoriteGroup(int groupId);
+    Q_INVOKABLE void removeFavorite(int favoriteId);
+    Q_INVOKABLE void batchRemoveFavorites(const QVariantList &favoriteIds);
+    Q_INVOKABLE void moveFavorite(int favoriteId, int groupId);
+    Q_INVOKABLE void batchMoveFavorites(const QVariantList &favoriteIds, int groupId);
+    Q_INVOKABLE void updateFavoriteGroupName(int groupId, const QString &name);
 
 signals:
     void recipesChanged();
@@ -72,6 +85,11 @@ signals:
     void favoritesChanged();
     void favoritesHasMoreChanged();
     void favoritesLoadingChanged();
+    void favoriteGroupsChanged();
+    void favoriteToggleSuccess(int recipeId, bool isFavorited);
+    void favoriteGroupCreated();
+    void favoriteGroupDeleted();
+    void favoriteOperationFailed(const QString &error);
 
 private:
     enum class LoadMode { Public, Recommended };
@@ -101,8 +119,10 @@ private:
 
     // 收藏状态
     QVariantList m_favorites;
+    QVariantList m_favoriteGroups;
     int m_favoritesPage = 1;
     int m_favoritesTotalPages = 0;
+    int m_favoritesTotal = 0;
     bool m_favoritesHasMore = false;
     bool m_favoritesLoading = false;
 };
