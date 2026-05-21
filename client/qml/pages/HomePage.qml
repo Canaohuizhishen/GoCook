@@ -13,6 +13,7 @@ Page {
     signal showMyRecipesRequest()
     signal showMyRatingsRequest()
     signal showSearchRequest()
+    signal showRecommendFromInventory()
 
     ColumnLayout {
         anchors.fill: parent

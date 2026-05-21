@@ -27,6 +27,15 @@ Page {
             onClicked: addDialog.open()
         }
 
+        CustomButton {
+            id: recommendButton
+            Layout.fillWidth: true
+            buttonText: qsTr("🧠 一键智能推荐")
+            buttonType: CustomButton.ButtonType.Secondary
+            enabled: inventoryVM.items.length > 0
+            onClicked: homePage.showRecommendFromInventory()
+        }
+
         Text {
             Layout.fillWidth: true
             text: qsTr("暂无库存，点击上方按钮添加食材")
@@ -76,7 +85,6 @@ Page {
 
                     Row {
                         spacing: Theme.spacingXSmall
-                        visible: inventoryVM.deletingId === -1 || inventoryVM.deletingId !== modelData.id
 
                         ToolButton {
                             id: deleteBtn
@@ -116,14 +124,6 @@ Page {
                                 moreMenu.popup()
                             }
                         }
-                    }
-
-                    BusyIndicator {
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        running: inventoryVM.deletingId === modelData.id
-                        width: 20
-                        height: 20
-                        visible: inventoryVM.deletingId === modelData.id
                     }
                 }
             }

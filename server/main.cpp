@@ -53,7 +53,10 @@ int main() {
     ConnectionPool db(cfg.dbConnString, cfg.dbPoolSize);
     AuthMiddleware authMiddleware(cfg.jwtSecret);
 
-    RecipeServiceImpl recipeService(std::make_unique<PgRecipeRepository>(db));
+    RecipeServiceImpl recipeService(
+        std::make_unique<PgRecipeRepository>(db),
+        std::make_unique<PgUserRepository>(db),
+        std::make_unique<PgInventoryRepository>(db));
     UserServiceImpl userService(std::make_unique<PgUserRepository>(db), cfg.jwtSecret);
     InventoryServiceImpl inventoryService(std::make_unique<PgInventoryRepository>(db));
     MealPlanServiceImpl mealPlanService(std::make_unique<PgMealPlanRepository>(db));

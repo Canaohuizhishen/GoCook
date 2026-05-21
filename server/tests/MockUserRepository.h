@@ -20,6 +20,7 @@ public:
     MOCK_METHOD(gocook::models::UserPreferences, getPreferences, (int), (override));
     MOCK_METHOD(void, updatePreferences,
                 (int, const gocook::models::UserPreferences&), (override));
+    MOCK_METHOD(std::vector<std::string>, getHealthConditions, (int), (override));
     MOCK_METHOD(gocook::models::HealthProfileResponse, updateHealthProfile,
                 (int, const gocook::models::HealthProfileRequest&), (override));
     MOCK_METHOD(gocook::models::PagedFavorites, getFavorites,

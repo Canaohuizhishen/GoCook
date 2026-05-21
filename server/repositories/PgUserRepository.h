@@ -25,6 +25,7 @@ public:
     gocook::models::UserPreferences getPreferences(int userId) override;
     void updatePreferences(int userId,
                            const gocook::models::UserPreferences& prefs) override;
+    std::vector<std::string> getHealthConditions(int userId) override;
     gocook::models::HealthProfileResponse updateHealthProfile(
         int userId, const gocook::models::HealthProfileRequest& req) override;
 

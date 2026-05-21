@@ -1,12 +1,19 @@
 #pragma once
 #include <gocook/IServices.h>
 #include <gocook/IRecipeRepository.h>
+#include <gocook/IUserRepository.h>
+#include <gocook/IInventoryRepository.h>
 #include <memory>
 
 class RecipeServiceImpl : public gocook::services::IRecipeService {
 public:
-    explicit RecipeServiceImpl(std::unique_ptr<gocook::repository::IRecipeRepository> recipeRepo)
-        : recipeRepo_(std::move(recipeRepo)) {}
+    explicit RecipeServiceImpl(
+        std::unique_ptr<gocook::repository::IRecipeRepository> recipeRepo,
+        std::unique_ptr<gocook::repository::IUserRepository> userRepo = nullptr,
+        std::unique_ptr<gocook::repository::IInventoryRepository> inventoryRepo = nullptr)
+        : recipeRepo_(std::move(recipeRepo))
+        , userRepo_(std::move(userRepo))
+        , inventoryRepo_(std::move(inventoryRepo)) {}
 
     gocook::models::PagedRecipes getPublicRecipes(int page, int size,
                                                    const nlohmann::json& filters) override;
@@ -55,4 +62,6 @@ public:
 
 private:
     std::unique_ptr<gocook::repository::IRecipeRepository> recipeRepo_;
+    std::unique_ptr<gocook::repository::IUserRepository> userRepo_;
+    std::unique_ptr<gocook::repository::IInventoryRepository> inventoryRepo_;
 };

@@ -37,6 +37,7 @@ public:
     virtual models::UserPreferences getPreferences(int userId) = 0;
     virtual void updatePreferences(int userId,
                                    const models::UserPreferences& prefs) = 0;
+    virtual std::vector<std::string> getHealthConditions(int userId) = 0;
     virtual models::HealthProfileResponse updateHealthProfile(
         int userId, const models::HealthProfileRequest& req) = 0;
 

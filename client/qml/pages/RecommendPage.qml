@@ -33,7 +33,7 @@ Page {
     }
 
     Component.onCompleted: {
-        recipeVM.loadPublicRecipes()
+        recipeVM.loadPublicRecipes(1, 20)
     }
 
     LoadingIndicator {

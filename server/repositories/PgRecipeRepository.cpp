@@ -284,8 +284,187 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
     return result;
 }
 
-PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int, int, int) {
-    throw ServiceException("Not implemented", 501);
+PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
+                                                                    int page,
+                                                                    int size) {
+    PagedRecommendedRecipes result;
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        int offset = (page > 0) ? (page - 1) * size : 0;
+
+        // ── Count query ──
+        std::string countSql = R"(
+            SELECT COUNT(DISTINCT r.id)
+            FROM recipes r
+            WHERE r.status = 'approved'
+              AND jsonb_array_length(r.ingredients) > 0
+        )";
+        int total = txn.exec(countSql)[0][0].as<int>();
+
+        // ── Data query: CTE-based inventory matching ──
+        std::string dataSql = R"(
+            WITH user_inv AS (
+                SELECT LOWER(ingredient_name) AS name,
+                       quantity,
+                       unit
+                FROM inventory
+                WHERE user_id = $1
+            ),
+            recipe_ings AS (
+                SELECT
+                    r.id AS recipe_id,
+                    LOWER(ing->>'name') AS ing_name,
+                    (ing->>'quantity')::numeric AS ing_qty,
+                    ing->>'unit' AS ing_unit,
+                    ing->>'name' AS ing_original_name
+                FROM recipes r,
+                     jsonb_array_elements(r.ingredients) AS ing
+                WHERE r.status = 'approved'
+                  AND jsonb_array_length(r.ingredients) > 0
+            ),
+            matched AS (
+                SELECT
+                    ri.recipe_id,
+                    COUNT(*)::int AS total_count,
+                    COUNT(CASE WHEN inv.name IS NOT NULL THEN 1 END)::int AS match_count,
+                    jsonb_agg(
+                        CASE WHEN inv.name IS NOT NULL THEN
+                            jsonb_build_object(
+                                'name', ri.ing_original_name,
+                                'quantity', inv.quantity,
+                                'unit', inv.unit
+                            )
+                        END
+                    ) FILTER (WHERE inv.name IS NOT NULL) AS available_json,
+                    jsonb_agg(
+                        CASE WHEN inv.name IS NULL THEN
+                            jsonb_build_object(
+                                'name', ri.ing_original_name,
+                                'quantity', ri.ing_qty,
+                                'unit', ri.ing_unit
+                            )
+                        END
+                    ) FILTER (WHERE inv.name IS NULL) AS missing_json
+                FROM recipe_ings ri
+                LEFT JOIN user_inv inv ON ri.ing_name = inv.name
+                GROUP BY ri.recipe_id
+            )
+            SELECT
+                m.recipe_id,
+                m.match_count,
+                m.total_count,
+                CASE WHEN m.total_count > 0
+                     THEN ROUND((m.match_count::numeric / m.total_count), 2)
+                     ELSE 0
+                END AS match_score,
+                m.available_json,
+                m.missing_json,
+                r.name,
+                r.description,
+                r.image_url,
+                r.prep_time_minutes,
+                r.cook_time_minutes,
+                array_to_json(r.tags) AS tags_json,
+                COALESCE((r.nutrition_info->>'calories')::numeric, 0) AS calories,
+                r.author_id,
+                u.username AS author_name,
+                r.cooking_method,
+                r.flavor,
+                r.ingredient_type,
+                r.view_count,
+                r.avg_rating,
+                COALESCE((r.nutrition_info->'per_serving'->>'protein_g')::numeric, 0) AS protein_g,
+                COALESCE((r.nutrition_info->'per_serving'->>'fat_g')::numeric, 0) AS fat_g,
+                COALESCE((r.nutrition_info->'per_serving'->>'carbs_g')::numeric, 0) AS carbs_g,
+                r.submitted_at
+            FROM matched m
+            JOIN recipes r ON m.recipe_id = r.id
+            LEFT JOIN users u ON r.author_id = u.id
+            ORDER BY match_score DESC, r.avg_rating DESC, r.view_count DESC
+            LIMIT $2 OFFSET $3
+        )";
+
+        auto rows = txn.exec_params(dataSql,
+                                     userId,
+                                     size,
+                                     offset);
+
+        for (const auto& row : rows) {
+            RecommendedRecipe rec;
+
+            // RecipeSummary fields
+            rec.id = row["recipe_id"].as<int>();
+            rec.name = row["name"].is_null() ? "" : row["name"].c_str();
+            rec.description = row["description"].is_null() ? "" : row["description"].c_str();
+            rec.prep_time_minutes = row["prep_time_minutes"].as<int>(0);
+            rec.cook_time_minutes = row["cook_time_minutes"].as<int>(0);
+            if (!row["image_url"].is_null())
+                rec.image_url = row["image_url"].c_str();
+            rec.tags = parseTags(row["tags_json"]);
+            rec.calories = row["calories"].as<int>(0);
+            rec.author_id = row["author_id"].as<int>(0);
+            rec.author_name = row["author_name"].is_null()
+                ? "unknown" : row["author_name"].c_str();
+            rec.cooking_method = row["cooking_method"].is_null()
+                ? "" : row["cooking_method"].c_str();
+            rec.flavor = row["flavor"].is_null()
+                ? "" : row["flavor"].c_str();
+            rec.ingredient_type = row["ingredient_type"].is_null()
+                ? "" : row["ingredient_type"].c_str();
+            rec.view_count = row["view_count"].as<int>(0);
+            rec.avg_rating = row["avg_rating"].as<double>(0.0);
+
+            // Raw match_score (inventory overlap ratio)
+            rec.match_score = row["match_score"].as<double>(0.0);
+
+            // Internal nutrition data for service-layer scoring
+            rec.protein_g = row["protein_g"].as<double>(0.0);
+            rec.fat_g = row["fat_g"].as<double>(0.0);
+            rec.carbs_g = row["carbs_g"].as<double>(0.0);
+            if (!row["submitted_at"].is_null())
+                rec.submitted_at = row["submitted_at"].c_str();
+
+            // MatchStatus: parse available / missing JSON arrays
+            if (!row["available_json"].is_null()) {
+                auto jarr = json::parse(row["available_json"].c_str());
+                for (const auto& j : jarr) {
+                    MatchIngredient mi;
+                    mi.name = j["name"].get<std::string>();
+                    mi.quantity = j.value("quantity", 0.0);
+                    mi.unit = j.value("unit", "");
+                    rec.match_status.available_ingredients.push_back(std::move(mi));
+                }
+            }
+            if (!row["missing_json"].is_null()) {
+                auto jarr = json::parse(row["missing_json"].c_str());
+                for (const auto& j : jarr) {
+                    MissingIngredient mi;
+                    mi.name = j["name"].get<std::string>();
+                    mi.quantity = j.value("quantity", 0.0);
+                    mi.unit = j.value("unit", "");
+                    rec.match_status.missing_ingredients.push_back(std::move(mi));
+                }
+            }
+
+            result.data.push_back(std::move(rec));
+        }
+
+        result.pagination.page = page;
+        result.pagination.size = size;
+        result.pagination.total = total;
+        result.pagination.total_pages = (total + size - 1) / size;
+        result.health_filter_applied = false;  // Service layer sets this
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findRecommendedRecipes: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+    return result;
 }
 
 RecipeDetail PgRecipeRepository::findById(int recipeId) {

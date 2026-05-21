@@ -44,6 +44,7 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
+    QML_FILES qml/pages/RecommendResultsPage.qml
     QML_FILES qml/pages/MyRecipesPage.qml
     QML_FILES qml/pages/MyRatingsPage.qml
 )
