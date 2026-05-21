@@ -48,7 +48,15 @@ Page {
                 nameMeasurer.text = items[i].unit || ""
                 maxUnit = Math.max(maxUnit, nameMeasurer.implicitWidth)
             }
-            root.maxNameWidth = Math.max(maxName + 8, 130)
+            // 名称列取实际最长文本宽度，不截断
+            var fixedW = maxReq + 14 + maxInv + 14 + maxBuy + 14 + maxUnit + 10 + 40
+            var nameW  = Math.max(maxName + 8, 60)
+            // 有多余空间时撑满名称列，无多余空间时保持自然宽度（Flickable 可横向滚动）
+            var availW = Math.max(root.width - 48, 260)
+            if (nameW + fixedW < availW) {
+                nameW = availW - fixedW  // 空间有余时撑满
+            }
+            root.maxNameWidth = nameW
             root.maxReqWidth  = maxReq + 14
             root.maxInvWidth  = maxInv + 14
             root.maxBuyWidth  = maxBuy + 14
@@ -110,6 +118,7 @@ Page {
             clip: true
             contentWidth: tableColumn.width
             contentHeight: tableColumn.height
+
             flickableDirection: Flickable.HorizontalFlick
             boundsBehavior: Flickable.StopAtBounds
 
@@ -211,7 +220,6 @@ Page {
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeBody
                                 color: Theme.textPrimary
-                                elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
                             }
                             Text { width: maxReqWidth; height: 40

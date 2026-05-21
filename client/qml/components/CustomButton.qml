@@ -18,6 +18,7 @@ Button {
     property alias buttonText: buttonText.text
     property alias textColor: buttonText.color
     property alias fontSize: buttonText.font.pointSize
+    property color buttonColor: "transparent"
 
     // 基础样式
     implicitWidth: 120
@@ -33,9 +34,9 @@ Button {
         color: {
             if (!control.enabled) return Theme.dividerColor
             if (control.buttonType === CustomButton.ButtonType.Primary) {
-                if (control.pressed) return Theme.primaryDarkColor
-                if (control.hovered) return Theme.primaryLightColor
-                return Theme.primaryColor
+                if (control.pressed) return control.buttonColor.a > 0 ? Qt.darker(control.buttonColor) : Theme.primaryDarkColor
+                if (control.hovered) return control.buttonColor.a > 0 ? Qt.lighter(control.buttonColor) : Theme.primaryLightColor
+                return control.buttonColor.a > 0 ? control.buttonColor : Theme.primaryColor
             }
             return "transparent"
         }

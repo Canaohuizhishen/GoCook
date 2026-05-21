@@ -122,11 +122,15 @@ TEST(InventoryServiceTest, 购物清单详情正确委派) {
     EXPECT_EQ(result.name, "周末采购");
 }
 
-TEST(InventoryServiceTest, 删除购物清单未实现) {
+TEST(InventoryServiceTest, 删除清单正确委派Repositories) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto& repo = *mock;
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.deleteShoppingList(1, 1), ServiceException);
+    EXPECT_CALL(repo, deleteShoppingList(1, 42))
+        .Times(1);
+
+    service.deleteShoppingList(1, 42);
 }
 
 TEST(InventoryServiceTest, 更新清单项正确委派Repositories) {

@@ -220,8 +220,26 @@ ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listI
     }
 }
 
-void PgInventoryRepository::deleteShoppingList(int, int) {
-    throw ServiceException("Not implemented", 501);
+void PgInventoryRepository::deleteShoppingList(int userId, int listId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result res = txn.exec_params(
+            "DELETE FROM shopping_lists WHERE id = $1 AND user_id = $2",
+            listId, userId);
+
+        if (res.affected_rows() == 0) {
+            throw ServiceException("购物清单不存在", 404);
+        }
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int itemId,
