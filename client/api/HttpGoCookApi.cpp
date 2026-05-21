@@ -955,8 +955,33 @@ void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListR
 void HttpGoCookApi::getShoppingListDetail(int listId,
                                            ShoppingListCallback callback)
 {
-    Q_UNUSED(listId);
-    if (callback) callback(false, gocook::models::ShoppingList{}, "Not implemented");
+    QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::ShoppingList result;
+        result.id = obj["id"].toInt();
+        result.name = obj["name"].toString().toStdString();
+        if (obj.contains("items") && obj["items"].isArray()) {
+            const QJsonArray itemsArr = obj["items"].toArray();
+            for (const QJsonValue& val : itemsArr) {
+                QJsonObject itemObj = val.toObject();
+                gocook::models::ShoppingListItem item;
+                item.id = itemObj["id"].toInt();
+                item.ingredient_name = itemObj["ingredient_name"].toString().toStdString();
+                item.required_quantity = itemObj["required_quantity"].toDouble();
+                item.inventory_quantity = itemObj["inventory_quantity"].toDouble();
+                item.to_buy_quantity = itemObj["to_buy_quantity"].toDouble();
+                item.unit = itemObj["unit"].toString().toStdString();
+                item.checked = itemObj["checked"].toBool();
+                result.items.push_back(std::move(item));
+            }
+        }
+        callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::deleteShoppingList(int listId,

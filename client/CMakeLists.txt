@@ -35,6 +35,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/LoadingIndicator.qml
     QML_FILES qml/pages/FavoritesPage.qml
     QML_FILES qml/pages/ShoppingListPage.qml
+    QML_FILES qml/pages/ShoppingListDetailPage.qml
     QML_FILES qml/pages/AnnouncementsPage.qml
     SOURCES ../contracts/include/gocook/DataModels.h
     SOURCES ../contracts/include/gocook/IGoCookApi.h

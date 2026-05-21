@@ -41,6 +41,29 @@ void ShoppingListViewModel::loadShoppingLists()
     });
 }
 
+void ShoppingListViewModel::loadShoppingListDetail(int listId)
+{
+    m_isLoading = true;
+    emit isLoadingChanged();
+
+    m_api->getShoppingListDetail(listId,
+        [self = QPointer<ShoppingListViewModel>(this)](bool success,
+                              const gocook::models::ShoppingList& data,
+                              const std::string& error) {
+            if (!self) return;
+            self->m_isLoading = false;
+            emit self->isLoadingChanged();
+
+            if (success) {
+                self->m_currentList = DataMapper::toMap(data);
+                emit self->currentListChanged();
+                emit self->shoppingListDetailReady();
+            } else {
+                emit self->errorOccurred(QString::fromStdString(error));
+            }
+        });
+}
+
 void ShoppingListViewModel::createShoppingList(const QString& name)
 {
     m_creating = true;
