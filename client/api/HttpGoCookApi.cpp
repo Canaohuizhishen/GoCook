@@ -786,8 +786,50 @@ void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& reci
 void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
                                           const std::string& status,
                                           PagedMyRecipesCallback callback) {
-    Q_UNUSED(page); Q_UNUSED(size); Q_UNUSED(status);
-    if (callback) callback(false, gocook::models::PagedMyRecipes{}, "Not implemented");
+    QVariantMap params;
+    params["page"] = page;
+    params["size"] = size;
+    if (!status.empty())
+        params["status"] = QString::fromStdString(status);
+
+    QUrlQuery query;
+    for (auto it = params.begin(); it != params.end(); ++it)
+        query.addQueryItem(it.key(), it.value().toString());
+    QString endpoint = "/api/recipes/my";
+    if (!query.isEmpty())
+        endpoint += "?" + query.toString(QUrl::FullyEncoded);
+
+    get(endpoint, [callback](bool success, const QString &errorMsg, const QJsonDocument &doc) {
+        if (!success) {
+            callback(false, gocook::models::PagedMyRecipes{},
+                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+            return;
+        }
+        QJsonObject root = doc.object();
+        gocook::models::PagedMyRecipes result;
+        if (root.contains("pagination") && root["pagination"].isObject()) {
+            QJsonObject pag = root["pagination"].toObject();
+            result.pagination.page        = pag["page"].toInt();
+            result.pagination.size        = pag["size"].toInt();
+            result.pagination.total       = pag["total"].toInt();
+            result.pagination.total_pages = pag["total_pages"].toInt();
+        }
+        if (root.contains("data") && root["data"].isArray()) {
+            const QJsonArray dataArr = root["data"].toArray();
+            for (const QJsonValue &val : dataArr) {
+                QJsonObject obj = val.toObject();
+                gocook::models::MyRecipeStatus item;
+                item.id           = obj["id"].toInt();
+                item.name         = obj["name"].toString().toStdString();
+                item.status       = obj["status"].toString().toStdString();
+                if (obj.contains("reject_reason") && !obj["reject_reason"].isNull())
+                    item.reject_reason = obj["reject_reason"].toString().toStdString();
+                item.submitted_at = obj["submitted_at"].toString().toStdString();
+                result.data.push_back(std::move(item));
+            }
+        }
+        callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::editRecipe(int recipeId,

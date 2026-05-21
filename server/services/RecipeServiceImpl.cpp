@@ -31,8 +31,8 @@ std::vector<RecipeVideo> RecipeServiceImpl::getRecipeVideos(int recipeId) {
 PagedRatings RecipeServiceImpl::getRecipeRatings(int, int, int) {
     throw ServiceException("Not implemented", 501);
 }
-PagedMyRecipes RecipeServiceImpl::getMySubmittedRecipes(int, int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+PagedMyRecipes RecipeServiceImpl::getMySubmittedRecipes(int userId, int page, int size, const std::string& status) {
+    return recipeRepo_->findMySubmittedRecipes(userId, page, size, status);
 }
 void RecipeServiceImpl::editRecipe(int, int, const EditRecipeRequest&) {
     throw ServiceException("Not implemented", 501);

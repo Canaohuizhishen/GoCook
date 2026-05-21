@@ -175,11 +175,32 @@ TEST(RecipeServiceTest, 评分评论未实现) {
     EXPECT_THROW(service.getRecipeRatings(1, 1, 20), ServiceException);
 }
 
-TEST(RecipeServiceTest, 我的投稿列表未实现) {
+TEST(RecipeServiceTest, 我的投稿列表正确委派) {
     auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getMySubmittedRecipes(1, 1, 20), ServiceException);
+    PagedMyRecipes expected;
+    expected.data = {
+        {1, "番茄炒蛋", "approved", std::nullopt, "2026-04-21T10:00:00Z"},
+        {2, "红烧肉",   "rejected", "图片不清晰，请重新上传", "2026-04-21T11:00:00Z"}
+    };
+    expected.pagination = {1, 20, 2, 1};
+
+    EXPECT_CALL(*repo, findMySubmittedRecipes(42, 1, 20, "pending"))
+        .WillOnce(Return(expected));
+
+    auto result = service.getMySubmittedRecipes(42, 1, 20, "pending");
+    EXPECT_EQ(result.data.size(), 2);
+    EXPECT_EQ(result.data[0].name, "番茄炒蛋");
+    EXPECT_EQ(result.data[0].status, "approved");
+    EXPECT_FALSE(result.data[0].reject_reason.has_value());
+    EXPECT_EQ(result.data[1].name, "红烧肉");
+    EXPECT_EQ(result.data[1].status, "rejected");
+    ASSERT_TRUE(result.data[1].reject_reason.has_value());
+    EXPECT_EQ(result.data[1].reject_reason.value(), "图片不清晰，请重新上传");
+    EXPECT_EQ(result.data[1].submitted_at, "2026-04-21T11:00:00Z");
+    EXPECT_EQ(result.pagination.total, 2);
 }
 
 TEST(RecipeServiceTest, 编辑菜谱未实现) {
