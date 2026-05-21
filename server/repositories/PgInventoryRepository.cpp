@@ -224,8 +224,65 @@ void PgInventoryRepository::deleteShoppingList(int, int) {
     throw ServiceException("Not implemented", 501);
 }
 
-void PgInventoryRepository::updateShoppingListItem(int, int, int, const UpdateShoppingItemRequest&) {
-    throw ServiceException("Not implemented", 501);
+void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int itemId,
+                                                       const UpdateShoppingItemRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 查询当前清单项 + 验证归属
+        pqxx::result itemRes = txn.exec_params(
+            "SELECT sli.checked, sli.ingredient_name, sli.to_buy_quantity, sli.unit "
+            "FROM shopping_list_items sli "
+            "JOIN shopping_lists sl ON sl.id = sli.list_id "
+            "WHERE sli.id = $1 AND sl.id = $2 AND sl.user_id = $3",
+            itemId, listId, userId);
+
+        if (itemRes.empty()) {
+            throw ServiceException("清单项不存在", 404);
+        }
+
+        bool oldChecked = itemRes[0]["checked"].as<bool>();
+        std::string ingredientName = itemRes[0]["ingredient_name"].c_str();
+        double toBuyQty = itemRes[0]["to_buy_quantity"].as<double>();
+        std::string unit = itemRes[0]["unit"].c_str();
+
+        // 更新 checked 状态
+        txn.exec_params(
+            "UPDATE shopping_list_items SET checked = $1 WHERE id = $2",
+            req.checked, itemId);
+
+        // 库存回流：checked 从 false → true 时触发
+        if (!oldChecked && req.checked && toBuyQty > 0) {
+            // 按 user_id + ingredient_name 查找（与 upsertInventory 一致，
+            // inventory 表的 UNIQUE 约束为 (user_id, ingredient_name)）
+            pqxx::result existing = txn.exec_params(
+                "SELECT id, quantity FROM inventory "
+                "WHERE user_id = $1 AND ingredient_name = $2",
+                userId, ingredientName);
+
+            if (!existing.empty()) {
+                int invId = existing[0]["id"].as<int>();
+                double currentQty = existing[0]["quantity"].as<double>();
+                txn.exec_params(
+                    "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
+                    currentQty + toBuyQty, unit, invId);
+            } else {
+                // 全新食材，INSERT
+                txn.exec_params(
+                    "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
+                    "VALUES ($1, $2, $3, $4)",
+                    userId, ingredientName, toBuyQty, unit);
+            }
+        }
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, int listId, const std::vector<BatchShoppingItem>& items) {

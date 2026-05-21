@@ -129,18 +129,33 @@ TEST(InventoryServiceTest, 删除购物清单未实现) {
     EXPECT_THROW(service.deleteShoppingList(1, 1), ServiceException);
 }
 
-TEST(InventoryServiceTest, 更新清单项未实现) {
+TEST(InventoryServiceTest, 更新清单项正确委派Repositories) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto& repo = *mock;
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.updateShoppingListItem(1, 1, 1, {}), ServiceException);
+    UpdateShoppingItemRequest req;
+    req.checked = true;
+
+    EXPECT_CALL(repo, updateShoppingListItem(1, 42, 7, _))
+        .Times(1);
+
+    service.updateShoppingListItem(1, 42, 7, req);
 }
 
-TEST(InventoryServiceTest, 批量添加清单未实现) {
+TEST(InventoryServiceTest, 批量添加清单正确委派Repositories) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto& repo = *mock;
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.batchAddShoppingItems(1, 1, {}), ServiceException);
+    std::vector<BatchShoppingItem> items;
+    items.push_back({"盐", 1.0, "袋"});
+
+    EXPECT_CALL(repo, batchAddShoppingItems(1, 42, _))
+        .WillOnce(Return(BatchShoppingResponse{}));
+
+    auto result = service.batchAddShoppingItems(1, 42, items);
+    EXPECT_EQ(result.message, "");
 }
 
 TEST(InventoryServiceTest, 导出购物清单未实现) {
