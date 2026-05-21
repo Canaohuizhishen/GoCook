@@ -362,6 +362,56 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
     }
 }
 
-std::string PgInventoryRepository::exportShoppingList(int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+std::string PgInventoryRepository::exportShoppingList(int userId, int listId, const std::string& format) {
+    if (format != "text") {
+        throw ServiceException("不支持的导出格式，仅支持 text", 400);
+    }
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result listRes = txn.exec_params(
+            "SELECT name FROM shopping_lists WHERE id = $1 AND user_id = $2",
+            listId, userId);
+        if (listRes.empty()) {
+            throw ServiceException("购物清单不存在", 404);
+        }
+        std::string listName = listRes[0]["name"].c_str();
+
+        pqxx::result itemsRes = txn.exec_params(
+            "SELECT ingredient_name, to_buy_quantity, unit, checked "
+            "FROM shopping_list_items WHERE list_id = $1 ORDER BY id",
+            listId);
+
+        std::string result;
+        result += "GoCook 购物清单：" + listName + "\n\n";
+
+        for (const auto& row : itemsRes) {
+            bool checked = row["checked"].as<bool>();
+            std::string name = row["ingredient_name"].c_str();
+            double qty = row["to_buy_quantity"].as<double>();
+            std::string unit = row["unit"].c_str();
+
+            // 格式化数量：去掉末尾多余的 .000000
+            std::string qtyStr = std::to_string(qty);
+            auto dot = qtyStr.find('.');
+            if (dot != std::string::npos) {
+                auto end = qtyStr.find_last_not_of('0');
+                if (end > dot) qtyStr = qtyStr.substr(0, end + 1);
+                else           qtyStr = qtyStr.substr(0, dot);
+            }
+            result += checked ? "[x] " : "[ ] ";
+            result += name + "  x" + qtyStr;
+            if (!unit.empty()) result += " " + unit;
+            result += "\n";
+        }
+
+        txn.commit();
+        return result;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
