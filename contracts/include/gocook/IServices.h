@@ -77,6 +77,10 @@ namespace gocook::services {
         /// 删除评论（需认证）
         virtual void deleteRating(int userId, int recipeId, int ratingId) = 0;
 
+        /// 获取当前用户对某个菜谱的评分（不存在返回 nullopt）
+        virtual std::optional<models::RecipeRating> getMyRating(int userId,
+                                                                 int recipeId) = 0;
+
         /// 获取当前用户的所有评论列表
         virtual models::PagedUserRatings getMyRatings(int userId, int page, int size) = 0;
 

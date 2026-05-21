@@ -410,8 +410,51 @@ std::vector<RecipeVideo> PgRecipeRepository::findVideos(int recipeId) {
     }
 }
 
-PagedRatings PgRecipeRepository::findRatings(int, int, int) {
-    throw ServiceException("Not implemented", 501);
+PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 总数
+        pqxx::result countResult = txn.exec_params(
+            "SELECT COUNT(*) FROM ratings WHERE recipe_id = $1",
+            recipeId);
+        int total = countResult[0][0].as<int>();
+
+        // 分页数据
+        int offset = (page - 1) * size;
+        pqxx::result rows = txn.exec_params(
+            "SELECT r.id, r.user_id, u.username, r.rating, r.comment, r.created_at"
+            " FROM ratings r"
+            " JOIN users u ON r.user_id = u.id"
+            " WHERE r.recipe_id = $1"
+            " ORDER BY r.created_at DESC"
+            " LIMIT $2 OFFSET $3",
+            recipeId, size, offset);
+
+        PagedRatings result;
+        for (const auto& row : rows) {
+            RecipeRating rating;
+            rating.id = row["id"].as<int>();
+            rating.user_id = row["user_id"].as<int>();
+            rating.username = row["username"].c_str();
+            rating.rating = row["rating"].as<int>();
+            rating.comment = row["comment"].as<std::string>("");
+            rating.created_at = row["created_at"].as<std::string>("");
+            result.data.push_back(std::move(rating));
+        }
+
+        int totalPages = (size > 0) ? (total + size - 1) / size : 0;
+        result.pagination = {page, size, total, totalPages};
+
+        txn.commit();
+        return result;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findRatings: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRequest& data) {
@@ -541,16 +584,140 @@ void PgRecipeRepository::toggleFavorite(int, int, std::optional<int>, std::optio
     throw ServiceException("Not implemented", 501);
 }
 
-void PgRecipeRepository::rateRecipe(int, int, const RateRecipeRequest&) {
-    throw ServiceException("Not implemented", 501);
+void PgRecipeRepository::rateRecipe(int userId, int recipeId,
+                                    const RateRecipeRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 检查是否已评过分
+        pqxx::result existing = txn.exec_params(
+            "SELECT id FROM ratings WHERE user_id = $1 AND recipe_id = $2",
+            userId, recipeId);
+        if (!existing.empty()) {
+            throw ServiceException("您已评过分", 409);
+        }
+
+        txn.exec_params(
+            "INSERT INTO ratings (user_id, recipe_id, rating, comment)"
+            " VALUES ($1, $2, $3, $4)",
+            userId, recipeId, req.rating, req.comment);
+
+        // 更新菜谱平均分
+        txn.exec_params(
+            "UPDATE recipes SET avg_rating = ("
+            "  SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0)"
+            "  FROM ratings WHERE recipe_id = $1"
+            ") WHERE id = $1",
+            recipeId);
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in rateRecipe: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-void PgRecipeRepository::updateRating(int, int, int, const RateRecipeRequest&) {
-    throw ServiceException("Not implemented", 501);
+void PgRecipeRepository::updateRating(int userId, int recipeId, int ratingId,
+                                      const RateRecipeRequest& req) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result r = txn.exec_params(
+            "UPDATE ratings SET rating = $1, comment = $2, updated_at = NOW()"
+            " WHERE id = $3 AND user_id = $4 AND recipe_id = $5"
+            " RETURNING id",
+            req.rating, req.comment, ratingId, userId, recipeId);
+
+        if (r.empty()) {
+            throw ServiceException("无权限操作他人的评论", 403);
+        }
+
+        // 更新菜谱平均分
+        txn.exec_params(
+            "UPDATE recipes SET avg_rating = ("
+            "  SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0)"
+            "  FROM ratings WHERE recipe_id = $1"
+            ") WHERE id = $1",
+            recipeId);
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updateRating: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
-void PgRecipeRepository::deleteRating(int, int, int) {
-    throw ServiceException("Not implemented", 501);
+void PgRecipeRepository::deleteRating(int userId, int recipeId, int ratingId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result r = txn.exec_params(
+            "DELETE FROM ratings WHERE id = $1 AND user_id = $2 AND recipe_id = $3"
+            " RETURNING id",
+            ratingId, userId, recipeId);
+
+        if (r.empty()) {
+            throw ServiceException("无权限操作他人的评论", 403);
+        }
+
+        // 更新菜谱平均分
+        txn.exec_params(
+            "UPDATE recipes SET avg_rating = ("
+            "  SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0)"
+            "  FROM ratings WHERE recipe_id = $1"
+            ") WHERE id = $1",
+            recipeId);
+
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in deleteRating: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+}
+
+std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int recipeId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result r = txn.exec_params(
+            "SELECT r.id, r.user_id, u.username, r.rating, r.comment, r.created_at"
+            " FROM ratings r"
+            " JOIN users u ON r.user_id = u.id"
+            " WHERE r.recipe_id = $1 AND r.user_id = $2",
+            recipeId, userId);
+
+        if (r.empty()) {
+            txn.commit();
+            return std::nullopt;
+        }
+
+        const auto& row = r[0];
+        RecipeRating rating;
+        rating.id = row["id"].as<int>();
+        rating.user_id = row["user_id"].as<int>();
+        rating.username = row["username"].c_str();
+        rating.rating = row["rating"].as<int>();
+        rating.comment = row["comment"].as<std::string>("");
+        rating.created_at = row["created_at"].as<std::string>("");
+
+        txn.commit();
+        return rating;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findMyRating: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 PagedUserRatings PgRecipeRepository::findMyRatings(int, int, int) {

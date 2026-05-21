@@ -306,6 +306,28 @@ void RecipeHandler::getRecipeNutrition(const httplib::Request& req, httplib::Res
     }
 }
 
+void RecipeHandler::getMyRecipeRating(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        int recipeId = std::stoi(req.matches[1]);
+        auto rating = service_.getMyRating(info.userId, recipeId);
+        if (!rating.has_value()) {
+            res.status = 404;
+            res.set_header("Content-Type", "application/json");
+            res.body = json{{"error", "未找到评分"}}.dump();
+            return;
+        }
+        res.set_header("Content-Type", "application/json");
+        res.status = 200;
+        res.body = JsonSerializer::toJson(rating.value()).dump();
+    } catch (const ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
 void RecipeHandler::getMyRatings(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;

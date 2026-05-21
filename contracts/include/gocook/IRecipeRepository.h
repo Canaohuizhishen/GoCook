@@ -50,6 +50,9 @@ public:
 
     virtual void deleteRating(int userId, int recipeId, int ratingId) = 0;
 
+    virtual std::optional<models::RecipeRating> findMyRating(
+        int userId, int recipeId) = 0;
+
     virtual models::PagedUserRatings findMyRatings(int userId, int page,
                                                    int size) = 0;
 

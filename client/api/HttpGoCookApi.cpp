@@ -229,6 +229,13 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
         }
 
         if (reply->error() != QNetworkReply::NoError) {
+            // 先读取响应体——服务端可能在错误响应中返回 JSON 错误信息
+            QByteArray responseData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QString errorMsg = doc.isObject() && doc.object().contains("error")
+                ? doc.object()["error"].toString()
+                : reply->errorString();
+
             if (op == QNetworkAccessManager::GetOperation && retryCount < m_maxRetries) {
                 QTimer::singleShot(m_retryDelay, this, [self, op, endpoint, data, callback, retryCount]() {
                     if (!self) return;
@@ -238,9 +245,9 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                 return;
             }
 
-            emit networkError(reply->errorString());
+            emit networkError(errorMsg);
             if (callback) {
-                callback(false, reply->errorString(), QJsonDocument());
+                callback(false, errorMsg, doc);
             }
             reply->deleteLater();
             return;
@@ -715,8 +722,60 @@ void HttpGoCookApi::getRecipeVideos(int recipeId,
 
 void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,
                                      PagedRatingsCallback callback) {
-    Q_UNUSED(recipeId); Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedRatings{}, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1/ratings?page=%2&size=%3")
+                           .arg(recipeId).arg(page).arg(size);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::PagedRatings{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject root = doc.object();
+        QJsonArray arr = root["data"].toArray();
+        QJsonObject pag = root["pagination"].toObject();
+
+        gocook::models::PagedRatings result;
+        for (const auto& val : arr) {
+            QJsonObject obj = val.toObject();
+            gocook::models::RecipeRating r;
+            r.id = obj["id"].toInt();
+            r.user_id = obj["user_id"].toInt();
+            r.username = obj["username"].toString().toStdString();
+            r.rating = obj["rating"].toInt();
+            r.comment = obj["comment"].toString().toStdString();
+            r.created_at = obj["created_at"].toString().toStdString();
+            result.data.push_back(std::move(r));
+        }
+        result.pagination.page = pag["page"].toInt();
+        result.pagination.size = pag["size"].toInt();
+        result.pagination.total = pag["total"].toInt();
+        result.pagination.total_pages = pag["total_pages"].toInt();
+
+        callback(true, result, "");
+    });
+}
+
+void HttpGoCookApi::getMyRecipeRating(int recipeId,
+                                       MyRecipeRatingCallback callback) {
+    QString endpoint = QString("/api/recipes/%1/ratings/mine").arg(recipeId);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, std::nullopt, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        if (obj.isEmpty()) {
+            callback(true, std::nullopt, "");
+            return;
+        }
+        gocook::models::RecipeRating r;
+        r.id = obj["id"].toInt();
+        r.user_id = obj["user_id"].toInt();
+        r.username = obj["username"].toString().toStdString();
+        r.rating = obj["rating"].toInt();
+        r.comment = obj["comment"].toString().toStdString();
+        r.created_at = obj["created_at"].toString().toStdString();
+        callback(true, std::move(r), "");
+    });
 }
 
 void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
@@ -850,26 +909,35 @@ void HttpGoCookApi::toggleFavorite(int recipeId,
 void HttpGoCookApi::rateRecipe(int recipeId,
                                const gocook::models::RateRecipeRequest& request,
                                SuccessCallback callback) {
-    Q_UNUSED(recipeId); Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1/rate").arg(recipeId);
+    QVariantMap data;
+    data["rating"] = request.rating;
+    data["comment"] = QString::fromStdString(request.comment);
+    post(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (callback) callback(success, errorMsg.toStdString());
+    });
 }
 
 void HttpGoCookApi::updateRating(int recipeId, int ratingId,
                                   const gocook::models::RateRecipeRequest& request,
                                   SuccessCallback callback)
 {
-    Q_UNUSED(recipeId);
-    Q_UNUSED(ratingId);
-    Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1/ratings/%2").arg(recipeId).arg(ratingId);
+    QVariantMap data;
+    data["rating"] = request.rating;
+    data["comment"] = QString::fromStdString(request.comment);
+    put(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (callback) callback(success, errorMsg.toStdString());
+    });
 }
 
 void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
                                   SuccessCallback callback)
 {
-    Q_UNUSED(recipeId);
-    Q_UNUSED(ratingId);
-    if (callback) callback(false, "Not implemented");
+    QString endpoint = QString("/api/recipes/%1/ratings/%2").arg(recipeId).arg(ratingId);
+    deleteResource(endpoint, QVariantMap{}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (callback) callback(success, errorMsg.toStdString());
+    });
 }
 
 void HttpGoCookApi::getMyRatings(int page, int size,

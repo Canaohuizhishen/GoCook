@@ -141,6 +141,9 @@ void Router::registerRecipeRoutes(httplib::Server& svr) {
     svr.Get(R"(/api/recipes/(\d+)/ratings)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeRatings(req, res);
     });
+    svr.Get(R"(/api/recipes/(\d+)/ratings/mine)", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.getMyRecipeRating(req, res);
+    });
     svr.Put(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.updateRating(req, res);
     });

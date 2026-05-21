@@ -46,6 +46,9 @@ public:
 
     void deleteRating(int userId, int recipeId, int ratingId) override;
 
+    std::optional<gocook::models::RecipeRating> findMyRating(
+        int userId, int recipeId) override;
+
     gocook::models::PagedUserRatings findMyRatings(int userId, int page,
                                                    int size) override;
 

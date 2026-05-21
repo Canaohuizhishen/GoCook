@@ -84,6 +84,10 @@ using PagedRatingsCallback = std::function<void(bool success,
                                                 const gocook::models::PagedRatings& data,
                                                 const std::string& error)>;
 
+using MyRecipeRatingCallback = std::function<void(bool success,
+                                                   const std::optional<gocook::models::RecipeRating>& data,
+                                                   const std::string& error)>;
+
 using PagedMyRecipesCallback = std::function<void(bool success,
                                                   const gocook::models::PagedMyRecipes& data,
                                                   const std::string& error)>;
@@ -421,6 +425,14 @@ public:
      */
     virtual void getRecipeRatings(int recipeId, int page, int size,
                                   PagedRatingsCallback callback) = 0;
+
+    /**
+     * @brief 获取当前用户对某个菜谱的评分（需认证）
+     * @param recipeId 菜谱ID
+     * @param callback 回调 (success, optionalRating, error)
+     */
+    virtual void getMyRecipeRating(int recipeId,
+                                   MyRecipeRatingCallback callback) = 0;
 
     /**
      * @brief 投稿新菜谱（需认证）

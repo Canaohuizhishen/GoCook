@@ -144,6 +144,8 @@ public:
                          RecipeVideosCallback callback) override;
     void getRecipeRatings(int recipeId, int page, int size,
                           PagedRatingsCallback callback) override;
+    void getMyRecipeRating(int recipeId,
+                            MyRecipeRatingCallback callback) override;
     void submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
                       SubmitRecipeCallback callback) override;
     void getMySubmittedRecipes(int page, int size,
