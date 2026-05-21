@@ -125,6 +125,37 @@ void ShoppingListViewModel::updateShoppingListItem(int listId, int itemId, bool 
         });
 }
 
+void ShoppingListViewModel::deleteShoppingList(int listId)
+{
+    m_deletingListId = listId;
+    emit deletingListIdChanged();
+    beginLoad();
+
+    m_api->deleteShoppingList(listId,
+        [self = QPointer<ShoppingListViewModel>(this), listId](bool success, const std::string& error) {
+            if (!self) return;
+            self->m_deletingListId = -1;
+            emit self->deletingListIdChanged();
+            self->endLoad();
+
+            if (success) {
+                // 移除本地缓存中的该清单
+                QVariantList lists = self->m_shoppingLists;
+                for (int i = 0; i < lists.size(); ++i) {
+                    if (lists[i].toMap()["id"].toInt() == listId) {
+                        lists.removeAt(i);
+                        break;
+                    }
+                }
+                self->m_shoppingLists = lists;
+                emit self->shoppingListsChanged();
+                emit self->shoppingListDeleted(listId);
+            } else {
+                emit self->errorOccurred(QString::fromStdString(error));
+            }
+        });
+}
+
 void ShoppingListViewModel::batchAddShoppingItems(int listId, const QVariantList& items)
 {
     beginLoad();

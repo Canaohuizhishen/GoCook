@@ -25,8 +25,8 @@ int InventoryServiceImpl::createShoppingList(int userId, const CreateShoppingLis
 ShoppingList InventoryServiceImpl::getShoppingListDetail(int userId, int listId) {
     return inventoryRepo_->findShoppingListDetail(userId, listId);
 }
-void InventoryServiceImpl::deleteShoppingList(int, int) {
-    throw ServiceException("Not implemented", 501);
+void InventoryServiceImpl::deleteShoppingList(int userId, int listId) {
+    inventoryRepo_->deleteShoppingList(userId, listId);
 }
 void InventoryServiceImpl::updateShoppingListItem(int userId, int listId, int itemId,
                                                        const UpdateShoppingItemRequest& request) {

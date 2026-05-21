@@ -987,8 +987,10 @@ void HttpGoCookApi::getShoppingListDetail(int listId,
 void HttpGoCookApi::deleteShoppingList(int listId,
                                         SuccessCallback callback)
 {
-    Q_UNUSED(listId);
-    if (callback) callback(false, "Not implemented");
+    QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
+    deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (callback) callback(success, success ? "" : errorMsg.toStdString());
+    });
 }
 
 void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
