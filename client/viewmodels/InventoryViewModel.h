@@ -10,7 +10,6 @@ class InventoryViewModel : public QObject
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)
-    Q_PROPERTY(int deletingId READ deletingId NOTIFY deletingIdChanged)
 
 public:
     explicit InventoryViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -18,7 +17,6 @@ public:
     QVariantList items() const;
     bool isLoading() const;
     bool hasMore() const;
-    int deletingId() const;
 
     Q_INVOKABLE void loadInventory(int page = 1, int size = 50);
     Q_INVOKABLE void loadNextPage();
@@ -33,7 +31,6 @@ signals:
     void itemsChanged();
     void isLoadingChanged();
     void hasMoreChanged();
-    void deletingIdChanged();
     void errorOccurred(const QString& error);
 
 private:
@@ -44,5 +41,4 @@ private:
     int m_currentPage = 1;
     int m_pageSize = 50;
     int m_totalPages = 0;
-    int m_deletingId = -1;
 };

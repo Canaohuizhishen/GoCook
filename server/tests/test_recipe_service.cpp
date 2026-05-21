@@ -2,6 +2,8 @@
 #include <gmock/gmock.h>
 #include "../services/RecipeServiceImpl.h"
 #include "MockRecipeRepository.h"
+#include "MockUserRepository.h"
+#include "MockInventoryRepository.h"
 
 using namespace testing;
 using namespace gocook::models;
@@ -29,6 +31,52 @@ namespace {
 
     SubmitRecipeRequest makeSubmitReq() {
         return {"New Recipe", "Yummy", "img.jpg", {}, {}, std::nullopt, {}, std::nullopt, std::nullopt, std::nullopt};
+    }
+
+    // Helper for recommendation tests
+    RecommendedRecipe makeRec(int id, const std::string& name,
+                              const std::string& flavor,
+                              const std::string& method,
+                              double matchScore = 0.8,
+                              double avgRating = 4.0)
+    {
+        RecommendedRecipe r;
+        r.id = id;
+        r.name = name;
+        r.flavor = flavor;
+        r.cooking_method = method;
+        r.ingredient_type = "荤";
+        r.match_score = matchScore;
+        r.avg_rating = avgRating;
+        r.view_count = 100;
+        r.calories = 350;
+        r.protein_g = 18;
+        r.fat_g = 12;
+        r.carbs_g = 30;
+        r.submitted_at = "2026-05-20T00:00:00";
+        r.description = "Test";
+        r.prep_time_minutes = 10;
+        r.cook_time_minutes = 20;
+        r.author_id = 1;
+        r.author_name = "Chef";
+        // Add some ingredients
+        r.match_status.available_ingredients.push_back({"鸡蛋", 3.0, "个"});
+        r.match_status.available_ingredients.push_back({"番茄", 2.0, "个"});
+        r.match_status.missing_ingredients.push_back({"葱花", 1.0, "把"});
+        return r;
+    }
+
+    PagedRecommendedRecipes makePagedRecommended(int total, int page = 1, int size = 20) {
+        PagedRecommendedRecipes r;
+        r.pagination = {page, size, total, (total + size - 1) / size};
+        r.health_filter_applied = false;
+        return r;
+    }
+
+    PagedInventory makePagedInventory(int total) {
+        PagedInventory r;
+        r.pagination = {1, 1, total, total > 0 ? 1 : 0};
+        return r;
     }
 }
 
@@ -112,11 +160,161 @@ TEST(RecipeServiceTest, 搜索菜谱无结果返回空列表) {
     EXPECT_EQ(result.pagination.total, 0);
 }
 
-TEST(RecipeServiceTest, 智能推荐未实现) {
-    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
-    RecipeServiceImpl service(std::move(mock));
+// ==================== 智能推荐测试 ====================
 
-    EXPECT_THROW(service.getRecommendedRecipes(1, 1, 20), ServiceException);
+TEST(RecipeServiceTest, 推荐库存为空返回400) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* invRepo = mockInv.get();
+
+    // 库存为空
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(0)));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    try {
+        service.getRecommendedRecipes(1, 1, 20);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("库存为空"));
+    }
+}
+
+TEST(RecipeServiceTest, 推荐正常流程) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    // 库存非空（1件）
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    // 无偏好
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 无健康档案
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{}));
+
+    // 仓库返回 3 个候选
+    PagedRecommendedRecipes candidates = makePagedRecommended(3, 1, 60);
+    candidates.data.push_back(makeRec(1, "麻辣火锅", "麻辣", "煮", 0.8, 4.5));
+    candidates.data.push_back(makeRec(2, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));
+    candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.4, 3.5));
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    EXPECT_FALSE(result.health_filter_applied);
+    EXPECT_EQ(result.data.size(), 3);
+    EXPECT_EQ(result.pagination.total, 3);
+
+    // 应按最终评分降序（麻辣火锅 match_score 最高 + rating 4.5）
+    EXPECT_EQ(result.data[0].name, "麻辣火锅");
+}
+
+TEST(RecipeServiceTest, 推荐健康过滤排除禁忌菜谱) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 高血压 → 禁忌 "酱油"
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"高血压"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(3, 1, 60);
+    auto r1 = makeRec(1, "清蒸鱼", "清淡", "蒸", 0.9, 4.5);
+    candidates.data.push_back(r1);
+
+    auto r2 = makeRec(2, "红烧肉", "酱香", "炖", 0.7, 4.0);
+    r2.match_status.available_ingredients.push_back({"酱油", 10.0, "毫升"}); // 含酱油
+    candidates.data.push_back(r2);
+
+    candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    // 红烧肉 被排除
+    EXPECT_TRUE(result.health_filter_applied);
+    EXPECT_EQ(result.data.size(), 2);
+    EXPECT_EQ(result.pagination.total, 3); // total 为原始 COUNT，不受健康过滤样本影响
+}
+
+TEST(RecipeServiceTest, 推荐偏好厌食减分) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    // 厌恶 "鸡蛋"
+    UserPreferences pref;
+    pref.dislikes = {"鸡蛋"};
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(pref));
+
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(2, 1, 60);
+    auto r1 = makeRec(1, "蒸蛋羹", "清淡", "蒸", 0.8, 4.0);
+    // r1 已有 available_ingredients: 鸡蛋, 番茄 — 命中 dislike
+    candidates.data.push_back(r1);
+
+    auto r2 = makeRec(2, "清炒时蔬", "清淡", "炒", 0.6, 4.0);
+    r2.match_status.available_ingredients.clear();
+    r2.match_status.missing_ingredients.clear();
+    r2.match_status.available_ingredients.push_back({"青菜", 1.0, "把"});
+    candidates.data.push_back(r2);
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    EXPECT_EQ(result.data.size(), 2);
+    // 蒸蛋羹因 dislike 减分，应排在清炒时蔬之后
+    EXPECT_EQ(result.data[0].name, "清炒时蔬");
+    EXPECT_EQ(result.data[1].name, "蒸蛋羹");
 }
 
 TEST(RecipeServiceTest, 关联视频查询成功) {

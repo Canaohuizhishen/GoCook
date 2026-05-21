@@ -18,7 +18,7 @@ Page {
         id: loadingIndicator
         fullscreen: true
         message: qsTr("正在加载收藏...")
-        isLoading: recipeVM.isLoading && recipeVM.favorites.length === 0
+        isLoading: recipeVM.isLoading && (!recipeVM.favorites || recipeVM.favorites.length === 0)
     }
 
     ListView {
@@ -27,7 +27,7 @@ Page {
         anchors.margins: Theme.spacingMedium
         spacing: Theme.spacingSmall
         clip: true
-        visible: recipeVM.favorites.length > 0
+        visible: recipeVM.favorites && recipeVM.favorites.length > 0
         leftMargin: Theme.spacingXSmall
         rightMargin: Theme.spacingXSmall
 
@@ -60,7 +60,7 @@ Page {
     Column {
         anchors.centerIn: parent
         spacing: Theme.spacingMedium
-        visible: recipeVM.favorites.length === 0 && !recipeVM.isLoading
+        visible: (!recipeVM.favorites || recipeVM.favorites.length === 0) && !recipeVM.isLoading
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter

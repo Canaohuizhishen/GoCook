@@ -308,6 +308,11 @@ namespace gocook::models {
     struct RecommendedRecipe : RecipeSummary {
         double match_score = 0.0;
         MatchStatus match_status;
+        // ── 内部字段（服务端推荐引擎使用，不输出到客户端） ──
+        double protein_g = 0.0;         // per_serving 蛋白质
+        double fat_g = 0.0;             // per_serving 脂肪
+        double carbs_g = 0.0;           // per_serving 碳水
+        std::string submitted_at;       // 投稿时间 ISO 字符串
     };
 
     /// 营养报告食材明细（API 4.15）

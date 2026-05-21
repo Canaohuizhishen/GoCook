@@ -8,7 +8,6 @@ InventoryViewModel::InventoryViewModel(IGoCookApi *api, QObject *parent)
 QVariantList InventoryViewModel::items() const { return m_items; }
 bool InventoryViewModel::isLoading() const { return m_isLoading; }
 bool InventoryViewModel::hasMore() const { return m_hasMore; }
-int InventoryViewModel::deletingId() const { return m_deletingId; }
 
 void InventoryViewModel::refresh()
 {
@@ -88,24 +87,28 @@ void InventoryViewModel::updateItem(int /*itemId*/, const QString& name, double 
 
 void InventoryViewModel::deleteItem(int itemId)
 {
-    m_deletingId = itemId;
-    emit deletingIdChanged();
+    // 乐观删除：保存旧列表用于回滚
+    QVariantList oldItems = m_items;
 
+    // 1. 立即从列表中移除
+    for (int i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].toMap()["id"].toInt() == itemId) {
+            m_items.removeAt(i);
+            emit itemsChanged();
+            break;
+        }
+    }
+
+    // 2. 发 API 请求
     m_api->deleteInventoryItem(itemId,
-                               [self = QPointer<InventoryViewModel>(this), itemId](bool success, const std::string& error) {
-                                   if (!self) return;
-                                   self->m_deletingId = -1;
-                                   emit self->deletingIdChanged();
-                                   if (success) {
-                                       for (int i = 0; i < self->m_items.size(); ++i) {
-                                           if (self->m_items[i].toMap()["id"].toInt() == itemId) {
-                                               self->m_items.removeAt(i);
-                                               emit self->itemsChanged();
-                                               break;
-                                           }
-                                       }
-                                   } else {
-                                       emit self->errorOccurred(QString::fromStdString(error));
-                                   }
-                               });
+        [self = QPointer<InventoryViewModel>(this), itemId, oldItems]
+        (bool success, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                // 失败 → 回滚
+                self->m_items = oldItems;
+                emit self->itemsChanged();
+                emit self->errorOccurred(QString::fromStdString(error));
+            }
+        });
 }

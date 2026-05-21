@@ -560,8 +560,94 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
 
 void HttpGoCookApi::getRecommendedRecipes(int page, int size,
                                           PagedRecommendedRecipesCallback callback) {
-    Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedRecommendedRecipes{}, "Not implemented");
+    QUrlQuery query;
+    query.addQueryItem("page", QString::number(page));
+    query.addQueryItem("size", QString::number(size));
+    QString endpoint = QString("/api/recipes/recommend?%1").arg(query.toString(QUrl::FullyEncoded));
+
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::PagedRecommendedRecipes{},
+                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+            return;
+        }
+        QJsonObject root = doc.object();
+        gocook::models::PagedRecommendedRecipes result;
+
+        // health_filter_applied
+        result.health_filter_applied = root["health_filter_applied"].toBool(false);
+
+        // pagination
+        if (root.contains("pagination") && root["pagination"].isObject()) {
+            QJsonObject pag = root["pagination"].toObject();
+            result.pagination.page        = pag["page"].toInt();
+            result.pagination.size        = pag["size"].toInt();
+            result.pagination.total       = pag["total"].toInt();
+            result.pagination.total_pages = pag["total_pages"].toInt();
+        }
+
+        // data array
+        if (root.contains("data") && root["data"].isArray()) {
+            const QJsonArray dataArr = root["data"].toArray();
+            for (const QJsonValue& val : dataArr) {
+                QJsonObject obj = val.toObject();
+                gocook::models::RecommendedRecipe rec;
+
+                // RecipeSummary fields
+                rec.id                = obj["id"].toInt();
+                rec.name              = obj["name"].toString().toStdString();
+                rec.description       = obj["description"].toString().toStdString();
+                rec.image_url         = obj["image_url"].toString().toStdString();
+                rec.prep_time_minutes = obj["prep_time_minutes"].toInt();
+                rec.cook_time_minutes = obj["cook_time_minutes"].toInt();
+                rec.calories          = obj["calories"].toInt();
+                rec.view_count        = obj["view_count"].toInt();
+                rec.avg_rating        = obj["avg_rating"].toDouble();
+                rec.author_id         = obj["author_id"].toInt();
+                rec.author_name       = obj["author_name"].toString().toStdString();
+                rec.cooking_method    = obj["cooking_method"].toString().toStdString();
+                rec.flavor            = obj["flavor"].toString().toStdString();
+                rec.ingredient_type   = obj["ingredient_type"].toString().toStdString();
+
+                if (obj.contains("tags") && obj["tags"].isArray()) {
+                    const QJsonArray tagsArr = obj["tags"].toArray();
+                    for (const auto& t : tagsArr)
+                        rec.tags.push_back(t.toString().toStdString());
+                }
+
+                // RecommendedRecipe extras
+                rec.match_score = obj["match_score"].toDouble();
+
+                QJsonObject status = obj["match_status"].toObject();
+                if (status.contains("available_ingredients") && status["available_ingredients"].isArray()) {
+                    const QJsonArray arr = status["available_ingredients"].toArray();
+                    for (const auto& v : arr) {
+                        QJsonObject ing = v.toObject();
+                        gocook::models::MatchIngredient mi;
+                        mi.name     = ing["name"].toString().toStdString();
+                        mi.quantity = ing["quantity"].toDouble();
+                        mi.unit     = ing["unit"].toString().toStdString();
+                        rec.match_status.available_ingredients.push_back(std::move(mi));
+                    }
+                }
+                if (status.contains("missing_ingredients") && status["missing_ingredients"].isArray()) {
+                    const QJsonArray arr = status["missing_ingredients"].toArray();
+                    for (const auto& v : arr) {
+                        QJsonObject ing = v.toObject();
+                        gocook::models::MissingIngredient mi;
+                        mi.name     = ing["name"].toString().toStdString();
+                        mi.quantity = ing["quantity"].toDouble();
+                        mi.unit     = ing["unit"].toString().toStdString();
+                        rec.match_status.missing_ingredients.push_back(std::move(mi));
+                    }
+                }
+
+                result.data.push_back(std::move(rec));
+            }
+        }
+
+        callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::searchRecipes(const std::string& keyword,

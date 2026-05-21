@@ -107,6 +107,25 @@ void PgUserRepository::updatePreferences(int, const UserPreferences&) {
     throw ServiceException("Not implemented", 501);
 }
 
+std::vector<std::string> PgUserRepository::getHealthConditions(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        auto row = txn.exec_params(
+            "SELECT conditions FROM health_profiles WHERE user_id = $1",
+            userId);
+        if (row.empty() || row[0][0].is_null()) return {};
+        auto j = nlohmann::json::parse(row[0][0].c_str());
+        std::vector<std::string> conditions;
+        for (const auto& c : j)
+            conditions.push_back(c.get<std::string>());
+        return conditions;
+    } catch (const std::exception& e) {
+        LOG_ERROR("getHealthConditions failed: %s", e.what());
+        return {};
+    }
+}
+
 HealthProfileResponse PgUserRepository::updateHealthProfile(int, const HealthProfileRequest&) {
     throw ServiceException("Not implemented", 501);
 }

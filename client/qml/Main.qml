@@ -159,6 +159,9 @@ ApplicationWindow {
             onShowSearchRequest: () => {
                 stackView.push(searchPage)
             }
+            onShowRecommendFromInventory: () => {
+                stackView.push(recommendResultsPage)
+            }
         }
     }
 
@@ -192,6 +195,16 @@ ApplicationWindow {
     Component {
         id: searchPage
         SearchPage {
+            property var _stackView: stackView
+            onRecipeClicked: (recipeId) => {
+                stackView.push(recipeDetailPage, {recipeId: recipeId})
+            }
+        }
+    }
+
+    Component {
+        id: recommendResultsPage
+        RecommendResultsPage {
             property var _stackView: stackView
             onRecipeClicked: (recipeId) => {
                 stackView.push(recipeDetailPage, {recipeId: recipeId})
