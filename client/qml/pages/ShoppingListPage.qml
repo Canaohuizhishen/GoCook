@@ -9,6 +9,7 @@ Page {
     title: qsTr("购物清单")
 
     signal goBack()
+    signal showDetailRequest(int listId)
 
     Component.onCompleted: {
         shoppingListVM.loadShoppingLists()
@@ -101,7 +102,7 @@ Page {
                                 verticalAlignment: Text.AlignVCenter
                             }
                             onClicked: {
-                                console.log("Shopping list clicked:", modelData.id)
+                                shoppingListPage.showDetailRequest(modelData.id)
                             }
                         }
 

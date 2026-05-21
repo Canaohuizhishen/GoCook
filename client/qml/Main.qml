@@ -192,6 +192,18 @@ ApplicationWindow {
             onGoBack: {
                 stackView.pop()
             }
+            onShowDetailRequest: (listId) => {
+                stackView.push(shoppingListDetailPage, {listId: listId})
+            }
+        }
+    }
+
+    Component {
+        id: shoppingListDetailPage
+        ShoppingListDetailPage {
+            onGoBack: {
+                stackView.pop()
+            }
         }
     }
 
