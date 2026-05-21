@@ -23,6 +23,7 @@ public:
 
     Q_INVOKABLE void loadShoppingLists();
     Q_INVOKABLE void loadShoppingListDetail(int listId);
+    Q_INVOKABLE void batchAddShoppingItems(int listId, const QVariantList& items);
     Q_INVOKABLE void createShoppingList(const QString& name);
     Q_INVOKABLE void refresh();
 
@@ -35,6 +36,8 @@ signals:
     void shoppingListCreated(const QString& name);
     void shoppingListCreateFailed(const QString& error);
     void shoppingListDetailReady();
+    void batchAddComplete(const QString& message);
+    void batchAddFailed(const QString& error);
 
 private:
     IGoCookApi *m_api;

@@ -64,6 +64,39 @@ void ShoppingListViewModel::loadShoppingListDetail(int listId)
         });
 }
 
+void ShoppingListViewModel::batchAddShoppingItems(int listId, const QVariantList& items)
+{
+    m_isLoading = true;
+    emit isLoadingChanged();
+
+    std::vector<gocook::models::BatchShoppingItem> batchItems;
+    for (const auto& val : items) {
+        QVariantMap map = val.toMap();
+        gocook::models::BatchShoppingItem item;
+        item.ingredient_name = map["ingredient_name"].toString().toStdString();
+        item.quantity = map["quantity"].toDouble();
+        item.unit = map["unit"].toString().toStdString();
+        batchItems.push_back(std::move(item));
+    }
+
+    m_api->batchAddShoppingItems(listId, batchItems,
+        [self = QPointer<ShoppingListViewModel>(this), listId](bool success,
+                              const gocook::models::BatchShoppingResponse& resp,
+                              const std::string& error) {
+            if (!self) return;
+            self->m_isLoading = false;
+            emit self->isLoadingChanged();
+
+            if (success) {
+                // 刷新详情以反映最新数据
+                self->loadShoppingListDetail(listId);
+                emit self->batchAddComplete(QString::fromStdString(resp.message));
+            } else {
+                emit self->batchAddFailed(QString::fromStdString(error));
+            }
+        });
+}
+
 void ShoppingListViewModel::createShoppingList(const QString& name)
 {
     m_creating = true;
