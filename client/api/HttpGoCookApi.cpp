@@ -1000,9 +1000,59 @@ void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
 
 void HttpGoCookApi::batchAddShoppingItems(int listId,
                                           const std::vector<gocook::models::BatchShoppingItem>& items,
-                                          BatchShoppingCallback callback) {
-    Q_UNUSED(listId); Q_UNUSED(items);
-    if (callback) callback(false, gocook::models::BatchShoppingResponse{}, "Not implemented");
+                                          BatchShoppingCallback callback)
+{
+    QUrl url(m_baseUrl + QString("/api/inventory/shopping-lists/%1/items/batch").arg(listId));
+    QNetworkRequest request(url);
+    request.setTransferTimeout(15000);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_token.isEmpty()) {
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    }
+
+    QJsonArray arr;
+    for (const auto& item : items) {
+        QJsonObject obj;
+        obj["ingredient_name"] = QString::fromStdString(item.ingredient_name);
+        obj["quantity"] = item.quantity;
+        if (!item.unit.empty())
+            obj["unit"] = QString::fromStdString(item.unit);
+        arr.append(obj);
+    }
+    QByteArray body = QJsonDocument(arr).toJson();
+
+    QNetworkReply* reply = m_nam.post(request, body);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        reply->deleteLater();
+
+        if (statusCode == 201) {
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QJsonObject obj = doc.object();
+            gocook::models::BatchShoppingResponse resp;
+            resp.message = obj["message"].toString().toStdString();
+            if (obj.contains("items") && obj["items"].isArray()) {
+                const QJsonArray itemsArr = obj["items"].toArray();
+                for (const auto& val : itemsArr) {
+                    QJsonObject itemObj = val.toObject();
+                    gocook::models::ShoppingListItem item;
+                    item.id = itemObj["id"].toInt();
+                    item.ingredient_name = itemObj["ingredient_name"].toString().toStdString();
+                    item.required_quantity = itemObj["required_quantity"].toDouble();
+                    item.inventory_quantity = itemObj["inventory_quantity"].toDouble();
+                    item.to_buy_quantity = itemObj["to_buy_quantity"].toDouble();
+                    item.unit = itemObj["unit"].toString().toStdString();
+                    item.checked = itemObj["checked"].toBool();
+                    resp.items.push_back(std::move(item));
+                }
+            }
+            callback(true, resp, "");
+        } else {
+            callback(false, gocook::models::BatchShoppingResponse{}, QString::fromUtf8(responseData).toStdString());
+        }
+    });
 }
 
 void HttpGoCookApi::exportShoppingList(int listId,

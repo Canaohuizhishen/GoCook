@@ -228,8 +228,63 @@ void PgInventoryRepository::updateShoppingListItem(int, int, int, const UpdateSh
     throw ServiceException("Not implemented", 501);
 }
 
-BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int, int, const std::vector<BatchShoppingItem>&) {
-    throw ServiceException("Not implemented", 501);
+BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, int listId, const std::vector<BatchShoppingItem>& items) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 验证购物清单归属
+        pqxx::result listRes = txn.exec_params(
+            "SELECT id FROM shopping_lists WHERE id = $1 AND user_id = $2",
+            listId, userId);
+        if (listRes.empty()) {
+            throw ServiceException("购物清单不存在", 404);
+        }
+
+        BatchShoppingResponse result;
+        int addedCount = 0;
+
+        for (const auto& reqItem : items) {
+            // 查询当前库存量
+            double invQty = 0.0;
+            pqxx::result invRes = txn.exec_params(
+                "SELECT quantity FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
+                userId, reqItem.ingredient_name);
+            if (!invRes.empty()) {
+                invQty = invRes[0]["quantity"].as<double>();
+            }
+
+            double requiredQty = reqItem.quantity;
+            double toBuyQty = std::max(requiredQty - invQty, 0.0);
+
+            pqxx::result insertRes = txn.exec_params(
+                "INSERT INTO shopping_list_items "
+                "(list_id, ingredient_name, required_quantity, inventory_quantity, to_buy_quantity, unit, checked) "
+                "VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
+                listId, reqItem.ingredient_name, requiredQty, invQty, toBuyQty, reqItem.unit);
+
+            ShoppingListItem listItem;
+            listItem.id = insertRes[0]["id"].as<int>();
+            listItem.ingredient_name = reqItem.ingredient_name;
+            listItem.required_quantity = requiredQty;
+            listItem.inventory_quantity = invQty;
+            listItem.to_buy_quantity = toBuyQty;
+            listItem.unit = reqItem.unit;
+            listItem.checked = false;
+            result.items.push_back(std::move(listItem));
+            ++addedCount;
+        }
+
+        result.message = "Successfully added " + std::to_string(addedCount) + " items";
+
+        txn.commit();
+        return result;
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
 }
 
 std::string PgInventoryRepository::exportShoppingList(int, int, const std::string&) {

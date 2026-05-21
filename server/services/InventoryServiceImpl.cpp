@@ -31,8 +31,8 @@ void InventoryServiceImpl::deleteShoppingList(int, int) {
 void InventoryServiceImpl::updateShoppingListItem(int, int, int, const UpdateShoppingItemRequest&) {
     throw ServiceException("Not implemented", 501);
 }
-BatchShoppingResponse InventoryServiceImpl::batchAddShoppingItems(int, int, const std::vector<BatchShoppingItem>&) {
-    throw ServiceException("Not implemented", 501);
+BatchShoppingResponse InventoryServiceImpl::batchAddShoppingItems(int userId, int listId, const std::vector<BatchShoppingItem>& items) {
+    return inventoryRepo_->batchAddShoppingItems(userId, listId, items);
 }
 std::string InventoryServiceImpl::exportShoppingList(int, int, const std::string&) {
     throw ServiceException("Not implemented", 501);
