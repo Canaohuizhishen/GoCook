@@ -46,11 +46,20 @@ public:
     MOCK_METHOD(PagedAnnouncements, findAll, (int, int), (override));
 };
 
-TEST(AnnouncementServiceTest, 公告方法返回501) {
+TEST(AnnouncementServiceTest, 公告方法正确委派) {
     auto mock = std::make_unique<NiceMock<MockAnnouncementRepository>>();
+    auto* repo = mock.get();
     AnnouncementServiceImpl service(std::move(mock));
 
-    EXPECT_THROW(service.getAnnouncements(1, 20), ServiceException);
+    PagedAnnouncements expected;
+    expected.data.push_back({1, "维护通知", "今晚系统升级", "2026-04-21T10:00:00Z"});
+    expected.pagination = {1, 5, 1, 1};
+    EXPECT_CALL(*repo, findAll(1, 5)).WillOnce(Return(expected));
+
+    auto result = service.getAnnouncements(1, 5);
+    EXPECT_EQ(result.data.size(), 1);
+    EXPECT_EQ(result.data[0].title, "维护通知");
+    EXPECT_EQ(result.pagination.total, 1);
 }
 
 // ==================== AdminService ====================

@@ -8,6 +8,7 @@ Page {
     title: qsTr("个人中心")
 
     signal showSubmitRequest()
+    signal showAnnouncementsRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -64,6 +65,13 @@ Page {
             buttonType: CustomButton.ButtonType.Primary
             visible: authViewModel.loggedIn
             onClicked: showSubmitRequest()
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            buttonText: qsTr("系统公告 ›")
+            buttonType: CustomButton.ButtonType.Secondary
+            onClicked: showAnnouncementsRequest()
         }
 
         Item { Layout.fillHeight: true }

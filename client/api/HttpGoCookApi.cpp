@@ -1035,8 +1035,35 @@ void HttpGoCookApi::getNutritionTrend(const std::string& startDate,
 // ======================= 公告 =======================
 void HttpGoCookApi::getAnnouncements(int page, int size,
                                      PagedAnnouncementsCallback callback) {
-    Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedAnnouncements{}, "Not implemented");
+    QString endpoint = QString("/api/announcements?page=%1&size=%2").arg(page).arg(size);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::PagedAnnouncements{}, errorMsg.toStdString());
+            return;
+        }
+        gocook::models::PagedAnnouncements result;
+        QJsonObject root = doc.object();
+        if (root.contains("pagination") && root["pagination"].isObject()) {
+            QJsonObject pag = root["pagination"].toObject();
+            result.pagination.page        = pag["page"].toInt();
+            result.pagination.size        = pag["size"].toInt();
+            result.pagination.total       = pag["total"].toInt();
+            result.pagination.total_pages = pag["total_pages"].toInt();
+        }
+        if (root.contains("data") && root["data"].isArray()) {
+            const QJsonArray dataArr = root["data"].toArray();
+            for (const QJsonValue& val : dataArr) {
+                QJsonObject obj = val.toObject();
+                gocook::models::AnnouncementItem item;
+                item.id = obj["id"].toInt();
+                item.title = obj["title"].toString().toStdString();
+                item.content = obj["content"].toString().toStdString();
+                item.created_at = obj["created_at"].toString().toStdString();
+                result.data.push_back(std::move(item));
+            }
+        }
+        if (callback) callback(true, result, "");
+    });
 }
 
 // ======================= 管理员功能 =======================

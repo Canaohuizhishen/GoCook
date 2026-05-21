@@ -12,6 +12,7 @@ Page {
     signal showSubmitRequest()
     signal showSearchRequest()
     signal showShoppingListRequest()
+    signal showAnnouncementsRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -89,6 +90,9 @@ Page {
             ProfilePage {
                 onShowSubmitRequest: {
                     homePage.showSubmitRequest()
+                }
+                onShowAnnouncementsRequest: {
+                    homePage.showAnnouncementsRequest()
                 }
             }
         }

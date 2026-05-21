@@ -156,6 +156,9 @@ ApplicationWindow {
             onShowShoppingListRequest: () => {
                 stackView.push(shoppingListPage)
             }
+            onShowAnnouncementsRequest: () => {
+                stackView.push(announcementsPage)
+            }
         }
     }
 
@@ -186,6 +189,15 @@ ApplicationWindow {
     Component {
         id: shoppingListPage
         ShoppingListPage {
+            onGoBack: {
+                stackView.pop()
+            }
+        }
+    }
+
+    Component {
+        id: announcementsPage
+        AnnouncementsPage {
             onGoBack: {
                 stackView.pop()
             }

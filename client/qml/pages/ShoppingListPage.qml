@@ -58,77 +58,104 @@ Page {
             visible: !shoppingListVM.isLoading && shoppingListVM.shoppingLists.length === 0
         }
 
-        // 购物清单列表
-        ListView {
-            id: listView
+        // 购物清单列表——Flickable(垂直) + Repeater，避免嵌套 ListView+Flickable 冲突
+        Flickable {
+            id: scrollArea
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: Theme.spacingXSmall
             clip: true
+            contentHeight: listColumn.height
             visible: shoppingListVM.shoppingLists.length > 0
 
-            model: shoppingListVM.shoppingLists
+            Column {
+                id: listColumn
+                width: parent.width
+                spacing: Theme.spacingXSmall
 
-            delegate: Rectangle {
-                width: listView.width
-                height: 56
-                radius: Theme.radiusSmall
-                color: Theme.cardBackground
+                Repeater {
+                    model: shoppingListVM.shoppingLists
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: Theme.spacingSmall
-                    spacing: Theme.spacingSmall
+                    delegate: Rectangle {
+                        id: delegateRoot
+                        width: listColumn.width
+                        height: 56
+                        radius: Theme.radiusSmall
+                        color: Theme.cardBackground
 
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-
-                        Text {
-                            text: modelData.name || ""
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody
-                            font.bold: true
-                            color: Theme.textPrimary
-                            elide: Text.ElideRight
+                        // 右侧箭头按钮——锚定在父容器右侧，始终固定（不参与水平滑动）
+                        ToolButton {
+                            id: arrowBtn
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacingSmall
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitWidth: 36
+                            implicitHeight: 36
+                            text: "›"
+                            font.pointSize: 20
+                            z: 2
+                            contentItem: Text {
+                                text: arrowBtn.text
+                                font: arrowBtn.font
+                                color: Theme.textHint
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            onClicked: {
+                                console.log("Shopping list clicked:", modelData.id)
+                            }
                         }
 
-                        Text {
-                            text: qsTr("%1 项食材").arg(modelData.itemCount || 0)
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeCaption
-                            color: Theme.textSecondary
+                        // 水平滑动内容区域——独立的 Flickable，与外部垂直 Flickable 不冲突
+                        // 布局: 上行为清单名称(粗体)，下行为食材数目 + 创建时间(灰色小字，同行)
+                        // Flickable 高度自动跟随 Column 内容，通过 anchors.verticalCenter 在 56px 卡片中居中
+                        Flickable {
+                            id: itemFlick
+                            anchors.left: parent.left
+                            anchors.right: arrowBtn.left
+                            anchors.leftMargin: Theme.spacingSmall
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: contentHeight
+                            clip: true
+                            contentWidth: contentColumn.width
+                            contentHeight: contentColumn.height
+                            flickableDirection: Flickable.HorizontalFlick
+
+                            Column {
+                                id: contentColumn
+                                spacing: 2
+
+                                Text {
+                                    id: nameText
+                                    text: modelData.name || ""
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSizeBody
+                                    font.bold: true
+                                    color: Theme.textPrimary
+                                }
+
+                                Row {
+                                    spacing: Theme.spacingSmall
+
+                                    Text {
+                                        id: countText
+                                        text: qsTr("%1项食材").arg(modelData.itemCount || 0)
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSizeCaption
+                                        color: Theme.textSecondary
+                                    }
+
+                                    Text {
+                                        id: timeText
+                                        text: modelData.createdAt || ""
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSizeCaption
+                                        color: Theme.textHint
+                                    }
+                                }
+                            }
                         }
-                    }
 
-                    Text {
-                        text: modelData.createdAt || ""
-                        font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSizeCaption
-                        color: Theme.textHint
-                    }
 
-                    ToolButton {
-                        id: arrowBtn
-                        implicitWidth: 36
-                        implicitHeight: 36
-                        text: "›"
-                        font.pointSize: 20
-                        contentItem: Text {
-                            text: arrowBtn.text
-                            font: arrowBtn.font
-                            color: Theme.textHint
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        // 暂不可用——详情页面待后续实现
-                        console.log("Shopping list clicked:", modelData.id)
                     }
                 }
             }
