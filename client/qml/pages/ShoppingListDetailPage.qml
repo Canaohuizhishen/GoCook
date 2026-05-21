@@ -48,7 +48,7 @@ Page {
                 nameMeasurer.text = items[i].unit || ""
                 maxUnit = Math.max(maxUnit, nameMeasurer.implicitWidth)
             }
-            root.maxNameWidth = maxName + 8
+            root.maxNameWidth = Math.max(maxName + 8, 130)
             root.maxReqWidth  = maxReq + 14
             root.maxInvWidth  = maxInv + 14
             root.maxBuyWidth  = maxBuy + 14
@@ -141,7 +141,7 @@ Page {
                             color: Theme.textSecondary
                             verticalAlignment: Text.AlignVCenter
                         }
-                        Text { width: maxReqWidth; height: implicitHeight
+                        Text { width: maxReqWidth; height: 32
                             text: qsTr("需购")
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
@@ -150,7 +150,7 @@ Page {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        Text { width: maxInvWidth; height: implicitHeight
+                        Text { width: maxInvWidth; height: 32
                             text: qsTr("库存")
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
@@ -159,7 +159,7 @@ Page {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        Text { width: maxBuyWidth; height: implicitHeight
+                        Text { width: maxBuyWidth; height: 32
                             text: qsTr("建议买")
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
@@ -168,7 +168,7 @@ Page {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        Text { width: maxUnitWidth; height: implicitHeight
+                        Text { width: maxUnitWidth; height: 32
                             text: qsTr("单位")
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
@@ -177,7 +177,7 @@ Page {
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
-                        Text { width: 40; height: implicitHeight
+                        Text { width: 40; height: 32
                             text: qsTr("状态")
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
@@ -206,7 +206,7 @@ Page {
                             spacing: 0
 
                             Text {
-                                width: maxNameWidth
+                                width: maxNameWidth; height: 40
                                 text: modelData.ingredientName || ""
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeBody
@@ -214,7 +214,7 @@ Page {
                                 elide: Text.ElideRight
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            Text { width: maxReqWidth; height: implicitHeight
+                            Text { width: maxReqWidth; height: 40
                                 text: modelData.requiredQuantity || 0
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeBody
@@ -222,7 +222,7 @@ Page {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            Text { width: maxInvWidth; height: implicitHeight
+                            Text { width: maxInvWidth; height: 40
                                 text: modelData.inventoryQuantity || 0
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeBody
@@ -230,7 +230,7 @@ Page {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            Text { width: maxBuyWidth; height: implicitHeight
+                            Text { width: maxBuyWidth; height: 40
                                 text: modelData.toBuyQuantity || 0
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeBody
@@ -239,7 +239,7 @@ Page {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            Text { width: maxUnitWidth; height: implicitHeight
+                            Text { width: maxUnitWidth; height: 40
                                 text: modelData.unit || ""
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeBody
@@ -247,13 +247,21 @@ Page {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            Text { width: 40; height: implicitHeight
-                                text: modelData.checked ? "✓" : "○"
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeBody
-                                color: modelData.checked ? "green" : Theme.textHint
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
+                            Item {
+                                width: 40; height: 40
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.checked ? "✓" : "○"
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSizeBody
+                                    color: modelData.checked ? "green" : Theme.textHint
+                                }
+                                MouseArea {
+                                    id: statusMouseArea
+                                    anchors.fill: parent
+                                    enabled: !shoppingListVM.isLoading
+                                    onClicked: shoppingListVM.updateShoppingListItem(root.listId, modelData.id, !modelData.checked)
+                                }
                             }
                         }
                     }

@@ -993,9 +993,33 @@ void HttpGoCookApi::deleteShoppingList(int listId,
 
 void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
                                            const gocook::models::UpdateShoppingItemRequest& request,
-                                           SuccessCallback callback) {
-    Q_UNUSED(listId); Q_UNUSED(itemId); Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+                                           SuccessCallback callback)
+{
+    QUrl url(m_baseUrl + QString("/api/inventory/shopping-lists/%1/items/%2").arg(listId).arg(itemId));
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_token.isEmpty()) {
+        req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    }
+
+    QJsonObject body;
+    body["checked"] = request.checked;
+    QByteArray payload = QJsonDocument(body).toJson();
+
+    QNetworkReply* reply = m_nam.sendCustomRequest(req, "PATCH", payload);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        reply->deleteLater();
+
+        if (statusCode == 200) {
+            callback(true, "");
+        } else {
+            QByteArray responseData = reply->readAll();
+            callback(false, QString::fromUtf8(responseData).toStdString());
+        }
+    });
 }
 
 void HttpGoCookApi::batchAddShoppingItems(int listId,

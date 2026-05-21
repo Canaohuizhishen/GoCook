@@ -18,12 +18,13 @@ public:
 
     QVariantList shoppingLists() const;
     QVariantMap currentList() const;
-    bool isLoading() const;
+    bool isLoading() const { return m_pendingRequests > 0; }
     bool creating() const;
 
     Q_INVOKABLE void loadShoppingLists();
     Q_INVOKABLE void loadShoppingListDetail(int listId);
     Q_INVOKABLE void batchAddShoppingItems(int listId, const QVariantList& items);
+    Q_INVOKABLE void updateShoppingListItem(int listId, int itemId, bool checked);
     Q_INVOKABLE void createShoppingList(const QString& name);
     Q_INVOKABLE void refresh();
 
@@ -38,11 +39,20 @@ signals:
     void shoppingListDetailReady();
     void batchAddComplete(const QString& message);
     void batchAddFailed(const QString& error);
+    void itemUpdated();
 
 private:
+    void beginLoad();
+    void endLoad();
+
     IGoCookApi *m_api;
     QVariantList m_shoppingLists;
     QVariantMap m_currentList;
-    bool m_isLoading = false;
+    int m_pendingRequests = 0;
     bool m_creating = false;
+
+    // 快速连续点击时：只记最后一次状态，避免静默丢弃或并发覆盖
+    int m_updatePendingItemId = -1;   // 等待中的 itemId（-1 = 无）
+    bool m_updatePendingChecked = false;
+    bool m_updateInFlight = false;    // 是否正在发送更新请求
 };
