@@ -10,6 +10,8 @@ Page {
     // 当前正在编辑的库存项ID
     property int currentEditItemId: -1
 
+    signal showShoppingListRequest()
+
     Component.onCompleted: {
         inventoryVM.loadInventory()
     }
@@ -25,6 +27,13 @@ Page {
             buttonText: qsTr("+ 添加食材")
             buttonType: CustomButton.ButtonType.Primary
             onClicked: addDialog.open()
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            buttonText: qsTr("购物清单 ›")
+            buttonType: CustomButton.ButtonType.Secondary
+            onClicked: showShoppingListRequest()
         }
 
         Text {

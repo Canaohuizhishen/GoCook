@@ -153,6 +153,9 @@ ApplicationWindow {
             onShowSearchRequest: () => {
                 stackView.push(searchPage)
             }
+            onShowShoppingListRequest: () => {
+                stackView.push(shoppingListPage)
+            }
         }
     }
 
@@ -176,6 +179,15 @@ ApplicationWindow {
             property var _stackView: stackView
             onRecipeClicked: (recipeId) => {
                 stackView.push(recipeDetailPage, {recipeId: recipeId})
+            }
+        }
+    }
+
+    Component {
+        id: shoppingListPage
+        ShoppingListPage {
+            onGoBack: {
+                stackView.pop()
             }
         }
     }
