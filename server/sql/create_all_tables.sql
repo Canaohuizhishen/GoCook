@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS meal_plans             CASCADE;
 DROP TABLE IF EXISTS shopping_list_items    CASCADE;
 DROP TABLE IF EXISTS shopping_lists         CASCADE;
 DROP TABLE IF EXISTS inventory              CASCADE;
+DROP TABLE IF EXISTS password_reset_tokens   CASCADE;
 DROP TABLE IF EXISTS health_profiles        CASCADE;
 DROP TABLE IF EXISTS user_preferences       CASCADE;
 DROP TABLE IF EXISTS recipes                CASCADE;
@@ -195,7 +196,18 @@ CREATE TABLE IF NOT EXISTS admin_logs (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 15. 用户行为日志表
+-- 15. 密码重置令牌表
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT UNIQUE NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens (token);
+
+-- 16. 用户行为日志表
 CREATE TABLE IF NOT EXISTS activity_logs (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE SET NULL,

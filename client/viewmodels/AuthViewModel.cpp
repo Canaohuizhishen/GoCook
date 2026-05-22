@@ -80,11 +80,16 @@ void AuthViewModel::checkAutoLogin()
         QString token = user["token"].toString();
         m_api->setAuthToken(token.toStdString());
         m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
-            Q_UNUSED(profile)
             if (!self) return;
             if (success) {
                 QVariantMap u = self->m_db->getUser();
                 self->setLoggedIn(true, u["id"].toInt(), u["username"].toString());
+                // 填充个人资料字段（头像 URL 等），否则重启后 ProfilePage 显示空白
+                self->m_profileDisplayName = QString::fromStdString(profile.display_name);
+                self->m_profileEmail = QString::fromStdString(profile.email);
+                self->m_profilePhone = QString::fromStdString(profile.phone);
+                self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
+                emit self->profileChanged();
             } else {
                 self->m_db->clearUser();
                 self->m_api->setAuthToken("");
@@ -179,9 +184,8 @@ void AuthViewModel::uploadAvatar(const QString &filePath) {
         self->m_profileAvatarUrl = QString::fromStdString(resp.avatar_url);
         emit self->profileChanged();
         emit self->avatarUploaded(QString::fromStdString(resp.avatar_url));
-        // 注意：不在这里调用 loadProfile()，否则异步的 getCurrentUser
-        // 可能在 DB 更新完全传播前返回，用旧数据覆盖刚设置的 avatar_url。
-        // 用户返回 ProfilePage 时 onVisibleChanged 会自动触发 loadProfile。
+        // 上传已在服务端同步 commit，这里调用 loadProfile 确保客户端与 DB 一致
+        self->loadProfile();
     });
 }
 
@@ -341,6 +345,50 @@ void AuthViewModel::loadHealthProfile() {
         }
         emit self->healthProfileLoaded(height, weight, conditions, avoidances);
     });
+}
+
+// ==================== 密码重置 ====================
+
+void AuthViewModel::forgotPassword(const QString &username, const QString &email) {
+    if (username.trimmed().isEmpty()) {
+        emit forgotPasswordFailed(QStringLiteral("请输入用户名"));
+        return;
+    }
+    if (email.trimmed().isEmpty()) {
+        emit forgotPasswordFailed(QStringLiteral("请输入邮箱地址"));
+        return;
+    }
+    m_api->forgotPassword(username.toStdString(), email.toStdString(),
+        [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
+            if (!self) return;
+            if (success) {
+                emit self->forgotPasswordSent();
+            } else {
+                emit self->forgotPasswordFailed(
+                    QString::fromStdString(error.empty() ? "请求失败" : error));
+            }
+        });
+}
+
+void AuthViewModel::resetPassword(const QString &token, const QString &newPassword) {
+    if (token.trimmed().isEmpty()) {
+        emit passwordResetFailed(QStringLiteral("重置令牌无效"));
+        return;
+    }
+    if (newPassword.size() < 6) {
+        emit passwordResetFailed(QStringLiteral("密码不能少于6个字符"));
+        return;
+    }
+    m_api->resetPassword(token.toStdString(), newPassword.toStdString(),
+        [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
+            if (!self) return;
+            if (success) {
+                emit self->passwordResetSuccess();
+            } else {
+                emit self->passwordResetFailed(
+                    QString::fromStdString(error.empty() ? "重置失败" : error));
+            }
+        });
 }
 
 QString AuthViewModel::apiBaseUrl() const {

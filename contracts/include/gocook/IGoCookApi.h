@@ -192,7 +192,8 @@ public:
      * @param email 注册邮箱
      * @param callback 回调 (success, error)，无论成功与否统一返回成功信息（防枚举）
      */
-    virtual void forgotPassword(const std::string& email,
+    virtual void forgotPassword(const std::string& username,
+                                const std::string& email,
                                 SuccessCallback callback) = 0;
 
     /**

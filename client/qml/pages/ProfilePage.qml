@@ -23,6 +23,12 @@ Page {
             notifyVM.loadNotifications(1, 20)
         }
     }
+    // StackView 中从子页面返回时 onVisibleChanged 未必触发，
+    // 用 onActivated 保证每次回到本页都刷新
+    StackView.onActivated: {
+        authViewModel.loadProfile()
+        notifyVM.loadNotifications(1, 20)
+    }
 
     // 居中容器，限制最大宽度，防止按钮随窗口放大
     Item {

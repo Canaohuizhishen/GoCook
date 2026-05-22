@@ -87,7 +87,8 @@ public:
                       SuccessCallback callback) override;
     void login(const gocook::models::LoginRequest& request,
                LoginCallback callback) override;
-    void forgotPassword(const std::string& email,
+    void forgotPassword(const std::string& username,
+                        const std::string& email,
                         SuccessCallback callback) override;
     void resetPassword(const std::string& token,
                        const std::string& newPassword,
