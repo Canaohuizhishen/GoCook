@@ -10,11 +10,18 @@ Page {
     signal showSubmitRequest()
     signal showProfileEditRequest()
     signal showAccountSecurityRequest()
+    signal showNotificationRequest()
 
-    // 页面创建时和每次可见时都加载最新用户资料
-    Component.onCompleted: authViewModel.loadProfile()
+    // 页面创建时和每次可见时都加载最新用户资料 + 通知未读数
+    Component.onCompleted: {
+        authViewModel.loadProfile()
+        notifyVM.loadNotifications(1, 20)
+    }
     onVisibleChanged: {
-        if (visible) authViewModel.loadProfile()
+        if (visible) {
+            authViewModel.loadProfile()
+            notifyVM.loadNotifications(1, 20)
+        }
     }
 
     // 居中容器，限制最大宽度，防止按钮随窗口放大
@@ -183,6 +190,48 @@ Page {
             onClicked: authViewModel.logout()
         }
     }
-}
 
+    // ========== 消息通知图标（右上角） ==========
+    Item {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: -Theme.spacingSmall
+        anchors.rightMargin: -Theme.spacingSmall
+        width: 44; height: 44
+        visible: authViewModel.loggedIn
+
+        Button {
+            anchors.fill: parent
+            flat: true
+            contentItem: Text {
+                text: "\uD83D\uDCE2"
+                font.pointSize: 22
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            onClicked: showNotificationRequest()
+        }
+
+        // 未读红点
+        Rectangle {
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 2
+            anchors.rightMargin: 0
+            width: 12; height: 12
+            radius: 6
+            color: "#E74C3C"
+            visible: notifyVM.unreadCount > 0
+
+            Text {
+                anchors.centerIn: parent
+                text: notifyVM.unreadCount > 99 ? "99+" : notifyVM.unreadCount.toString()
+                color: "white"
+                font.pointSize: 8
+                font.weight: Font.Bold
+                visible: notifyVM.unreadCount > 0
+            }
+        }
+    }
+}
 }

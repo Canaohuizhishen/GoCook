@@ -805,6 +805,12 @@ public:
                                  const std::string& action,
                                  PagedActivityLogsCallback callback) = 0;
 
+    // ---------- 测试辅助（调试用） ----------
+    /**
+     * @brief 重置测试用户的通知数据（仅开发环境可用）
+     */
+    virtual void resetTestNotifications(SuccessCallback callback) = 0;
+
     // ---------- 令牌管理 ----------
     /**
      * @brief 设置认证令牌（由 AuthManager 调用）

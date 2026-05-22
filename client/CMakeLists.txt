@@ -40,6 +40,7 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/RecipeViewModel.cpp viewmodels/RecipeViewModel.h
     SOURCES viewmodels/AuthViewModel.cpp viewmodels/AuthViewModel.h
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
+    SOURCES viewmodels/NotificationViewModel.cpp viewmodels/NotificationViewModel.h
     SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
@@ -49,6 +50,8 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/ProfileEditPage.qml
     QML_FILES qml/pages/ChangePasswordPage.qml
     QML_FILES qml/pages/AccountSecurityPage.qml
+    QML_FILES qml/pages/NotificationPage.qml
+    QML_FILES qml/pages/NotificationDetailPage.qml
 )
 
 # 增加头文件查找路径

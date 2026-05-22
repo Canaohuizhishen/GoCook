@@ -333,15 +333,23 @@ void UserServiceImpl::batchDeleteFavorites(int userId, const BatchDeleteFavorite
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     userRepo_->batchDeleteFavorites(userId, req);
 }
-PagedNotifications UserServiceImpl::getNotifications(int, int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+PagedNotifications UserServiceImpl::getNotifications(int userId, int page, int size, const std::string& type) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    return userRepo_->getNotifications(userId, page, size, type);
 }
-void UserServiceImpl::markNotificationRead(int, int) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::markNotificationRead(int userId, int notificationId) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->markNotificationRead(userId, notificationId);
 }
-void UserServiceImpl::markAllNotificationsRead(int) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::markAllNotificationsRead(int userId) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->markAllNotificationsRead(userId);
 }
-void UserServiceImpl::deleteNotification(int, int) {
-    throw ServiceException("Not implemented", 501);
+void UserServiceImpl::deleteNotification(int userId, int notificationId) {
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->deleteNotification(userId, notificationId);
 }

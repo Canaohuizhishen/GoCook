@@ -609,9 +609,9 @@ void PgUserRepository::deleteFavoriteGroup(int userId, int groupId) {
     try {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
-        // Move favorites to default group (set group_id to NULL)
+        // Delete all favorites in the group (not move to default)
         txn.exec_params(
-            "UPDATE favorites SET group_id = NULL WHERE group_id = $1 AND user_id = $2",
+            "DELETE FROM favorites WHERE group_id = $1 AND user_id = $2",
             groupId, userId
         );
         // Delete the group
@@ -686,18 +686,121 @@ void PgUserRepository::batchDeleteFavorites(int userId, const BatchDeleteFavorit
     }
 }
 
-PagedNotifications PgUserRepository::getNotifications(int, int, int, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+PagedNotifications PgUserRepository::getNotifications(int userId, int page, int size, const std::string& type) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        bool filterByType = !type.empty();
+        int offset = (page - 1) * size;
+
+        std::string countSql = "SELECT COUNT(*) FROM notifications WHERE user_id = $1";
+        std::string dataSql =
+            "SELECT id, title, content, type, sub_type, is_read, "
+            "related_id, trigger_user_name, created_at::text "
+            "FROM notifications WHERE user_id = $1";
+
+        if (filterByType) {
+            countSql += " AND type = $2";
+            dataSql += " AND type = $2";
+        }
+        dataSql += " ORDER BY created_at DESC LIMIT $"
+                + pqxx::to_string(filterByType ? 3 : 2)
+                + " OFFSET $"
+                + pqxx::to_string(filterByType ? 4 : 3);
+
+        PagedNotifications result;
+        pqxx::result countR;
+        pqxx::result dataR;
+
+        if (filterByType) {
+            countR = txn.exec_params(countSql, userId, type);
+            dataR = txn.exec_params(dataSql, userId, type, size, offset);
+        } else {
+            countR = txn.exec_params(countSql, userId);
+            dataR = txn.exec_params(dataSql, userId, size, offset);
+        }
+
+        result.pagination.total = countR[0][0].as<int>();
+        result.pagination.page = page;
+        result.pagination.size = size;
+        result.pagination.total_pages = (result.pagination.total + size - 1) / size;
+
+        for (const auto& row : dataR) {
+            NotificationItem item;
+            item.id = row["id"].as<int>();
+            item.title = row["title"].as<std::string>();
+            item.content = row["content"].as<std::string>();
+            item.type = row["type"].as<std::string>();
+            if (!row["sub_type"].is_null())
+                item.sub_type = row["sub_type"].as<std::string>();
+            item.is_read = row["is_read"].as<bool>();
+            if (!row["related_id"].is_null())
+                item.related_id = row["related_id"].as<int>();
+            if (!row["trigger_user_name"].is_null())
+                item.trigger_user_name = row["trigger_user_name"].as<std::string>();
+            item.created_at = row["created_at"].as<std::string>();
+            result.data.push_back(item);
+        }
+
+        txn.commit();
+        return result;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in getNotifications: %s", e.what());
+        throw ServiceException("获取通知列表失败");
+    }
 }
 
-void PgUserRepository::markNotificationRead(int, int) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::markNotificationRead(int userId, int notificationId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        auto r = txn.exec_params(
+            "UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2",
+            notificationId, userId);
+        if (r.affected_rows() == 0) {
+            txn.commit();
+            throw ServiceException("通知不存在", 404);
+        }
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in markNotificationRead: %s", e.what());
+        throw ServiceException("标记已读失败");
+    }
 }
 
-void PgUserRepository::markAllNotificationsRead(int) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::markAllNotificationsRead(int userId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        txn.exec_params(
+            "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
+            userId);
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in markAllNotificationsRead: %s", e.what());
+        throw ServiceException("全部标记已读失败");
+    }
 }
 
-void PgUserRepository::deleteNotification(int, int) {
-    throw ServiceException("Not implemented", 501);
+void PgUserRepository::deleteNotification(int userId, int notificationId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        auto r = txn.exec_params(
+            "DELETE FROM notifications WHERE id = $1 AND user_id = $2",
+            notificationId, userId);
+        if (r.affected_rows() == 0) {
+            txn.commit();
+            throw ServiceException("通知不存在", 404);
+        }
+        txn.commit();
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in deleteNotification: %s", e.what());
+        throw ServiceException("删除通知失败");
+    }
 }
