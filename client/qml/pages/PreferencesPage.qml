@@ -95,11 +95,14 @@ Page {
         anchors.topMargin: 48
 
         ScrollView {
-            anchors.fill: parent; clip: true; contentWidth: availableWidth
-            Column {
+            anchors.fill: parent
+            clip: true; contentWidth: availableWidth
+            ColumnLayout {
                 id: outerColumn
-                width: Math.min(parent.width - Theme.spacingLarge * 2, 400)
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.spacingMedium
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.spacingMedium
                 anchors.top: parent.top; anchors.topMargin: Theme.spacingMedium
                 spacing: Theme.spacingLarge
 
@@ -107,13 +110,13 @@ Page {
                 // 浏览模式 — 显示三个分类（有标签显示标签，无标签显示"未设置"）
                 // ====================================================
                 ColumnLayout {
-                    width: parent.width
+                    Layout.fillWidth: true
                     spacing: Theme.spacingLarge
                     visible: !showEdit
 
                     // ---------- 偏好口味/菜系 ----------
                     ColumnLayout {
-                        width: parent.width
+                        Layout.fillWidth: true
                         spacing: Theme.spacingSmall
 
                         RowLayout {
@@ -136,8 +139,8 @@ Page {
                         }
 
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: parent.width
                             visible: prefLikes.length > 0
 
                             Repeater {
@@ -174,7 +177,7 @@ Page {
 
                     // ---------- 饮食禁忌 ----------
                     ColumnLayout {
-                        width: parent.width
+                        Layout.fillWidth: true
                         spacing: Theme.spacingSmall
 
                         RowLayout {
@@ -197,8 +200,8 @@ Page {
                         }
 
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: parent.width
                             visible: prefDislikes.length > 0
 
                             Repeater {
@@ -235,7 +238,7 @@ Page {
 
                     // ---------- 健康目标 ----------
                     ColumnLayout {
-                        width: parent.width
+                        Layout.fillWidth: true
                         spacing: Theme.spacingSmall
 
                         RowLayout {
@@ -287,49 +290,22 @@ Page {
 
                     // ---------- 分隔线 ----------
                     Rectangle {
-                        width: parent.width
+                        Layout.fillWidth: true
                         height: 1
                         color: Theme.dividerColor
                     }
 
-                    // ---------- 更改按钮 ----------
-                    Button {
-                        width: parent.width; height: 50
-                        text: qsTr("更改饮食偏好")
-                        background: Rectangle {
-                            radius: Theme.radiusMedium
-                            color: Theme.primaryColor
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody
-                            font.weight: Theme.fontWeightMedium
-                            color: Theme.textOnPrimary
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                        onClicked: {
-                            showEdit = true
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("更改饮食偏好")
+                        buttonType: CustomButton.ButtonType.Primary
+                        onClicked: showEdit = true
                     }
 
-                    // ---------- 返回按钮 ----------
-                    Button {
-                        width: parent.width; height: 50
-                        text: qsTr("返回")
-                        background: Rectangle {
-                            radius: Theme.radiusMedium; color: "transparent"
-                            border.color: Theme.primaryColor; border.width: 1
-                        }
-                        contentItem: Text {
-                            text: parent.text
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody
-                            color: Theme.primaryColor
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("返回")
+                        buttonType: CustomButton.ButtonType.Secondary
                         onClicked: preferencesPage.goBack()
                     }
 
@@ -339,14 +315,14 @@ Page {
                 // ====================================================
                 // 编辑模式 — 可选标签
                 // ====================================================
-                Column {
-                    width: parent.width
+                ColumnLayout {
+                    Layout.fillWidth: true
                     spacing: Theme.spacingLarge
                     visible: showEdit
 
                     // ---------- 说明文字 ----------
                     Text {
-                        width: parent.width
+                        Layout.fillWidth: true
                         text: qsTr("设置您的口味偏好、饮食禁忌和健康目标，我们将据此为您推荐更合适的菜谱。")
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSizeCaption
@@ -354,21 +330,22 @@ Page {
                         wrapMode: Text.WordWrap
                     }
 
-                    Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
 
                     // ---------- 偏好口味/菜系（点击多选） ----------
-                    Column {
-                        width: parent.width
+                    ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: Theme.spacingXSmall
 
                         Text {
+                            Layout.fillWidth: true
                             text: qsTr("偏好口味/菜系（点击选择，可多选）")
                             font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint
                         }
 
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: outerColumn.width
 
                             Repeater {
                                 model: likeOptions
@@ -412,18 +389,19 @@ Page {
                     }
 
                     // ---------- 饮食禁忌（点击多选） ----------
-                    Column {
-                        width: parent.width
+                    ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: Theme.spacingXSmall
 
                         Text {
+                            Layout.fillWidth: true
                             text: qsTr("饮食禁忌（点击选择，可多选）")
                             font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint
                         }
 
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: outerColumn.width
 
                             Repeater {
                                 model: dislikeOptions
@@ -467,18 +445,19 @@ Page {
                     }
 
                     // ---------- 健康目标（单选） ----------
-                    Column {
-                        width: parent.width
+                    ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: Theme.spacingXSmall
 
                         Text {
+                            Layout.fillWidth: true
                             text: qsTr("健康目标")
                             font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint
                         }
 
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: outerColumn.width
 
                             Repeater {
                                 model: healthGoalOptions
@@ -517,46 +496,30 @@ Page {
                         }
                     }
 
-                    Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
 
                     // ========== 状态提示 ==========
                     Text {
-                        id: statusText; width: parent.width; height: 20
+                        id: statusText; Layout.fillWidth: true; height: 20
                         font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                         color: Theme.accentColor; horizontalAlignment: Text.AlignHCenter
                         visible: text.length > 0
                     }
 
-                    // ========== 保存按钮 ==========
-                    Button {
-                        id: saveBtn; width: parent.width; height: 50
-                        text: qsTr("保存偏好设置")
-                        background: Rectangle { radius: Theme.radiusMedium; color: Theme.primaryColor }
-                        contentItem: Text {
-                            text: saveBtn.text; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
-                            color: Theme.textOnPrimary; horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("保存偏好设置")
+                        buttonType: CustomButton.ButtonType.Primary
                         onClicked: {
                             statusText.text = qsTr("正在保存...")
                             authViewModel.savePreferences(prefLikes, prefDislikes, prefHealthGoal)
                         }
                     }
 
-                    // ========== 取消按钮 ==========
-                    Button {
-                        id: cancelBtn; width: parent.width; height: 50
-                        text: qsTr("取消")
-                        background: Rectangle {
-                            radius: Theme.radiusMedium; color: "transparent"
-                            border.color: Theme.primaryColor; border.width: 1
-                        }
-                        contentItem: Text {
-                            text: cancelBtn.text; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.primaryColor
-                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("取消")
+                        buttonType: CustomButton.ButtonType.Secondary
                         onClicked: {
                             showEdit = false
                             statusText.text = ""

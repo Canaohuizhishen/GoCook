@@ -8,8 +8,6 @@ Page {
     id: notificationPage
     title: qsTr("消息通知")
 
-    background: Rectangle { color: Theme.backgroundColor }
-
     signal showDetailRequest(var data)
 
     // F5 重置测试通知（开发用）
@@ -55,12 +53,23 @@ Page {
             anchors.verticalCenter: parent.verticalCenter
             width: 40; height: 40
             flat: true
-            contentItem: Text {
-                text: "\u2190"
-                font.pointSize: 22
-                color: Theme.primaryColor
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+            contentItem: Canvas {
+                width: 22
+                height: 22
+                property color arrowColor: Theme.textPrimary
+                onArrowColorChanged: requestPaint()
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.strokeStyle = arrowColor
+                    ctx.lineWidth = 2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(14, 5)
+                    ctx.lineTo(6, 11)
+                    ctx.lineTo(14, 17)
+                    ctx.stroke()
+                }
             }
             onClicked: {
                 if (_stackView) _stackView.pop()
@@ -152,7 +161,7 @@ Page {
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
-                                radius: Theme.radiusSmall
+                                radius: 6
                                 color: notifyVM.currentType === "" ? Theme.primaryColor : Theme.searchBarBackground
                             }
                             contentItem: Text {
@@ -174,7 +183,7 @@ Page {
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
-                                radius: Theme.radiusSmall
+                                radius: 6
                                 color: notifyVM.currentType === "system" ? Theme.primaryColor : Theme.searchBarBackground
                             }
                             contentItem: Text {
@@ -196,7 +205,7 @@ Page {
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
-                                radius: Theme.radiusSmall
+                                radius: 6
                                 color: notifyVM.currentType === "review" ? Theme.primaryColor : Theme.searchBarBackground
                             }
                             contentItem: Text {
@@ -218,7 +227,7 @@ Page {
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
-                                radius: Theme.radiusSmall
+                                radius: 6
                                 color: notifyVM.currentType === "interaction" ? Theme.primaryColor : Theme.searchBarBackground
                             }
                             contentItem: Text {
@@ -269,7 +278,7 @@ Page {
                     id: notificationListView
                     anchors.fill: parent
                     anchors.margins: Theme.spacingSmall
-                    spacing: 1
+                    spacing: Theme.spacingSmall
                     clip: true
                     visible: notifyVM.notifications.length > 0
 
@@ -278,9 +287,8 @@ Page {
                     delegate: Item {
                         id: delegateRoot
                         width: notificationListView.width
-                        height: 80
+                        height: 100
 
-                        // 滑动偏移量（负值=向左滑出，仅用于删除）
                         property real swipeOffset: 0
                         property bool deleting: false
 
@@ -301,8 +309,7 @@ Page {
                             }
                         }
 
-                        // ========== 两层结构：内容卡片左移 + 红色删除区固定右侧 ==========
-                        // 红色删除区（固定在右侧，始终在 delegateRoot 范围内）
+                        // 红色删除区
                         Rectangle {
                             anchors.right: parent.right
                             anchors.top: parent.top
@@ -321,26 +328,31 @@ Page {
                             }
                         }
 
-                        // 内容卡片（全宽，通过 x 左移露出红色删除区）
+                        // 内容卡片
                         Rectangle {
                             id: contentCard
                             x: delegateRoot.swipeOffset
                             width: parent.width
                             height: parent.height
-                            radius: Theme.radiusMedium
+                            radius: Theme.radiusLarge
                             color: modelData.is_read ? Theme.cardBackground : Qt.rgba(0.42, 0.53, 0.85, 0.06)
                             clip: true
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: Theme.spacingMedium
-                                spacing: Theme.spacingMedium
+                            Item {
+                                id: cardBody
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    top: parent.top
+                                    margins: Theme.spacingMedium
+                                }
+                                height: Math.max(iconRect.height, textBody.height)
 
                                 // 类型图标
                                 Rectangle {
-                                    Layout.preferredWidth: 36
-                                    Layout.preferredHeight: 36
-                                    Layout.alignment: Qt.AlignTop
+                                    id: iconRect
+                                    anchors { left: parent.left; top: parent.top }
+                                    width: 36; height: 36
                                     radius: 18
                                     color: {
                                         if (modelData.type === "system") return Theme.primaryColor
@@ -361,24 +373,30 @@ Page {
                                     }
                                 }
 
-                                // 文字内容
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Layout.alignment: Qt.AlignTop
+                                // 文字内容（Column 自适应高度）
+                                Column {
+                                    id: textBody
+                                    anchors {
+                                        left: iconRect.right
+                                        leftMargin: Theme.spacingMedium
+                                        right: parent.right
+                                        top: parent.top
+                                    }
                                     spacing: 4
 
-                                    RowLayout {
-                                        Layout.fillWidth: true
+                                    // 标题行
+                                    Row {
+                                        width: textBody.width
                                         spacing: Theme.spacingXSmall
 
                                         Text {
                                             text: modelData.title || ""
+                                            width: parent.width - (modelData.is_read ? 0 : 16)
                                             font.family: Theme.fontFamily
                                             font.pointSize: Theme.fontSizeBody
                                             font.weight: modelData.is_read ? Font.Normal : Font.Bold
                                             color: Theme.textPrimary
                                             elide: Text.ElideRight
-                                            Layout.fillWidth: true
                                         }
 
                                         Rectangle {
@@ -386,29 +404,31 @@ Page {
                                             radius: 4
                                             color: Theme.primaryColor
                                             visible: !modelData.is_read
-                                            Layout.alignment: Qt.AlignTop
-                                            Layout.topMargin: 4
+                                            anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
 
+                                    // 内容摘要
                                     Text {
                                         text: modelData.content || ""
+                                        width: textBody.width
                                         font.family: Theme.fontFamily
                                         font.pointSize: Theme.fontSizeCaption
                                         color: Theme.textSecondary
-                                        elide: Text.ElideRight
-                                        maximumLineCount: 2
                                         wrapMode: Text.WordWrap
-                                        Layout.fillWidth: true
+                                        elide: Text.ElideRight
+                                        maximumLineCount: 1
                                     }
 
+                                    // 时间
                                     Text {
                                         text: {
-                                            var date = modelData.createdAt || ""
-                                            if (date.length > 10)
-                                                return date.substring(0, 10) + " " + date.substring(11, 19)
-                                            return date
+                                            var d = modelData.createdAt || ""
+                                            if (d.length >= 16)
+                                                return d.substring(0, 10) + " " + d.substring(11, 16)
+                                            return d.substring(0, 10)
                                         }
+                                        width: textBody.width
                                         font.family: Theme.fontFamily
                                         font.pointSize: Theme.fontSizeSmall
                                         color: Theme.textHint
@@ -416,7 +436,7 @@ Page {
                                 }
                             }
 
-                            // ========== 手势处理 ==========
+                            // 手势处理
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -456,7 +476,7 @@ Page {
                                 }
                             }
 
-                            // 分隔线（在内容卡片底部）
+                            // 底部分隔线
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width
@@ -476,6 +496,7 @@ Page {
                 // ========== 空状态 ==========
                 Column {
                     anchors.centerIn: parent
+                    width: Math.min(320, parent.width * 0.85)
                     spacing: Theme.spacingMedium
                     visible: notifyVM.notifications.length === 0 && !notifyVM.isLoading
 
@@ -498,7 +519,7 @@ Page {
                         opacity: 0.6
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        width: parent.width * 0.8
+                        width: parent.width/1.5
                     }
                 }
             }

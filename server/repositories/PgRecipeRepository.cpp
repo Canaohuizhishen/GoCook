@@ -137,8 +137,8 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
             recipe.id = row["id"].as<int>();
             recipe.name = row["name"].c_str();
             recipe.description = row["description"].c_str();
-            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>();
-            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>();
+            recipe.prep_time_minutes = row["prep_time_minutes"].as<int>(0);
+            recipe.cook_time_minutes = row["cook_time_minutes"].as<int>(0);
             if (!row["image_url"].is_null())
                 recipe.image_url = row["image_url"].c_str();
 

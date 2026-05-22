@@ -8,8 +8,7 @@ Page {
     title: qsTr("个人中心")
 
     signal showSubmitRequest()
-    signal showProfileEditRequest()
-    signal showAccountSecurityRequest()
+    signal showSettingsRequest()
     signal showNotificationRequest()
 
     // 页面创建时和每次可见时都加载最新用户资料 + 通知未读数
@@ -30,16 +29,13 @@ Page {
         notifyVM.loadNotifications(1, 20)
     }
 
-    // 居中容器，限制最大宽度，防止按钮随窗口放大
+    // ========== 居中容器（全宽自适应） ==========
     Item {
         anchors.fill: parent
         anchors.margins: Theme.spacingLarge
 
         ColumnLayout {
-            width: Math.min(parent.width, 400)
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            anchors.fill: parent
             spacing: Theme.spacingMedium
 
         ColumnLayout {
@@ -98,18 +94,10 @@ Page {
 
         CustomButton {
             Layout.fillWidth: true
-            buttonText: qsTr("编辑个人资料")
+            buttonText: qsTr("设置")
             buttonType: CustomButton.ButtonType.Secondary
             visible: authViewModel.loggedIn
-            onClicked: showProfileEditRequest()
-        }
-
-        CustomButton {
-            Layout.fillWidth: true
-            buttonText: qsTr("账号与安全")
-            buttonType: CustomButton.ButtonType.Secondary
-            visible: authViewModel.loggedIn
-            onClicked: showAccountSecurityRequest()
+            onClicked: showSettingsRequest()
         }
 
         CustomButton {
@@ -121,65 +109,6 @@ Page {
         }
 
         Item { Layout.fillHeight: true }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacingXSmall
-            visible: authViewModel.loggedIn
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 1
-                color: Theme.dividerColor
-            }
-
-            Text {
-                text: qsTr("主题模式")
-                font { family: Theme.fontFamily; pointSize: Theme.fontSizeBody; weight: Theme.fontWeightBold }
-                color: Theme.textPrimary
-                Layout.topMargin: Theme.spacingSmall
-            }
-
-            RadioButton {
-                text: qsTr("跟随系统")
-                checked: Theme.themeMode === Theme.themeModeSystem
-                onClicked: Theme.themeMode = Theme.themeModeSystem
-                Layout.fillWidth: true
-                contentItem: Text {
-                    text: parent.text
-                    font: parent.font
-                    color: Theme.textPrimary
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: parent.indicator.width + parent.spacing
-                }
-            }
-            RadioButton {
-                text: qsTr("浅色")
-                checked: Theme.themeMode === Theme.themeModeLight
-                onClicked: Theme.themeMode = Theme.themeModeLight
-                Layout.fillWidth: true
-                contentItem: Text {
-                    text: parent.text
-                    font: parent.font
-                    color: Theme.textPrimary
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: parent.indicator.width + parent.spacing
-                }
-            }
-            RadioButton {
-                text: qsTr("深色")
-                checked: Theme.themeMode === Theme.themeModeDark
-                onClicked: Theme.themeMode = Theme.themeModeDark
-                Layout.fillWidth: true
-                contentItem: Text {
-                    text: parent.text
-                    font: parent.font
-                    color: Theme.textPrimary
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: parent.indicator.width + parent.spacing
-                }
-            }
-        }
 
         CustomButton {
             Layout.fillWidth: true
@@ -203,11 +132,32 @@ Page {
         Button {
             anchors.fill: parent
             flat: true
-            contentItem: Text {
-                text: "\uD83D\uDCE2"
-                font.pointSize: 22
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+            contentItem: Canvas {
+                width: 24
+                height: 24
+                property color iconColor: Theme.textPrimary
+                onIconColorChanged: requestPaint()
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.strokeStyle = iconColor
+                    ctx.lineWidth = 2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(7, 8)
+                    ctx.arc(12, 8, 5, Math.PI, 0, false)
+                    ctx.lineTo(17, 14)
+                    ctx.lineTo(19, 17)
+                    ctx.lineTo(5, 17)
+                    ctx.lineTo(7, 14)
+                    ctx.closePath()
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.moveTo(12, 17)
+                    ctx.lineTo(12, 19)
+                    ctx.arc(12, 20, 1.5, Math.PI, 0, false)
+                    ctx.stroke()
+                }
             }
             onClicked: showNotificationRequest()
         }

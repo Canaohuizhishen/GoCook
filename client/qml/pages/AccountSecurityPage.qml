@@ -70,24 +70,10 @@ Page {
         Item { Layout.fillHeight: true }
 
         // ========== 返回按钮 ==========
-        Button {
+        CustomButton {
             Layout.fillWidth: true
-            Layout.preferredHeight: 50
-            text: qsTr("返回")
-            background: Rectangle {
-                radius: Theme.radiusMedium
-                color: "transparent"
-                border.color: Theme.primaryColor
-                border.width: 1
-            }
-            contentItem: Text {
-                text: parent.text
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeBody
-                color: Theme.primaryColor
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
-            }
+            buttonText: qsTr("返回")
+            buttonType: CustomButton.ButtonType.Secondary
             onClicked: accountSecurityPage.goBack()
         }
     }
@@ -151,45 +137,20 @@ Page {
                 Layout.fillWidth: true
                 spacing: Theme.spacingMedium
 
-                Button {
+                CustomButton {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    text: qsTr("取消")
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: "transparent"
-                        border.color: Theme.dividerColor
-                        border.width: 1
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        font.family: Theme.fontFamily
-                        color: Theme.textPrimary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    buttonText: qsTr("取消")
+                    buttonType: CustomButton.ButtonType.Secondary
                     onClicked: {
                         deleteAccountDialog.close()
                         deleteStatusText.text = ""
                     }
                 }
 
-                Button {
+                CustomButton {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 48
-                    text: qsTr("确认注销")
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: "#e74c3c"
-                    }
-                    contentItem: Text {
-                        text: parent.text
-                        font.family: Theme.fontFamily
-                        font.weight: Theme.fontWeightMedium
-                        color: "white"
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    buttonText: qsTr("确认注销")
+                    buttonType: CustomButton.ButtonType.Destructive
                     onClicked: {
                         deleteStatusText.text = qsTr("正在注销...")
                         authViewModel.deleteAccount()

@@ -52,6 +52,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/AccountSecurityPage.qml
     QML_FILES qml/pages/NotificationPage.qml
     QML_FILES qml/pages/NotificationDetailPage.qml
+    QML_FILES qml/pages/SettingsPage.qml
 )
 
 # 增加头文件查找路径

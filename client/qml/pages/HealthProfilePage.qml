@@ -60,6 +60,7 @@ Page {
             contentItem: Canvas {
                 width: 24; height: 24
                 property color arrowColor: Theme.textPrimary
+                onArrowColorChanged: requestPaint()
                 onPaint: {
                     var ctx = getContext("2d")
                     ctx.strokeStyle = arrowColor
@@ -83,25 +84,28 @@ Page {
         anchors.topMargin: 48
 
         ScrollView {
-            anchors.fill: parent; clip: true; contentWidth: availableWidth
-            Column {
+            anchors.fill: parent
+            clip: true; contentWidth: availableWidth
+            ColumnLayout {
                 id: outerColumn
-                width: Math.min(parent.width - Theme.spacingLarge * 2, 400)
-                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Theme.spacingMedium
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.spacingMedium
                 anchors.top: parent.top; anchors.topMargin: Theme.spacingMedium
                 spacing: Theme.spacingLarge
 
                 // ====================================================
                 // 浏览模式 — 显示已保存的指标
                 // ====================================================
-                Column {
-                    width: parent.width
+                ColumnLayout {
+                    Layout.fillWidth: true
                     spacing: Theme.spacingLarge
                     visible: !showEdit
 
                     // ---------- 说明 ----------
                     Text {
-                        width: parent.width
+                        Layout.fillWidth: true
                         text: hasData ? qsTr("您的健康指标如下") : qsTr("暂未设置健康指标")
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSizeCaption
@@ -110,7 +114,7 @@ Page {
 
                     // ---------- 身体指标卡片 ----------
                     Rectangle {
-                        width: parent.width
+                        Layout.fillWidth: true
                         radius: Theme.radiusMedium
                         color: Theme.cardBackground
                         border.color: Theme.dividerColor
@@ -198,8 +202,8 @@ Page {
                     }
 
                     // ---------- 健康问题 ----------
-                    Column {
-                        width: parent.width
+                    ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: Theme.spacingSmall
                         visible: hasData
 
@@ -223,8 +227,8 @@ Page {
                         }
 
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: parent.width
                             visible: selectedConditions.length > 0
                             Repeater {
                                 model: selectedConditions
@@ -257,17 +261,16 @@ Page {
                     }
 
                     // ---------- 忌口建议 ----------
-                    Column {
-                        width: parent.width
+                    ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: Theme.spacingSmall
                         visible: avoidances.length > 0
 
-                        Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
 
                         RowLayout {
                             spacing: Theme.spacingXSmall
                             Layout.fillWidth: true
-                            width: parent.width
                             Rectangle {
                                 width: 4; height: 16; radius: 2
                                 color: colorCondition
@@ -281,26 +284,35 @@ Page {
                             }
                         }
 
-                        Repeater {
-                            model: avoidances
-                            Rectangle {
-                                width: parent.width; radius: Theme.radiusSmall
-                                color: Theme.cardBackground; border.color: Theme.dividerColor; border.width: 1
-                                height: childrenRect.height + Theme.spacingMedium * 2
-                                Column {
-                                    x: Theme.spacingMedium; y: Theme.spacingMedium
-                                    width: parent.width - Theme.spacingMedium * 2
-                                    spacing: Theme.spacingXSmall
-                                    Text {
-                                        text: qsTr("• ") + modelData.ingredient
-                                        font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeBody
-                                        font.weight: Theme.fontWeightMedium; color: colorCondition
-                                        width: parent.width; wrapMode: Text.WordWrap
-                                    }
-                                    Text {
-                                        text: modelData.reason
-                                        font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
-                                        color: Theme.textSecondary; wrapMode: Text.WordWrap; width: parent.width
+                        GridLayout {
+                            Layout.fillWidth: true
+                            columns: 2
+                            columnSpacing: Theme.spacingSmall
+                            rowSpacing: Theme.spacingSmall
+
+                            Repeater {
+                                model: avoidances
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    implicitHeight: childrenRect.height + Theme.spacingMedium * 2
+                                    radius: Theme.radiusSmall
+                                    color: Theme.cardBackground; border.color: Theme.dividerColor; border.width: 1
+                                    Column {
+                                        x: Theme.spacingMedium; y: Theme.spacingMedium
+                                        width: parent.width - Theme.spacingMedium * 2
+                                        spacing: Theme.spacingXSmall
+                                        Text {
+                                            text: qsTr("• ") + modelData.ingredient
+                                            font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeBody
+                                            font.weight: Theme.fontWeightMedium; color: colorCondition
+                                            width: parent.width; wrapMode: Text.WordWrap
+                                        }
+                                        Text {
+                                            text: modelData.reason
+                                            font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
+                                            color: Theme.textSecondary; wrapMode: Text.WordWrap; width: parent.width
+                                        }
                                     }
                                 }
                             }
@@ -308,57 +320,44 @@ Page {
                     }
 
                     // ---------- 编辑按钮 ----------
-                    Button {
-                        width: parent.width; height: 50
-                        text: qsTr("编辑健康指标")
-                        background: Rectangle { radius: Theme.radiusMedium; color: Theme.primaryColor }
-                        contentItem: Text {
-                            text: parent.text; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
-                            color: Theme.textOnPrimary; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                        }
-                        onClicked: { showEdit = true }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("编辑健康指标")
+                        buttonType: CustomButton.ButtonType.Primary
+                        onClicked: showEdit = true
                     }
 
                     // ---------- 返回按钮 ----------
-                    Button {
-                        width: parent.width; height: 50
-                        text: qsTr("返回")
-                        background: Rectangle {
-                            radius: Theme.radiusMedium; color: "transparent"
-                            border.color: Theme.primaryColor; border.width: 1
-                        }
-                        contentItem: Text {
-                            text: parent.text; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.primaryColor
-                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("返回")
+                        buttonType: CustomButton.ButtonType.Secondary
                         onClicked: healthProfilePage.goBack()
                     }
 
-                    Item { width: 1; height: Theme.spacingXLarge }
+                    Item { Layout.fillWidth: true; implicitHeight: Theme.spacingXLarge }
                 }
 
                 // ====================================================
                 // 编辑模式 — 修改健康指标
                 // ====================================================
-                Column {
-                    width: parent.width
+                ColumnLayout {
+                    Layout.fillWidth: true
                     spacing: Theme.spacingLarge
                     visible: showEdit
 
                     Text {
-                        width: parent.width
+                        Layout.fillWidth: true
                         text: qsTr("填写您的身体指标和健康情况，我们将据此为您推荐更合适的饮食方案。")
                         font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                         color: Theme.textHint; wrapMode: Text.WordWrap
                     }
 
-                    Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
 
                     // ---------- 身高 ----------
                     ColumnLayout {
-                        width: parent.width; spacing: Theme.spacingXSmall
+                        Layout.fillWidth: true; spacing: Theme.spacingXSmall
                         Text {
                             text: qsTr("身高（厘米）")
                             font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint
@@ -387,7 +386,7 @@ Page {
 
                     // ---------- 体重 ----------
                     ColumnLayout {
-                        width: parent.width; spacing: Theme.spacingXSmall
+                        Layout.fillWidth: true; spacing: Theme.spacingXSmall
                         Text {
                             text: qsTr("体重（公斤）")
                             font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint
@@ -415,15 +414,15 @@ Page {
                     }
 
                     // ---------- 健康问题 ----------
-                    Column {
-                        width: parent.width; spacing: Theme.spacingXSmall
+                    ColumnLayout {
+                        Layout.fillWidth: true; spacing: Theme.spacingXSmall
                         Text {
                             text: qsTr("健康问题（点击选择，可多选）")
                             font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint
                         }
                         Flow {
+                            Layout.fillWidth: true
                             spacing: Theme.spacingXSmall
-                            width: outerColumn.width
                             Repeater {
                                 model: conditionOptions
                                 Button {
@@ -460,26 +459,21 @@ Page {
                         }
                     }
 
-                    Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
 
                     // ---------- 状态提示 ----------
                     Text {
-                        id: statusText; width: parent.width; height: 20
+                        id: statusText; Layout.fillWidth: true; height: 20
                         font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                         color: Theme.accentColor; horizontalAlignment: Text.AlignHCenter
                         visible: text.length > 0
                     }
 
                     // ---------- 保存按钮 ----------
-                    Button {
-                        id: saveBtn; width: parent.width; height: 50
-                        text: qsTr("保存健康指标")
-                        background: Rectangle { radius: Theme.radiusMedium; color: Theme.primaryColor }
-                        contentItem: Text {
-                            text: saveBtn.text; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
-                            color: Theme.textOnPrimary; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("保存健康指标")
+                        buttonType: CustomButton.ButtonType.Primary
                         onClicked: {
                             if (healthProfilePage.heightValue <= 0 || healthProfilePage.weightValue <= 0) {
                                 statusText.text = qsTr("请输入身高和体重"); return
@@ -492,25 +486,17 @@ Page {
                     }
 
                     // ---------- 取消按钮 ----------
-                    Button {
-                        id: cancelBtn; width: parent.width; height: 50
-                        text: qsTr("取消")
-                        background: Rectangle {
-                            radius: Theme.radiusMedium; color: "transparent"
-                            border.color: Theme.primaryColor; border.width: 1
-                        }
-                        contentItem: Text {
-                            text: cancelBtn.text; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.primaryColor
-                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                        }
+                    CustomButton {
+                        Layout.fillWidth: true
+                        buttonText: qsTr("取消")
+                        buttonType: CustomButton.ButtonType.Secondary
                         onClicked: {
                             showEdit = false
                             statusText.text = ""
                         }
                     }
 
-                    Item { width: 1; height: Theme.spacingXLarge }
+                    Item { Layout.fillWidth: true; implicitHeight: Theme.spacingXLarge }
                 }
             }
         }
