@@ -13,6 +13,7 @@ Page {
     signal showSearchRequest()
     signal showProfileEditRequest()
     signal showAccountSecurityRequest()
+    signal showNotificationRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -96,6 +97,9 @@ Page {
                 }
                 onShowAccountSecurityRequest: {
                     homePage.showAccountSecurityRequest()
+                }
+                onShowNotificationRequest: {
+                    homePage.showNotificationRequest()
                 }
             }
         }

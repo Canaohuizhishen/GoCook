@@ -159,6 +159,9 @@ ApplicationWindow {
             onShowAccountSecurityRequest: () => {
                 stackView.push(accountSecurityPage)
             }
+            onShowNotificationRequest: () => {
+                stackView.push(notificationPage)
+            }
         }
     }
 
@@ -219,6 +222,23 @@ ApplicationWindow {
             onShowChangePasswordRequest: () => {
                 stackView.push(changePasswordPage)
             }
+        }
+    }
+
+    Component {
+        id: notificationPage
+        NotificationPage {
+            property var _stackView: stackView
+            onShowDetailRequest: (data) => {
+                stackView.push(notificationDetailPage, {notificationData: data})
+            }
+        }
+    }
+
+    Component {
+        id: notificationDetailPage
+        NotificationDetailPage {
+            property var _stackView: stackView
         }
     }
 

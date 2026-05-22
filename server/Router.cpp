@@ -495,4 +495,51 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             res.body = json{{"error", e.what()}}.dump();
         }
     });
+
+    // 测试端点：重置 testuser 的 4 条测试通知（按 F5 调用）
+    svr.Get("/api/test/reset-notifications", [this](const httplib::Request&, httplib::Response& res) {
+        try {
+            auto conn = db_.getConnection();
+            pqxx::work txn(*conn);
+
+            pqxx::result userRes = txn.exec_params(
+                "SELECT id FROM users WHERE username = $1", "testuser");
+            if (userRes.empty()) {
+                res.status = 404;
+                res.body = json{{"error", "Test user 'testuser' not found"}}.dump();
+                return;
+            }
+            int uid = userRes[0]["id"].as<int>();
+
+            // 清空该用户的所有通知
+            txn.exec_params("DELETE FROM notifications WHERE user_id = $1", uid);
+
+            // 重新插入 4 条测试通知
+            txn.exec_params(
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
+                "VALUES ($1, '系统维护通知', '今晚 22:00-24:00 进行系统升级，届时服务不可用。', 'system', NULL, NULL, NULL, FALSE)",
+                uid);
+            txn.exec_params(
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
+                "VALUES ($1, '审核结果', '您的菜谱「红烧肉」已通过审核，现在可以在首页看到啦！', 'review', NULL, 1, NULL, TRUE)",
+                uid);
+            txn.exec_params(
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
+                "VALUES ($1, '审核结果', '您的菜谱「清蒸鲈鱼」审核未通过，原因：图片不清晰。', 'review', NULL, 2, 'admin_cook', FALSE)",
+                uid);
+            txn.exec_params(
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
+                "VALUES ($1, '新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', 567, 'foodie_lily', FALSE)",
+                uid);
+
+            txn.commit();
+
+            res.set_header("Content-Type", "application/json");
+            res.status = 200;
+            res.body = json{{"message", "4 test notifications reset"}}.dump();
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.body = json{{"error", e.what()}}.dump();
+        }
+    });
 }

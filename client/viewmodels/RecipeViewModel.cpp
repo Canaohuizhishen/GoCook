@@ -359,6 +359,7 @@ void RecipeViewModel::deleteFavoriteGroup(int groupId)
         if (!self) return;
         if (success) {
             self->loadFavoriteGroups();
+            self->loadFavorites(1, 20);
             emit self->favoriteGroupDeleted();
         } else {
             emit self->favoriteOperationFailed(QString::fromStdString(

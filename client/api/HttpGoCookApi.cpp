@@ -110,10 +110,24 @@ void HttpGoCookApi::put(const QString &endpoint, const QVariantMap &data,
     sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, std::move(callback), 0);
 }
 
+// PATCH 请求封装（QML 版本）
+void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data, const QJSValue &callback)
+{
+    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, callback, 0, "PATCH");
+}
+
+// PATCH 请求封装（C++ 版本，std::function 回调）
+void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data,
+                          std::function<void(bool, const QString&, const QJsonDocument&)> callback)
+{
+    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, std::move(callback), 0, "PATCH");
+}
+
 // 内部通用请求发送（构造请求、发送，返回 QNetworkReply*）
 QNetworkReply* HttpGoCookApi::sendRequestInternal(QNetworkAccessManager::Operation op,
                                                   const QString &endpoint,
-                                                  const QVariantMap &data)
+                                                  const QVariantMap &data,
+                                                  const QString &methodOverride)
 {
     // 构造完整 URL
     QUrl url(m_baseUrl + endpoint);
@@ -148,6 +162,10 @@ QNetworkReply* HttpGoCookApi::sendRequestInternal(QNetworkAccessManager::Operati
     case QNetworkAccessManager::PutOperation:
         reply = m_nam.put(request, body);
         break;
+    case QNetworkAccessManager::CustomOperation:
+        reply = m_nam.sendCustomRequest(request,
+            methodOverride.isEmpty() ? "PATCH" : methodOverride.toUtf8().constData(), body);
+        break;
     default:
         break;
     }
@@ -159,7 +177,8 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 const QString &endpoint,
                                 const QVariantMap &data,
                                 const QJSValue &callback,
-                                int retryCount)
+                                int retryCount,
+                                const QString &methodOverride)
 {
     auto wrapped = [this, callback](bool success, const QString&, const QJsonDocument& doc) {
         if (!callback.isCallable()) return;
@@ -193,7 +212,7 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
         args << jsResponse;
         QJSValue(callback).call(args);
     };
-    sendRequest(op, endpoint, data, wrapped, retryCount);
+    sendRequest(op, endpoint, data, wrapped, retryCount, methodOverride);
 }
 
 // 统一发送 HTTP 请求的实现（std::function 回调版本），retryCount 用于重试控制
@@ -201,9 +220,10 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 const QString &endpoint,
                                 const QVariantMap &data,
                                 std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                                int retryCount)
+                                int retryCount,
+                                const QString &methodOverride)
 {
-    QNetworkReply *reply = sendRequestInternal(op, endpoint, data);
+    QNetworkReply *reply = sendRequestInternal(op, endpoint, data, methodOverride);
     if (!reply) {
         // 若请求未能发出，直接回调失败
         if (callback) {
@@ -830,29 +850,100 @@ void HttpGoCookApi::getNotifications(int page, int size,
                                      const std::string& type,
                                      PagedNotificationsCallback callback)
 {
-    Q_UNUSED(page);
-    Q_UNUSED(size);
-    Q_UNUSED(type);
-    if (callback) callback(false, gocook::models::PagedNotifications{}, "Not implemented");
+    QString path = QString("/api/users/me/notifications?page=%1&size=%2").arg(page).arg(size);
+    if (!type.empty())
+        path += "&type=" + QString::fromStdString(type);
+    get(path, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::PagedNotifications{}, errorStr.toStdString());
+            return;
+        }
+        gocook::models::PagedNotifications result;
+        QJsonObject obj = doc.object();
+        if (obj.contains("pagination")) {
+            QJsonObject p = obj["pagination"].toObject();
+            result.pagination.page = p["page"].toInt();
+            result.pagination.size = p["size"].toInt();
+            result.pagination.total = p["total"].toInt();
+            result.pagination.total_pages = p["total_pages"].toInt();
+        }
+        if (obj.contains("data")) {
+            for (const auto& v : obj["data"].toArray()) {
+                QJsonObject item = v.toObject();
+                gocook::models::NotificationItem ni;
+                ni.id = item["id"].toInt();
+                ni.title = item["title"].toString().toStdString();
+                ni.content = item["content"].toString().toStdString();
+                ni.type = item["type"].toString().toStdString();
+                if (item.contains("sub_type") && !item["sub_type"].isNull())
+                    ni.sub_type = item["sub_type"].toString().toStdString();
+                ni.is_read = item["is_read"].toBool();
+                if (item.contains("related_id") && !item["related_id"].isNull())
+                    ni.related_id = item["related_id"].toInt();
+                if (item.contains("trigger_user_name") && !item["trigger_user_name"].isNull())
+                    ni.trigger_user_name = item["trigger_user_name"].toString().toStdString();
+                ni.created_at = item["created_at"].toString().toStdString();
+                result.data.push_back(ni);
+            }
+        }
+        if (callback) callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::markNotificationRead(int notificationId,
                                          SuccessCallback callback)
 {
-    Q_UNUSED(notificationId);
-    if (callback) callback(false, "Not implemented");
+    patch(QString("/api/users/me/notifications/%1/read").arg(notificationId), {},
+        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
 {
-    if (callback) callback(false, "Not implemented");
+    put("/api/users/me/notifications/read-all", {},
+        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::deleteNotification(int notificationId,
                                         SuccessCallback callback)
 {
-    Q_UNUSED(notificationId);
-    if (callback) callback(false, "Not implemented");
+    deleteResource(QString("/api/users/me/notifications/%1").arg(notificationId), {},
+        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 // ======================= 菜谱相关 =======================
@@ -1464,6 +1555,20 @@ void HttpGoCookApi::sendNotification(const gocook::models::NotificationRequest& 
 void HttpGoCookApi::getStatistics(StatisticsCallback callback)
 {
     if (callback) callback(false, gocook::models::StatisticsData{}, "Not implemented");
+}
+
+void HttpGoCookApi::resetTestNotifications(SuccessCallback callback)
+{
+    get("/api/test/reset-notifications", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        if (!success) {
+            QString err = errorStr;
+            if (doc.isObject() && doc.object().contains("error"))
+                err = doc.object()["error"].toString();
+            if (callback) callback(false, err.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    });
 }
 
 void HttpGoCookApi::getAdminLogs(int page, int size,

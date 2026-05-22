@@ -7,6 +7,7 @@
 #include "viewmodels/AuthViewModel.h"
 #include "viewmodels/RecipeViewModel.h"
 #include "viewmodels/InventoryViewModel.h"
+#include "viewmodels/NotificationViewModel.h"
 
 int main(int argc, char *argv[])
 {
@@ -27,11 +28,13 @@ int main(int argc, char *argv[])
     AuthViewModel authViewModel(httpApi);
     RecipeViewModel recipeVM(httpApi, &app);
     InventoryViewModel inventoryVM(httpApi, &app);
+    NotificationViewModel notifyVM(httpApi, &app);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
     engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
     engine.rootContext()->setContextProperty("inventoryVM", &inventoryVM);
+    engine.rootContext()->setContextProperty("notifyVM", &notifyVM);
 
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
 
