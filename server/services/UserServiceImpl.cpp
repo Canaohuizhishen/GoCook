@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cctype>
 #include "../common/Logger.h"
+#include "../common/EmailSender.h"
 #include "bcrypt/crypt_blowfish.h"
 #include <openssl/crypto.h>
 
@@ -142,12 +143,82 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
     return *user;
 }
 
-// 以下方法暂时未实现（骨架）- updateProfile 已实现，uploadAvatar 已实现
-void UserServiceImpl::requestPasswordReset(const std::string&) {
-    throw ServiceException("Not implemented", 501);
+// ==================== 密码重置 ====================
+
+void UserServiceImpl::requestPasswordReset(const std::string& username,
+                                              const std::string& email) {
+    // 1. Verify username + email match (双重验证)
+    auto userIdOpt = userRepo_->findIdByUsernameAndEmail(username, email);
+    if (!userIdOpt.has_value()) {
+        LOG_WARN("Password reset requested for username='%s' email='%s' — no match found",
+                 username.c_str(), email.c_str());
+        throw ServiceException("用户名和邮箱不匹配", 400);
+    }
+
+    // 2. Generate random token (64 hex chars = 256 bits)
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distrib(0, 15);
+    std::ostringstream tokenStream;
+    for (int i = 0; i < 64; ++i) {
+        tokenStream << std::hex << distrib(gen);
+    }
+    std::string token = tokenStream.str();
+
+    // 3. Set expiry to 1 hour from now (ISO 8601 format for PostgreSQL timestamp)
+    auto now = std::chrono::system_clock::now();
+    auto exp = now + std::chrono::hours(1);
+    auto expTt = std::chrono::system_clock::to_time_t(exp);
+    std::ostringstream expStream;
+    expStream << std::put_time(std::gmtime(&expTt), "%Y-%m-%dT%H:%M:%SZ");
+    std::string expiresAt = expStream.str();
+
+    // 4. Store token in database
+    userRepo_->createPasswordResetToken(userIdOpt.value(), token, expiresAt);
+
+    // 5. Send email (fallback to log if SMTP not configured)
+    bool sent = EmailSender::sendPasswordResetEmail(email, token);
+    if (!sent) {
+        LOG_WARN("SMTP not configured for %s, token logged to stderr", email.c_str());
+        std::cerr << "\n*** PASSWORD RESET TOKEN ***" << std::endl;
+        std::cerr << "Email: " << email << std::endl;
+        std::cerr << "Token: " << token << std::endl;
+        std::cerr << "Expires: " << expiresAt << std::endl;
+        std::cerr << "To reset: POST /api/password/reset with {token, new_password}" << std::endl;
+        std::cerr << "*** END TOKEN ***\n" << std::endl;
+    } else {
+        LOG_INFO("Password reset email sent to %s", email.c_str());
+    }
 }
-void UserServiceImpl::resetPassword(const std::string&, const std::string&) {
-    throw ServiceException("Not implemented", 501);
+
+void UserServiceImpl::resetPassword(const std::string& token, const std::string& newPassword) {
+    // 1. Validate token — find user_id from valid (unused & not expired) token
+    auto userIdOpt = userRepo_->findUserIdByResetToken(token);
+    if (!userIdOpt.has_value()) {
+        throw ServiceException("令牌无效或已过期", 400);
+    }
+
+    // 2. Validate new password strength (reuse same rules as changePassword)
+    if (newPassword.size() < 6) {
+        throw ServiceException("密码需包含字母和数字，至少8位", 400);
+    }
+    bool hasLetter = false, hasDigit = false;
+    for (char c : newPassword) {
+        if (std::isalpha(static_cast<unsigned char>(c))) hasLetter = true;
+        if (std::isdigit(static_cast<unsigned char>(c))) hasDigit = true;
+    }
+    if (!hasLetter || !hasDigit) {
+        throw ServiceException("密码需包含字母和数字，至少8位", 400);
+    }
+
+    // 3. Hash new password
+    std::string newHash = hashPassword(newPassword);
+
+    // 4. Update password
+    userRepo_->changePassword(userIdOpt.value(), newHash);
+
+    // 5. Mark token as used (one-time use)
+    userRepo_->markResetTokenUsed(token);
 }
 UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileRequest& profile) {
     // Validate: at least one field must be provided

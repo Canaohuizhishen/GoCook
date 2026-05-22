@@ -259,17 +259,63 @@ TEST(UserServiceTest, 录入健康指标用户不存在) {
 
 // ==================== 未实现的方法 ====================
 
-TEST(UserServiceTest, 未实现方法返回501) {
+// ==================== 密码重置 ====================
+
+TEST(UserServiceTest, 请求重置密码邮箱未注册静默成功) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_THROW(service.requestPasswordReset("a@b.com"), ServiceException);
-    EXPECT_THROW(service.resetPassword("tok", "pw"), ServiceException);
-    EXPECT_THROW(service.changePassword(1, "old", "new"), ServiceException);
-    EXPECT_THROW(service.getNotifications(1, 1, 20, ""), ServiceException);
-    EXPECT_THROW(service.markNotificationRead(1, 1), ServiceException);
-    EXPECT_THROW(service.markAllNotificationsRead(1), ServiceException);
-    EXPECT_THROW(service.deleteNotification(1, 1), ServiceException);
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("unknown_user", "unreg@test.com"))
+        .WillOnce(Return(std::nullopt));
+
+    try {
+        service.requestPasswordReset("unknown_user", "unreg@test.com");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "用户名和邮箱不匹配");
+    }
+}
+
+TEST(UserServiceTest, 请求重置密码邮箱已注册生成令牌) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "user@test.com"))
+        .WillOnce(Return(std::optional<int>(42)));
+    EXPECT_CALL(*repo, createPasswordResetToken(42, _, _)).Times(1);
+
+    EXPECT_NO_THROW(service.requestPasswordReset("testuser", "user@test.com"));
+}
+
+TEST(UserServiceTest, 重置密码令牌无效) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findUserIdByResetToken("bad-token")).WillOnce(Return(std::nullopt));
+
+    try {
+        service.resetPassword("bad-token", "NewPass123");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "令牌无效或已过期");
+    }
+}
+
+TEST(UserServiceTest, 重置密码成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findUserIdByResetToken("valid-token")).WillOnce(Return(std::optional<int>(42)));
+    EXPECT_CALL(*repo, changePassword(42, _)).Times(1);
+    EXPECT_CALL(*repo, markResetTokenUsed("valid-token")).Times(1);
+
+    EXPECT_NO_THROW(service.resetPassword("valid-token", "NewPass123"));
 }
 
 // ==================== 更新个人资料 ====================

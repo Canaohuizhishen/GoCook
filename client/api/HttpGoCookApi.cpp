@@ -341,20 +341,50 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
     });
 }
 
-void HttpGoCookApi::forgotPassword(const std::string& email,
+void HttpGoCookApi::forgotPassword(const std::string& username,
+                                   const std::string& email,
                                    SuccessCallback callback)
 {
-    Q_UNUSED(email);
-    if (callback) callback(false, "Not implemented");
+    QVariantMap data;
+    data["username"] = QString::fromStdString(username);
+    data["email"] = QString::fromStdString(email);
+
+    post("/api/password/forgot", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (success) {
+            callback(true, "");
+        } else {
+            QString err = errorMsg;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            callback(false, err.isEmpty() ? "请求失败" : err.toStdString());
+        }
+    });
 }
 
 void HttpGoCookApi::resetPassword(const std::string& token,
                                   const std::string& newPassword,
                                   SuccessCallback callback)
 {
-    Q_UNUSED(token);
-    Q_UNUSED(newPassword);
-    if (callback) callback(false, "Not implemented");
+    QVariantMap data;
+    data["token"] = QString::fromStdString(token);
+    data["new_password"] = QString::fromStdString(newPassword);
+
+    post("/api/password/reset", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (success) {
+            callback(true, "");
+        } else {
+            QString err = errorMsg;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            callback(false, err.isEmpty() ? "重置失败" : err.toStdString());
+        }
+    });
 }
 
 // ======================= 用户相关 =======================

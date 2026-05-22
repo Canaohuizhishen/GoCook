@@ -49,6 +49,7 @@ set(SERVER_LIB_SOURCES
     common/PaginationHelper.h
     common/AuthHelper.h
     common/SerializationHelper.h
+    common/EmailSender.h common/EmailSender.cpp
     common/JsonSerializer.h common/JsonSerializer.cpp
     common/Validation.h
     common/Config.h

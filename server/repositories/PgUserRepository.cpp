@@ -89,11 +89,92 @@ std::optional<UserProfile> PgUserRepository::findById(int userId) {
     }
 }
 
-void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& profile) {
+std::optional<int> PgUserRepository::findIdByEmail(const std::string& email) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        pqxx::result r = txn.exec_params(
+            "SELECT id FROM users WHERE email = $1", email);
+        txn.commit();
+        if (r.empty()) return std::nullopt;
+        return r[0]["id"].as<int>();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findIdByEmail: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+}
+
+std::optional<int> PgUserRepository::findIdByUsernameAndEmail(
+    const std::string& username, const std::string& email)
+{
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        pqxx::result r = txn.exec_params(
+            "SELECT id FROM users WHERE username = $1 AND email = $2",
+            username, email);
+        txn.commit();
+        if (r.empty()) return std::nullopt;
+        return r[0]["id"].as<int>();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findIdByUsernameAndEmail: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+}
+
+void PgUserRepository::createPasswordResetToken(
+    int userId, const std::string& token, const std::string& expiresAt)
+{
     try {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         txn.exec_params(
+            "INSERT INTO password_reset_tokens (user_id, token, expires_at) "
+            "VALUES ($1, $2, $3::timestamptz)",
+            userId, token, expiresAt);
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in createPasswordResetToken: %s", e.what());
+        throw ServiceException("创建重置令牌失败");
+    }
+}
+
+std::optional<int> PgUserRepository::findUserIdByResetToken(const std::string& token) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        pqxx::result r = txn.exec_params(
+            "SELECT user_id FROM password_reset_tokens "
+            "WHERE token = $1 AND used = false AND expires_at > NOW()",
+            token);
+        txn.commit();
+        if (r.empty()) return std::nullopt;
+        return r[0]["user_id"].as<int>();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in findUserIdByResetToken: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+}
+
+void PgUserRepository::markResetTokenUsed(const std::string& token) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        txn.exec_params(
+            "UPDATE password_reset_tokens SET used = true WHERE token = $1",
+            token);
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in markResetTokenUsed: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+}
+
+void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& profile) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        auto r = txn.exec_params(
             "UPDATE users SET "
             "display_name = COALESCE($1, display_name), "
             "email = COALESCE($2, email), "
@@ -114,7 +195,12 @@ void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& pro
                 : nullptr,
             userId
         );
+        if (r.affected_rows() == 0) {
+            throw ServiceException("用户不存在", 404);
+        }
         txn.commit();
+    } catch (const gocook::services::ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
         LOG_ERROR("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");

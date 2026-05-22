@@ -67,8 +67,9 @@ void UserHandler::forgotPassword(const httplib::Request& req, httplib::Response&
         json reqJson = json::parse(req.body);
         Validation::validateForgotPasswordRequest(reqJson);
 
+        std::string username = reqJson["username"];
         std::string email = reqJson["email"];
-        service_.requestPasswordReset(email);
+        service_.requestPasswordReset(username, email);
         res.status = 200;
         res.body = json{{"message", "若该邮箱已注册，您将收到一封重置密码的邮件"}}.dump();
     } catch (const gocook::services::ServiceException& e) {

@@ -96,7 +96,10 @@ namespace gocook::services {
         virtual models::LoginResponse login(const models::LoginRequest& request) = 0;
 
         /// 发送密码重置邮件（无需认证，对应 API 3.11.2）
-        virtual void requestPasswordReset(const std::string& email) = 0;
+        /// @param username 用户名（用于双重验证）
+        /// @param email 注册邮箱
+        virtual void requestPasswordReset(const std::string& username,
+                                           const std::string& email) = 0;
 
         /// 重置密码（无需认证）
         virtual void resetPassword(const std::string& token,

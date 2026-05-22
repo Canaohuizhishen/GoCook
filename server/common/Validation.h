@@ -52,8 +52,11 @@ inline bool validateLoginRequest(const json& j) {
     return true;
 }
 
-/// 忘记密码：email 必填且格式正确
+/// 忘记密码：username + email 均必填
 inline bool validateForgotPasswordRequest(const json& j) {
+    if (!j.contains("username") || !j["username"].is_string() ||
+        j["username"].get<std::string>().empty())
+        throw gocook::services::ServiceException("缺少用户名", 400);
     if (!j.contains("email") || !j["email"].is_string() ||
         !isValidEmail(j["email"]))
         throw gocook::services::ServiceException("邮箱格式无效", 400);

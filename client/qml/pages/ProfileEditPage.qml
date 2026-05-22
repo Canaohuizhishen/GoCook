@@ -56,22 +56,46 @@ Page {
             }
             profileEditPage.dbg("chosenUrl: " + chosenUrl)
 
-            var localPath = chosenUrl.toLocalFile()
-            profileEditPage.dbg("toLocalFile: " + (localPath || "(空)"))
+            // Qt 版本差异：selectedFile/selectedFiles 可能是 QUrl 对象也可能是纯字符串
+            var urlStr = typeof chosenUrl === "string" ? chosenUrl : chosenUrl.toString()
+            profileEditPage.dbg("urlStr: " + urlStr)
+
+            var localPath = ""
+            if (typeof chosenUrl === "object" && typeof chosenUrl.toLocalFile === "function") {
+                // QUrl 对象 → 调用 toLocalFile()
+                localPath = chosenUrl.toLocalFile()
+                profileEditPage.dbg("toLocalFile: " + (localPath || "(空)"))
+            }
+
+            // 如果 toLocalFile 不存在或返回空，手动从 file:// URL 提取路径
+            if (!localPath && urlStr.startsWith("file://")) {
+                // 去掉 "file://" 前缀（7 个字符）
+                localPath = urlStr.substring(7)
+                // Windows: "file:///C:/..."  → substring(7) → "/C:/..."
+                // QFile 需要 "C:/..."，所以去掉开头的 '/'
+                if (localPath.length > 3 && localPath[0] === '/' && localPath[2] === ':') {
+                    localPath = localPath.substring(1)
+                }
+                profileEditPage.dbg("从 file:// URL 提取路径: " + localPath)
+            }
+
+            if (!localPath) {
+                profileEditPage.dbg("无法识别的 URL 格式: " + urlStr)
+            }
+
             if (localPath) {
                 selectedFileUrl = chosenUrl
                 pendingAvatarPath = localPath
+                profileEditPage.dbg("pendingAvatarPath = " + pendingAvatarPath)
+                statusText.text = qsTr("正在上传头像...")
+                profileEditPage.avatarUploading = true
+                profileEditPage.dbg("调用 uploadAvatar...")
+                authViewModel.uploadAvatar(profileEditPage.pendingAvatarPath)
+                profileEditPage.dbg("uploadAvatar 调用完毕")
             } else {
-                selectedFileUrl = chosenUrl
-                pendingAvatarPath = chosenUrl.toString()
-                profileEditPage.dbg("localPath 为空，使用 toString()")
+                statusText.text = qsTr("无法读取图片路径，请重试")
+                profileEditPage.dbg("ERROR: 无法获取本地文件路径，放弃上传")
             }
-            profileEditPage.dbg("pendingAvatarPath = " + pendingAvatarPath)
-            statusText.text = qsTr("正在上传头像...")
-            profileEditPage.avatarUploading = true
-            profileEditPage.dbg("调用 uploadAvatar...")
-            authViewModel.uploadAvatar(profileEditPage.pendingAvatarPath)
-            profileEditPage.dbg("uploadAvatar 调用完毕")
         }
         onRejected: {
             profileEditPage.dbg("FileDialog onRejected (用户取消)")

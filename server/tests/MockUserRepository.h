@@ -11,6 +11,13 @@ public:
     MOCK_METHOD(void, createUser,
                 (const std::string&, const std::string&, const std::string&), (override));
     MOCK_METHOD(std::optional<gocook::models::UserProfile>, findById, (int), (override));
+    MOCK_METHOD(std::optional<int>, findIdByEmail, (const std::string&), (override));
+    MOCK_METHOD(std::optional<int>, findIdByUsernameAndEmail,
+                (const std::string&, const std::string&), (override));
+    MOCK_METHOD(void, createPasswordResetToken,
+                (int, const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::optional<int>, findUserIdByResetToken, (const std::string&), (override));
+    MOCK_METHOD(void, markResetTokenUsed, (const std::string&), (override));
     MOCK_METHOD(void, updateProfile,
                 (int, const gocook::models::UpdateProfileRequest&), (override));
     MOCK_METHOD(void, changePassword, (int, const std::string&), (override));

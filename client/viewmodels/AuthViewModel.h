@@ -58,6 +58,10 @@ public:
     Q_INVOKABLE void saveHealthProfile(int heightCm, double weightKg, const QStringList &conditions);
     Q_INVOKABLE void loadHealthProfile();
 
+    // 密码重置
+    Q_INVOKABLE void forgotPassword(const QString &username, const QString &email);
+    Q_INVOKABLE void resetPassword(const QString &token, const QString &newPassword);
+
 signals:
     void loggedInChanged();
     void usernameChanged();
@@ -87,6 +91,12 @@ signals:
     void healthProfileSaveFailed(const QString &error);
     void healthProfileLoaded(int heightCm, double weightKg, const QStringList &conditions, const QVariantList &avoidances);
     void healthProfileLoadFailed(const QString &error);
+
+    // 密码重置信号
+    void forgotPasswordSent();
+    void forgotPasswordFailed(const QString &error);
+    void passwordResetSuccess();
+    void passwordResetFailed(const QString &error);
 
 private:
     void setLoggedIn(bool loggedIn, int userId = 0, const QString &username = "");
