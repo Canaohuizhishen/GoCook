@@ -560,3 +560,311 @@ TEST(UserServiceTest, 更新饮食偏好用户不存在) {
         EXPECT_STREQ(e.what(), "用户不存在");
     }
 }
+
+// ==================== 修改密码 ====================
+
+namespace {
+    // 生成已知密码的 bcrypt 哈希（用于修改密码测试）
+    std::string makeBcryptHash(const std::string& plain) {
+        char salt_buf[128], hash_buf[128];
+        const char fi[16] = {};
+        char* s = _crypt_gensalt_blowfish_rn("$2a$", 4, fi, 16, salt_buf, sizeof(salt_buf));
+        char* h = _crypt_blowfish_rn(plain.c_str(), s, hash_buf, sizeof(hash_buf));
+        return std::string(h ? h : "");
+    }
+}
+
+TEST(UserServiceTest, 修改密码成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    std::string oldHash = makeBcryptHash("OldPass123");
+    EXPECT_CALL(*repo, getPasswordHash(42)).WillOnce(Return(oldHash));
+    EXPECT_CALL(*repo, changePassword(42, _)).Times(1);
+
+    EXPECT_NO_THROW(service.changePassword(42, "OldPass123", "NewPass456"));
+}
+
+TEST(UserServiceTest, 修改密码原密码错误) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    std::string oldHash = makeBcryptHash("CorrectOld123");
+    EXPECT_CALL(*repo, getPasswordHash(42)).WillOnce(Return(oldHash));
+    EXPECT_CALL(*repo, changePassword(42, _)).Times(0);
+
+    try {
+        service.changePassword(42, "WrongOld456", "NewPass789");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "原密码不正确");
+    }
+}
+
+TEST(UserServiceTest, 修改密码新密码太短) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    std::string oldHash = makeBcryptHash("OldPass123");
+    EXPECT_CALL(*repo, getPasswordHash(42)).WillOnce(Return(oldHash));
+    EXPECT_CALL(*repo, changePassword(42, _)).Times(0);
+
+    try {
+        service.changePassword(42, "OldPass123", "Ab1");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "密码需包含字母和数字，至少6位");
+    }
+}
+
+// ==================== 获取健康指标 ====================
+
+TEST(UserServiceTest, 获取健康指标成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    HealthProfileResponse resp;
+    resp.height_cm = 175;
+    resp.weight_kg = 70.0;
+    resp.conditions = {"高血压"};
+    EXPECT_CALL(*repo, getHealthProfile(42)).WillOnce(Return(resp));
+
+    auto result = service.getHealthProfile(42);
+    EXPECT_EQ(result.height_cm, 175);
+    EXPECT_EQ(result.weight_kg, 70.0);
+    EXPECT_EQ(result.conditions.size(), 1u);
+    EXPECT_GT(result.suggested_avoidances.size(), 0u);  // 应生成忌口建议
+}
+
+TEST(UserServiceTest, 获取健康指标用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, getHealthProfile(_)).Times(0);
+
+    try {
+        service.getHealthProfile(999);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
+    }
+}
+
+// ==================== 收藏列表 ====================
+
+TEST(UserServiceTest, 获取收藏列表成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    FavoriteItem item;
+    item.id = 1;
+    item.recipe_id = 100;
+    item.name = "红烧肉";
+    item.group_name = "默认收藏夹";
+    item.is_public = true;
+    PagedFavorites expected;
+    expected.data = {item};
+    expected.pagination = {1, 1, 1, 20};
+
+    EXPECT_CALL(*repo, getFavorites(42, 1, 20, std::string(""))).WillOnce(Return(expected));
+
+    auto result = service.getFavorites(42, 1, 20);
+    EXPECT_EQ(result.data.size(), 1u);
+    EXPECT_EQ(result.data[0].name, "红烧肉");
+    EXPECT_EQ(result.data[0].group_name, "默认收藏夹");
+}
+
+TEST(UserServiceTest, 获取收藏列表用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, getFavorites(999, _, _, _)).Times(0);
+
+    try {
+        service.getFavorites(999, 1, 20);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
+    }
+}
+
+// ==================== 收藏分组 ====================
+
+TEST(UserServiceTest, 获取收藏分组列表成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    std::vector<FavoriteGroup> groups;
+    groups.push_back({1, "默认收藏夹", 0, 3});
+    groups.push_back({2, "减脂餐", 1, 1});
+    EXPECT_CALL(*repo, getFavoriteGroups(42)).WillOnce(Return(groups));
+
+    auto result = service.getFavoriteGroups(42);
+    EXPECT_EQ(result.size(), 2u);
+    EXPECT_EQ(result[0].name, "默认收藏夹");
+    EXPECT_EQ(result[0].count, 3);
+    EXPECT_EQ(result[1].name, "减脂餐");
+}
+
+TEST(UserServiceTest, 创建收藏分组成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    FavoriteGroup newGroup{3, "甜点", 2, 0};
+    EXPECT_CALL(*repo, createFavoriteGroup(42, _)).WillOnce(Return(newGroup));
+
+    CreateGroupRequest req{"甜点"};
+    auto result = service.createFavoriteGroup(42, req);
+    EXPECT_EQ(result.id, 3);
+    EXPECT_EQ(result.name, "甜点");
+}
+
+TEST(UserServiceTest, 删除收藏分组成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, deleteFavoriteGroup(42, 2)).Times(1);
+    EXPECT_NO_THROW(service.deleteFavoriteGroup(42, 2));
+}
+
+// ==================== 收藏项操作 ====================
+
+TEST(UserServiceTest, 更新收藏项属性成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    UpdateFavoriteRequest req;
+    req.group_id = 3;
+    req.is_public = false;
+    EXPECT_CALL(*repo, updateFavoriteItem(42, 1, _)).Times(1);
+
+    EXPECT_NO_THROW(service.updateFavoriteItem(42, 1, req));
+}
+
+TEST(UserServiceTest, 批量删除收藏成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    BatchDeleteFavoritesRequest req{{1, 2, 3}};
+    EXPECT_CALL(*repo, batchDeleteFavorites(42, _)).Times(1);
+
+    EXPECT_NO_THROW(service.batchDeleteFavorites(42, req));
+}
+
+// ==================== 通知 ====================
+
+TEST(UserServiceTest, 获取通知列表成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+
+    NotificationItem notif;
+    notif.id = 101;
+    notif.title = "系统维护通知";
+    notif.content = "今晚 22:00 升级";
+    notif.type = "system";
+    notif.is_read = false;
+    PagedNotifications expected;
+    expected.data = {notif};
+    expected.pagination = {1, 1, 1, 20};
+
+    EXPECT_CALL(*repo, getNotifications(42, 1, 20, std::string(""))).WillOnce(Return(expected));
+
+    auto result = service.getNotifications(42, 1, 20);
+    EXPECT_EQ(result.data.size(), 1u);
+    EXPECT_EQ(result.data[0].title, "系统维护通知");
+    EXPECT_EQ(result.data[0].type, "system");
+    EXPECT_FALSE(result.data[0].is_read);
+}
+
+TEST(UserServiceTest, 标记通知已读成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, markNotificationRead(42, 101)).Times(1);
+
+    EXPECT_NO_THROW(service.markNotificationRead(42, 101));
+}
+
+TEST(UserServiceTest, 标记全部通知已读成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, markAllNotificationsRead(42)).Times(1);
+
+    EXPECT_NO_THROW(service.markAllNotificationsRead(42));
+}
+
+TEST(UserServiceTest, 删除通知成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, deleteNotification(42, 101)).Times(1);
+
+    EXPECT_NO_THROW(service.deleteNotification(42, 101));
+}
+
+TEST(UserServiceTest, 删除通知用户不存在) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(999)).WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, deleteNotification(_, _)).Times(0);
+
+    try {
+        service.deleteNotification(999, 1);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_STREQ(e.what(), "用户不存在");
+    }
+}
