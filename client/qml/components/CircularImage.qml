@@ -1,10 +1,9 @@
 import QtQuick
 
 /**
- * CircularImage — 圆形图片组件
+ * CircularImage — 方形图片组件
  *
- * v1: 最简版本——直接显示 Image，叠加圆形边框装饰。
- * 圆形裁剪留待后续用 QtQuick.Shapes 或 QPainter 路径单独实现。
+ * 直接显示方形 Image，不再叠加圆形边框。
  *
  * 用法:
  *   CircularImage {
@@ -57,11 +56,10 @@ Item {
     }
 
     // ============================================================
-    // 圆形边框装饰
+    // 方形边框装饰
     // ============================================================
     Rectangle {
         anchors.fill: parent
-        radius: width / 2
         color: "transparent"
         border.color: root.borderColor
         border.width: root.borderWidth

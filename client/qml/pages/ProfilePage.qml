@@ -64,16 +64,10 @@ Page {
                 placeholderText.font.weight: Theme.fontWeightMedium
                 placeholderText.color: Theme.textHint
 
-                // 监听 profileAvatarUrl 变化
-                Connections {
-                    target: authViewModel
-                    function onProfileChanged() {
-                        var url = authViewModel.profileAvatarUrl
-                        if (url.length > 0)
-                            profileAvatar.source = authViewModel.apiBaseUrl + url
-                        else
-                            profileAvatar.source = ""
-                    }
+                // 直接绑定 source，比 Connections 命令式赋值更稳定
+                source: {
+                    var url = authViewModel.profileAvatarUrl
+                    return url.length > 0 ? authViewModel.apiBaseUrl + url : ""
                 }
             }
 
