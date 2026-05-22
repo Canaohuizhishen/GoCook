@@ -276,9 +276,6 @@ void PgUserRepository::deleteAccount(int userId) {
 
 AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::string& filePath) {
     try {
-        std::cerr << "\n=== [AVATAR DEBUG] PgUserRepository::uploadAvatar ===" << std::endl;
-        std::cerr << "[AVATAR-REPO] userId=" << userId << " filePath='" << filePath << "'" << std::endl;
-
         // Determine file extension from the uploaded file
         std::string ext = ".jpg";  // default
         auto dotPos = filePath.find_last_of('.');
@@ -293,7 +290,6 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
             else if (lower == ".webp") ext = ".webp";
             else if (lower == ".svg")  ext = ".svg";
         }
-        std::cerr << "[AVATAR-REPO] detected ext='" << ext << "'" << std::endl;
 
         // Generate unique filename: user_<id>_<timestamp><ext>
         auto now = std::chrono::system_clock::now();
@@ -301,28 +297,23 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
                       now.time_since_epoch()).count();
         std::string filename = "user_" + std::to_string(userId)
                              + "_" + std::to_string(ts) + ext;
-        std::cerr << "[AVATAR-REPO] filename='" << filename << "'" << std::endl;
 
         // Create uploads directory if needed
         std::string uploadDir = "uploads/avatars/";
-        std::cerr << "[AVATAR-REPO] creating dir '" << uploadDir << "' (cwd matters)" << std::endl;
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + filename;
 
         // Check if temp source file exists
         bool srcExists = std::filesystem::exists(filePath);
-        std::cerr << "[AVATAR-REPO] source file exists? " << (srcExists ? "YES" : "NO") << std::endl;
         if (!srcExists) {
-            std::cerr << "[AVATAR-REPO] ERROR: source file does not exist!" << std::endl;
+            LOG_ERROR("Avatar source file does not exist: %s", filePath.c_str());
         }
 
         // Copy file to permanent location
         try {
             std::filesystem::copy(filePath, destPath,
                                   std::filesystem::copy_options::overwrite_existing);
-            std::cerr << "[AVATAR-REPO] copied to '" << destPath << "'" << std::endl;
         } catch (const std::filesystem::filesystem_error& fe) {
-            std::cerr << "[AVATAR-REPO] copy FAILED: " << fe.what() << std::endl;
             LOG_ERROR("Failed to copy avatar file from %s to %s: %s",
                       filePath.c_str(), destPath.c_str(), fe.what());
             throw ServiceException("头像文件保存失败");
@@ -330,31 +321,24 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
 
         // Build URL: for now use relative path; in production would be full URL
         std::string avatarUrl = "/" + destPath;
-        std::cerr << "[AVATAR-REPO] avatarUrl = '" << avatarUrl << "'" << std::endl;
 
         // Update user's avatar_url in database
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
-        auto sqlResult = txn.exec_params(
+        txn.exec_params(
             "UPDATE users SET avatar_url = $1 WHERE id = $2",
             avatarUrl, userId);
-        std::cerr << "[AVATAR-REPO] SQL UPDATE affected " << sqlResult.affected_rows() << " rows" << std::endl;
         txn.commit();
 
         // Clean up temp file
         std::filesystem::remove(filePath);
-        std::cerr << "[AVATAR-REPO] temp file removed" << std::endl;
 
         AvatarUploadResponse resp;
         resp.avatar_id = userId;   // Use userId as avatar resource identifier
         resp.avatar_url = avatarUrl;
-        std::cerr << "[AVATAR-REPO] returning: avatar_id=" << resp.avatar_id
-                  << " avatar_url='" << resp.avatar_url << "'" << std::endl;
-        std::cerr << "=== [AVATAR-REPO END] ===" << std::endl;
         return resp;
 
     } catch (const std::exception& e) {
-        std::cerr << "[AVATAR-REPO] EXCEPTION: " << e.what() << std::endl;
         LOG_ERROR("Database error in uploadAvatar: %s", e.what());
         throw ServiceException("头像上传失败");
     }

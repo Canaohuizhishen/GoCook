@@ -200,7 +200,7 @@ void UserServiceImpl::resetPassword(const std::string& token, const std::string&
 
     // 2. Validate new password strength (reuse same rules as changePassword)
     if (newPassword.size() < 6) {
-        throw ServiceException("密码需包含字母和数字，至少8位", 400);
+        throw ServiceException("密码需包含字母和数字，至少6位", 400);
     }
     bool hasLetter = false, hasDigit = false;
     for (char c : newPassword) {
@@ -208,7 +208,7 @@ void UserServiceImpl::resetPassword(const std::string& token, const std::string&
         if (std::isdigit(static_cast<unsigned char>(c))) hasDigit = true;
     }
     if (!hasLetter || !hasDigit) {
-        throw ServiceException("密码需包含字母和数字，至少8位", 400);
+        throw ServiceException("密码需包含字母和数字，至少6位", 400);
     }
 
     // 3. Hash new password
@@ -264,22 +264,17 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
 void UserServiceImpl::changePassword(int userId,
                                       const std::string& currentPassword,
                                       const std::string& newPassword) {
-    std::cerr << "[PASSWORD] UserServiceImpl::changePassword(userId=" << userId << ")" << std::endl;
-
     // 1. 获取当前密码哈希
     std::string currentHash = userRepo_->getPasswordHash(userId);
-    std::cerr << "[PASSWORD] got current hash, length=" << currentHash.size() << std::endl;
 
     // 2. 验证原密码
     if (!validatePassword(currentPassword, currentHash)) {
-        std::cerr << "[PASSWORD] current password validation FAILED" << std::endl;
         throw ServiceException("原密码不正确", 400);
     }
-    std::cerr << "[PASSWORD] current password validation OK" << std::endl;
 
     // 3. 验证新密码强度（至少6位，含字母和数字）
     if (newPassword.size() < 6) {
-        throw ServiceException("密码需包含字母和数字，至少8位", 400);
+        throw ServiceException("密码需包含字母和数字，至少6位", 400);
     }
     bool hasLetter = false, hasDigit = false;
     for (char c : newPassword) {
@@ -287,16 +282,14 @@ void UserServiceImpl::changePassword(int userId,
         if (std::isdigit(static_cast<unsigned char>(c))) hasDigit = true;
     }
     if (!hasLetter || !hasDigit) {
-        throw ServiceException("密码需包含字母和数字，至少8位", 400);
+        throw ServiceException("密码需包含字母和数字，至少6位", 400);
     }
 
     // 4. 对新密码进行哈希
     std::string newHash = hashPassword(newPassword);
-    std::cerr << "[PASSWORD] new password hashed OK, length=" << newHash.size() << std::endl;
 
     // 5. 更新数据库
     userRepo_->changePassword(userId, newHash);
-    std::cerr << "[PASSWORD] password changed successfully" << std::endl;
 }
 void UserServiceImpl::deleteAccount(int userId) {
     // Verify user exists first
@@ -307,16 +300,10 @@ void UserServiceImpl::deleteAccount(int userId) {
     userRepo_->deleteAccount(userId);
 }
 AvatarUploadResponse UserServiceImpl::uploadAvatar(int userId, const std::string& filePath) {
-    std::cerr << "[AVATAR-SERVICE] UserServiceImpl::uploadAvatar(userId="
-              << userId << ", filePath='" << filePath << "')" << std::endl;
     if (filePath.empty()) {
-        std::cerr << "[AVATAR-SERVICE] ERROR: empty filePath" << std::endl;
         throw ServiceException("文件路径无效", 400);
     }
-    auto result = userRepo_->uploadAvatar(userId, filePath);
-    std::cerr << "[AVATAR-SERVICE] repo returned: avatar_id=" << result.avatar_id
-              << " avatar_url='" << result.avatar_url << "'" << std::endl;
-    return result;
+    return userRepo_->uploadAvatar(userId, filePath);
 }
 UserPreferences UserServiceImpl::getPreferences(int userId) {
     // Verify user exists first

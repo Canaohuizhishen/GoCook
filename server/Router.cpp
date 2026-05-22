@@ -270,6 +270,9 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Patch(R"(/api/users/me/favorites/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateFavoriteItem(req, res);
     });
+    // 批量删除收藏：注册 POST + DELETE 两个方法。
+    // POST 是客户端实际使用的路径（httplib 对 DELETE 携带 body 支持不可靠）；
+    // DELETE 保留供标准 REST 客户端使用。两个方法指向同一处理器。
     svr.Post("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.batchDeleteFavorites(req, res);
     });
