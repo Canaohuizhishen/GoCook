@@ -377,6 +377,7 @@ void RecipeViewModel::removeFavorite(int favoriteId)
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
+            self->m_favoritesLoading = false;
             self->loadFavorites(1, 20);
         } else {
             emit self->favoriteOperationFailed(QString::fromStdString(
@@ -396,6 +397,7 @@ void RecipeViewModel::batchRemoveFavorites(const QVariantList &favoriteIds)
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
+            self->m_favoritesLoading = false;
             self->loadFavorites(1, 20);
             self->loadFavoriteGroups();
         } else {
@@ -414,8 +416,7 @@ void RecipeViewModel::moveFavorite(int favoriteId, int groupId)
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
-            self->loadFavorites(1, 20);
-            self->loadFavoriteGroups();
+            emit self->favoriteMoved();
         } else {
             emit self->favoriteOperationFailed(QString::fromStdString(
                 error.empty() ? "移动失败" : error));
@@ -439,8 +440,7 @@ void RecipeViewModel::batchMoveFavorites(const QVariantList &favoriteIds, int gr
                     error.empty() ? "批量移动失败" : error));
             }
             if (--(*pending) == 0) {
-                self->loadFavorites(1, 20);
-                self->loadFavoriteGroups();
+                emit self->favoriteMoved();
             }
         });
     }

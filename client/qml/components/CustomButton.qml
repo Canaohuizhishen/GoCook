@@ -8,9 +8,10 @@ Button {
 
     // 按钮类型枚举
     enum ButtonType {
-        Primary,    // 主要操作（填充主色）
-        Secondary,  // 次要操作（边框）
-        Text        // 纯文字按钮
+        Primary,     // 主要操作（填充主色）
+        Secondary,   // 次要操作（边框）
+        Text,        // 纯文字按钮
+        Destructive  // 破坏性操作（红色实心）
     }
 
     // 可配置属性
@@ -36,6 +37,11 @@ Button {
                 if (control.pressed) return Theme.primaryDarkColor
                 if (control.hovered) return Theme.primaryLightColor
                 return Theme.primaryColor
+            }
+            if (control.buttonType === CustomButton.ButtonType.Destructive) {
+                if (control.pressed) return "#D32F2F"
+                if (control.hovered) return "#E57373"
+                return Theme.errorColor
             }
             return "transparent"
         }
@@ -63,7 +69,7 @@ Button {
         font.weight: control.buttonType === CustomButton.ButtonType.Primary ? Theme.fontWeightMedium : Theme.fontWeightNormal
         color: {
             if (!control.enabled) return Theme.textHint
-            if (control.buttonType === CustomButton.ButtonType.Primary) return Theme.textOnPrimary
+            if (control.buttonType === CustomButton.ButtonType.Primary || control.buttonType === CustomButton.ButtonType.Destructive) return Theme.textOnPrimary
             if (control.buttonType === CustomButton.ButtonType.Text) {
                 return Theme.primaryColor
             }

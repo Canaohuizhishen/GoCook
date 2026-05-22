@@ -8,8 +8,6 @@ Page {
     id: detailPage
     title: qsTr("通知详情")
 
-    background: Rectangle { color: Theme.backgroundColor }
-
     // 从 NotificationPage 传入的通知数据
     property var notificationData: ({})
 

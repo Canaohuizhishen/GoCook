@@ -8,8 +8,6 @@ Page {
     id: favoritesPage
     title: qsTr("我的收藏")
 
-    background: Rectangle { color: Theme.backgroundColor }
-
     signal showDetailRequest(int recipeId)
 
     property string currentGroupFilter: ""
@@ -78,6 +76,7 @@ Page {
                 text: parent.text
                 font: parent.font
                 color: Theme.primaryColor
+                horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
             }
             onClicked: {
@@ -924,6 +923,10 @@ Page {
         function onFavoriteOperationFailed(error) {
             errorMessage = error
             errorTimer.restart()
+        }
+        function onFavoriteMoved() {
+            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavoriteGroups()
         }
     }
 }

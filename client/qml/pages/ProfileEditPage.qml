@@ -9,9 +9,6 @@ Page {
     id: profileEditPage
     title: qsTr("编辑个人资料")
 
-    signal showPreferencesRequest()
-    signal showHealthProfileRequest()
-
     function goBack() {
         var item = profileEditPage.parent
         while (item) {
@@ -106,208 +103,172 @@ Page {
         authViewModel.loadProfile()
     }
 
-    Item {
+    Flickable {
+        id: profileFlickable
         anchors.fill: parent
-        ScrollView {
-            anchors.fill: parent; clip: true; contentWidth: availableWidth
-            Column {
-                width: Math.min(parent.width - Theme.spacingLarge * 2, 400)
+        anchors.margins: Theme.spacingMedium
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: true
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
+
+        ColumnLayout {
+            id: column
+            width: parent.width
+            spacing: Theme.spacingMedium
+
+            // ========== 顶部间距 ==========
+            Item { Layout.fillWidth: true; implicitHeight: Theme.spacingXLarge }
+
+            // ========== 圆形头像 ==========
+            Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                anchors.top: parent.top; anchors.topMargin: Theme.spacingXLarge
-                spacing: Theme.spacingMedium
+                width: 110; height: 110
 
-                // ========== 圆形头像 ==========
-                Item {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: 110; height: 110
-
-                    CircularImage {
-                        id: avatarImage
-                        anchors.fill: parent
-                        borderColor: Theme.dividerColor
-                        borderWidth: 1.5
-                        source: profileEditPage.avatarDisplayUrl
-                        placeholderFallback: {
-                            var n = authViewModel.profileDisplayName
-                            if (n.length > 0) return n.charAt(0).toUpperCase()
-                            n = authViewModel.username
-                            if (n.length > 0) return n.charAt(0).toUpperCase()
-                            return "?"
-                        }
-                        placeholderText.font.family: Theme.fontFamily
-                        placeholderText.font.pointSize: 40
-                        placeholderText.font.weight: Theme.fontWeightMedium
-                        placeholderText.color: Theme.textHint
+                CircularImage {
+                    id: avatarImage
+                    anchors.fill: parent
+                    borderColor: Theme.dividerColor
+                    borderWidth: 1.5
+                    source: profileEditPage.avatarDisplayUrl
+                    placeholderFallback: {
+                        var n = authViewModel.profileDisplayName
+                        if (n.length > 0) return n.charAt(0).toUpperCase()
+                        n = authViewModel.username
+                        if (n.length > 0) return n.charAt(0).toUpperCase()
+                        return "?"
                     }
-
-                    // 点击更换
-                    MouseArea {
-                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: avatarFileDialog.open()
-                    }
-
-                    // 编辑角标
-                    Rectangle {
-                        anchors.right: parent.right; anchors.bottom: parent.bottom
-                        width: 32; height: 32; radius: 16; color: Theme.primaryColor; z: 1
-                        Text {
-                            anchors.centerIn: parent; text: "✎"
-                            font.pointSize: 16; color: Theme.textOnPrimary
-                        }
-                    }
+                    placeholderText.font.family: Theme.fontFamily
+                    placeholderText.font.pointSize: 40
+                    placeholderText.font.weight: Theme.fontWeightMedium
+                    placeholderText.color: Theme.textHint
                 }
 
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("点击更换头像")
-                    font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
-                    color: Theme.textHint
+                // 点击更换
+                MouseArea {
+                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                    onClicked: avatarFileDialog.open()
                 }
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
-
-                // ========== 用户名 ==========
-                ColumnLayout { width: parent.width; spacing: Theme.spacingXSmall
-                    Text { text: qsTr("用户名"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
-                    Rectangle {
-                        Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
-                        color: Theme.searchBarBackground; border.color: Theme.dividerColor
-                        TextInput {
-                            anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
-                            verticalAlignment: TextInput.AlignVCenter
-                            text: authViewModel.username; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.textHint
-                            readOnly: true; selectByMouse: true
-                        }
+                // 编辑角标
+                Rectangle {
+                    anchors.right: parent.right; anchors.bottom: parent.bottom
+                    width: 32; height: 32; radius: 16; color: Theme.primaryColor; z: 1
+                    Text {
+                        anchors.centerIn: parent; text: "✎"
+                        font.pointSize: 16; color: Theme.textOnPrimary
                     }
                 }
-
-                // ========== 昵称 ==========
-                ColumnLayout { width: parent.width; spacing: Theme.spacingXSmall
-                    Text { text: qsTr("昵称"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
-                    Rectangle {
-                        Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
-                        color: Theme.cardBackground; border.color: Theme.dividerColor
-                        TextInput {
-                            id: displayNameInput
-                            anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
-                            verticalAlignment: TextInput.AlignVCenter
-                            text: authViewModel.profileDisplayName; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
-                            clip: true; selectByMouse: true
-                        }
-                    }
-                }
-
-                // ========== 邮箱 ==========
-                ColumnLayout { width: parent.width; spacing: Theme.spacingXSmall
-                    Text { text: qsTr("邮箱"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
-                    Rectangle {
-                        Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
-                        color: Theme.cardBackground; border.color: Theme.dividerColor
-                        TextInput {
-                            id: emailInput
-                            anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
-                            verticalAlignment: TextInput.AlignVCenter
-                            text: authViewModel.profileEmail; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
-                            clip: true; selectByMouse: true; inputMethodHints: Qt.ImhEmailCharactersOnly
-                        }
-                    }
-                }
-
-                // ========== 手机号 ==========
-                ColumnLayout { width: parent.width; spacing: Theme.spacingXSmall
-                    Text { text: qsTr("手机号"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
-                    Rectangle {
-                        Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
-                        color: Theme.cardBackground; border.color: Theme.dividerColor
-                        TextInput {
-                            id: phoneInput
-                            anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
-                            verticalAlignment: TextInput.AlignVCenter
-                            text: authViewModel.profilePhone; font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
-                            clip: true; selectByMouse: true; inputMethodHints: Qt.ImhDialableCharactersOnly
-                        }
-                    }
-                }
-
-                Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
-
-                // ========== 状态提示 ==========
-                Text {
-                    id: statusText; width: parent.width; height: 20
-                    font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
-                    color: Theme.accentColor; horizontalAlignment: Text.AlignHCenter
-                    visible: text.length > 0
-                }
-
-                // ========== 饮食偏好设置入口 ==========
-                Button {
-                    id: prefBtn; width: parent.width; height: 50
-                    text: qsTr("饮食偏好设置")
-                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.searchBarBackground; border.color: Theme.dividerColor; border.width: 1 }
-                    contentItem: Text {
-                        text: prefBtn.text; font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
-                        color: Theme.textPrimary; horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        profileEditPage.showPreferencesRequest()
-                    }
-                }
-
-                // ========== 健康指标设置入口 ==========
-                Button {
-                    id: healthBtn; width: parent.width; height: 50
-                    text: qsTr("健康指标")
-                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.searchBarBackground; border.color: Theme.dividerColor; border.width: 1 }
-                    contentItem: Text {
-                        text: healthBtn.text; font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
-                        color: Theme.textPrimary; horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        profileEditPage.showHealthProfileRequest()
-                    }
-                }
-
-                // ========== 保存按钮 ==========
-                Button {
-                    id: saveBtn; width: parent.width; height: 50
-                    text: qsTr("保存修改")
-                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.primaryColor }
-                    contentItem: Text {
-                        text: saveBtn.text; font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium
-                        color: Theme.textOnPrimary; horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        profileEditPage.doSaveProfile()
-                    }
-                }
-
-                // ========== 返回按钮 ==========
-                Button {
-                    id: backBtn; width: parent.width; height: 50; text: qsTr("返回")
-                    background: Rectangle {
-                        radius: Theme.radiusMedium; color: "transparent"
-                        border.color: Theme.primaryColor; border.width: 1
-                    }
-                    contentItem: Text {
-                        text: backBtn.text; font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSizeBody; color: Theme.primaryColor
-                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: profileEditPage.goBack()
-                }
-
-                Item { width: 1; height: Theme.spacingXLarge }
             }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("点击更换头像")
+                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
+                color: Theme.textHint
+            }
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
+
+            // ========== 用户名 ==========
+            ColumnLayout { Layout.fillWidth: true; spacing: Theme.spacingXSmall
+                Text { text: qsTr("用户名"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
+                Rectangle {
+                    Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
+                    color: Theme.searchBarBackground; border.color: Theme.dividerColor
+                    TextInput {
+                        anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
+                        verticalAlignment: TextInput.AlignVCenter
+                        text: authViewModel.username; font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody; color: Theme.textHint
+                        readOnly: true; selectByMouse: true
+                    }
+                }
+            }
+
+            // ========== 昵称 ==========
+            ColumnLayout { Layout.fillWidth: true; spacing: Theme.spacingXSmall
+                Text { text: qsTr("昵称"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
+                Rectangle {
+                    Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
+                    color: Theme.cardBackground; border.color: Theme.dividerColor
+                    TextInput {
+                        id: displayNameInput
+                        anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
+                        verticalAlignment: TextInput.AlignVCenter
+                        text: authViewModel.profileDisplayName; font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
+                        clip: true; selectByMouse: true
+                    }
+                }
+            }
+
+            // ========== 邮箱 ==========
+            ColumnLayout { Layout.fillWidth: true; spacing: Theme.spacingXSmall
+                Text { text: qsTr("邮箱"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
+                Rectangle {
+                    Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
+                    color: Theme.cardBackground; border.color: Theme.dividerColor
+                    TextInput {
+                        id: emailInput
+                        anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
+                        verticalAlignment: TextInput.AlignVCenter
+                        text: authViewModel.profileEmail; font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
+                        clip: true; selectByMouse: true; inputMethodHints: Qt.ImhEmailCharactersOnly
+                    }
+                }
+            }
+
+            // ========== 手机号 ==========
+            ColumnLayout { Layout.fillWidth: true; spacing: Theme.spacingXSmall
+                Text { text: qsTr("手机号"); font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption; color: Theme.textHint }
+                Rectangle {
+                    Layout.fillWidth: true; height: 50; radius: Theme.radiusMedium
+                    color: Theme.cardBackground; border.color: Theme.dividerColor
+                    TextInput {
+                        id: phoneInput
+                        anchors.fill: parent; anchors.leftMargin: Theme.spacingMedium; anchors.rightMargin: Theme.spacingMedium
+                        verticalAlignment: TextInput.AlignVCenter
+                        text: authViewModel.profilePhone; font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
+                        clip: true; selectByMouse: true; inputMethodHints: Qt.ImhDialableCharactersOnly
+                    }
+                }
+            }
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
+
+            // ========== 状态提示 ==========
+            Text {
+                id: statusText; Layout.fillWidth: true; height: 20
+                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
+                color: Theme.accentColor; horizontalAlignment: Text.AlignHCenter
+                visible: text.length > 0
+            }
+
+            // ========== 保存按钮 ==========
+            CustomButton {
+                Layout.fillWidth: true
+                buttonText: qsTr("保存修改")
+                buttonType: CustomButton.ButtonType.Primary
+                onClicked: profileEditPage.doSaveProfile()
+            }
+
+            // ========== 返回按钮 ==========
+            CustomButton {
+                Layout.fillWidth: true
+                buttonText: qsTr("返回")
+                buttonType: CustomButton.ButtonType.Secondary
+                onClicked: profileEditPage.goBack()
+            }
+
+            Item { width: 1; height: Theme.spacingXLarge }
         }
     }
 
@@ -320,7 +281,6 @@ Page {
     Connections {
         target: authViewModel
         function onProfileChanged() {
-            console.log("[QML-AVATAR] onProfileChanged fired, profileAvatarUrl='" + authViewModel.profileAvatarUrl + "'")
             var url = authViewModel.profileAvatarUrl
             if (url.length > 0)
                 profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + url

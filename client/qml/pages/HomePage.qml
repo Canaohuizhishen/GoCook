@@ -11,8 +11,7 @@ Page {
     signal showDetailRequest(int recipeId)
     signal showSubmitRequest()
     signal showSearchRequest()
-    signal showProfileEditRequest()
-    signal showAccountSecurityRequest()
+    signal showSettingsRequest()
     signal showNotificationRequest()
 
     ColumnLayout {
@@ -92,11 +91,8 @@ Page {
                 onShowSubmitRequest: {
                     homePage.showSubmitRequest()
                 }
-                onShowProfileEditRequest: {
-                    homePage.showProfileEditRequest()
-                }
-                onShowAccountSecurityRequest: {
-                    homePage.showAccountSecurityRequest()
+                onShowSettingsRequest: {
+                    homePage.showSettingsRequest()
                 }
                 onShowNotificationRequest: {
                     homePage.showNotificationRequest()

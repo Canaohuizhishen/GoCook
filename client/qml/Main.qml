@@ -153,11 +153,8 @@ ApplicationWindow {
             onShowSearchRequest: () => {
                 stackView.push(searchPage)
             }
-            onShowProfileEditRequest: () => {
-                stackView.push(profileEditPage)
-            }
-            onShowAccountSecurityRequest: () => {
-                stackView.push(accountSecurityPage)
+            onShowSettingsRequest: () => {
+                stackView.push(settingsPage)
             }
             onShowNotificationRequest: () => {
                 stackView.push(notificationPage)
@@ -191,11 +188,22 @@ ApplicationWindow {
 
     Component {
         id: profileEditPage
-        ProfileEditPage {
-            onShowPreferencesRequest: () => {
+        ProfileEditPage { }
+    }
+
+    Component {
+        id: settingsPage
+        SettingsPage {
+            onEditProfileRequest: () => {
+                stackView.push(profileEditPage)
+            }
+            onAccountSecurityRequest: () => {
+                stackView.push(accountSecurityPage)
+            }
+            onDietaryPreferencesRequest: () => {
                 stackView.push(preferencesPage)
             }
-            onShowHealthProfileRequest: () => {
+            onHealthProfileRequest: () => {
                 stackView.push(healthProfilePage)
             }
         }

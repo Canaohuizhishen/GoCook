@@ -68,6 +68,7 @@ public:
     Q_INVOKABLE void updateFavoriteGroupName(int groupId, const QString &name);
 
 signals:
+    void favoriteMoved();
     void recipesChanged();
     void isLoadingChanged();
     void hasMoreChanged();
