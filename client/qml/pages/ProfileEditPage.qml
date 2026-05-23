@@ -106,7 +106,6 @@ Page {
     Flickable {
         id: profileFlickable
         anchors.fill: parent
-        anchors.margins: Theme.spacingMedium
         contentWidth: width
         contentHeight: column.implicitHeight
         clip: true
@@ -119,7 +118,10 @@ Page {
 
         ColumnLayout {
             id: column
-            width: parent.width
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacingMedium
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.spacingMedium
             spacing: Theme.spacingMedium
 
             // ========== 顶部间距 ==========
@@ -127,7 +129,7 @@ Page {
 
             // ========== 圆形头像 ==========
             Item {
-                anchors.horizontalCenter: parent.horizontalCenter
+                Layout.alignment: Qt.AlignHCenter
                 width: 110; height: 110
 
                 CircularImage {
@@ -167,10 +169,22 @@ Page {
             }
 
             Text {
-                anchors.horizontalCenter: parent.horizontalCenter
+                Layout.alignment: Qt.AlignHCenter
                 text: qsTr("点击更换头像")
                 font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                 color: Theme.textHint
+            }
+
+            // ★ 调试：显示当前头像 URL
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "URL: " + profileEditPage.avatarDisplayUrl
+                font.family: Theme.fontFamily; font.pointSize: 9
+                color: "gray"
+                visible: profileEditPage.avatarDisplayUrl.toString().length > 0
+                elide: Text.ElideMiddle
+                maximumLineCount: 2
+                wrapMode: Text.Wrap
             }
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
@@ -278,6 +292,9 @@ Page {
             avatarDisplayUrl = selectedFileUrl
     }
 
+    // 头像版本号变更时通过 onProfileChanged 处理（authViewModel 的属性通过 Connections 传递）
+
+
     Connections {
         target: authViewModel
         function onProfileChanged() {
@@ -298,7 +315,11 @@ Page {
             profileEditPage.selectedFileUrl = ""
             profileEditPage.pendingAvatarPath = ""
             profileEditPage.avatarUploading = false
-            profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + serverUrl
+            // 先清空再设回，强制 QML Image 重新加载（避免 httplib 不识别 ?t= 参数）
+            profileEditPage.avatarDisplayUrl = ""
+            Qt.callLater(function() {
+                profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + serverUrl
+            })
             statusText.text = qsTr("头像已更新")
         }
         function onAvatarUploadFailed(error) {

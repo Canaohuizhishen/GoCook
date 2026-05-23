@@ -23,6 +23,7 @@ class AuthViewModel : public QObject
     Q_PROPERTY(QString profileEmail READ profileEmail NOTIFY profileChanged)
     Q_PROPERTY(QString profilePhone READ profilePhone NOTIFY profileChanged)
     Q_PROPERTY(QString profileAvatarUrl READ profileAvatarUrl NOTIFY profileChanged)
+    Q_PROPERTY(int avatarVersion READ avatarVersion NOTIFY avatarVersionChanged)
 
     // API 基础 URL（用于 QML 拼接头像等静态资源 URL）
     Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)
@@ -40,6 +41,7 @@ public:
     QString profileEmail() const { return m_profileEmail; }
     QString profilePhone() const { return m_profilePhone; }
     QString profileAvatarUrl() const { return m_profileAvatarUrl; }
+    int avatarVersion() const { return m_avatarVersion; }
     QString apiBaseUrl() const;
 
     Q_INVOKABLE void login(const QString &username, const QString &password);
@@ -75,6 +77,7 @@ signals:
 
     // 个人资料信号
     void profileChanged();
+    void avatarVersionChanged();
     void profileSaved();
     void profileSaveFailed(const QString &error);
     void avatarUploaded(const QString &avatarUrl);
@@ -114,4 +117,5 @@ private:
     QString m_profilePhone;
     QString m_profileAvatarUrl;
     int m_pendingAvatarId = 0;   // 上次上传头像的 avatar_id，在 saveProfile 时传递
+    int m_avatarVersion = 0;     // 头像缓存版本号，每次成功上传或保存后递增
 };

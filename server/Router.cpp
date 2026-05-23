@@ -60,6 +60,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
         if (ip.empty()) {
             ip = "127.0.0.1";
         }
+        LOG_DEBUG("%s %s from %s", req.method.c_str(), req.path.c_str(), ip.c_str());
         if (!rateLimiter_.isAllowed(ip, req.path)) {
             res.status = 429;
             res.set_content(R"({"error":"Too many requests. Please try again later."})", "application/json");
@@ -107,24 +108,42 @@ void Router::registerRootRoute(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerAvatarFileRoutes(httplib::Server& svr) {
-    // 确保上传目录存在
+    // 上传目录：可从 GOCOOK_UPLOADS_DIR 环境变量覆盖，默认 "uploads"
+    const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
+    std::string baseDir = envDir ? envDir : "uploads";
+    std::string avatarDir = std::filesystem::absolute(baseDir + "/avatars/").string();
     try {
-        std::filesystem::create_directories("uploads/avatars");
+        std::filesystem::create_directories(avatarDir);
     } catch (const std::exception& e) {
-        LOG_WARN("无法创建 uploads/avatars 目录: %s", e.what());
+        LOG_WARN("无法创建头像目录 %s: %s", avatarDir.c_str(), e.what());
     }
+    LOG_INFO("Avatar directory: %s", avatarDir.c_str());
 
     // 服务头像文件：GET /uploads/avatars/<filename>
-    svr.Get(R"(/uploads/avatars/(.+))", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Get(R"(/uploads/avatars/(.+))", [avatarDir](const httplib::Request& req, httplib::Response& res) {
         try {
             std::string filename = req.matches[1];
-            // 防止路径穿越攻击
+            // 第一层防御：拦截基本路径穿越尝试（.. 和 /）
             if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
                 res.status = 400;
                 res.set_content("Bad request", "text/plain");
                 return;
             }
-            std::string filePath = "uploads/avatars/" + filename;
+            // 第二层防御：使用 weakly_canonical 验证最终路径仍在允许目录内
+            std::string filePath = avatarDir + "/" + filename;
+            std::filesystem::path normPath = std::filesystem::weakly_canonical(
+                std::filesystem::path(filePath));
+            std::filesystem::path allowedDir = std::filesystem::weakly_canonical(
+                std::filesystem::path(avatarDir));
+            auto normStr = normPath.string();
+            auto allowStr = allowedDir.string();
+            if (normStr.rfind(allowStr, 0) != 0) {
+                LOG_WARN("Avatar path traversal blocked: %s → %s",
+                         filename.c_str(), normStr.c_str());
+                res.status = 400;
+                res.set_content("Bad request", "text/plain");
+                return;
+            }
             if (!std::filesystem::exists(filePath)) {
                 res.status = 404;
                 res.set_content("Not found", "text/plain");

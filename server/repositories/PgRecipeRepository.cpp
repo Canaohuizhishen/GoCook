@@ -99,8 +99,10 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
         std::string countSql = "SELECT COUNT(*) FROM recipes r " + where;
         int total;
         if (pb.values.empty()) {
+            LOG_DEBUG("[SQL] findPublicRecipes count");
             total = txn.exec(countSql)[0][0].as<int>();
         } else {
+            LOG_DEBUG("[SQL] findPublicRecipes count");
             total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
                         [0][0].as<int>();
         }
@@ -130,6 +132,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
             LEFT JOIN users u ON r.author_id = u.id
         )" + where;
 
+        LOG_DEBUG("[SQL] findPublicRecipes data");
         auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
 
         for (const auto& row : rows) {
@@ -205,8 +208,10 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
         std::string countSql = "SELECT COUNT(*) FROM recipes r " + where;
         int total;
         if (pb.values.empty()) {
+            LOG_DEBUG("[SQL] searchRecipes count | keyword=%s", keyword.c_str());
             total = txn.exec(countSql)[0][0].as<int>();
         } else {
+            LOG_DEBUG("[SQL] searchRecipes count | keyword=%s", keyword.c_str());
             total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
                         [0][0].as<int>();
         }
@@ -236,6 +241,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             LEFT JOIN users u ON r.author_id = u.id
         )" + where;
 
+        LOG_DEBUG("[SQL] searchRecipes data | keyword=%s", keyword.c_str());
         auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
 
         for (const auto& row : rows) {
@@ -302,6 +308,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
               AND jsonb_array_length(r.ingredients) > 0
         )";
         int total = txn.exec(countSql)[0][0].as<int>();
+        LOG_DEBUG("[SQL] findRecommendedRecipes count: %d", total);
 
         // ── Data query: CTE-based inventory matching ──
         std::string dataSql = R"(
@@ -386,6 +393,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
             LIMIT $2 OFFSET $3
         )";
 
+        LOG_DEBUG("[SQL] findRecommendedRecipes data | userId=%d", userId);
         auto rows = txn.exec_params(dataSql,
                                      userId,
                                      size,
@@ -493,6 +501,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             + favJoin
             + " WHERE r.id = $1";
 
+        LOG_DEBUG("[SQL] findById | recipeId=%d userId=%d", recipeId, userId);
         pqxx::result r;
         if (checkFav)
             r = txn.exec_params(sql, recipeId, userId);
@@ -574,6 +583,7 @@ std::vector<RecipeVideo> PgRecipeRepository::findVideos(int recipeId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] findVideos | recipeId=%d", recipeId);
         pqxx::result r = txn.exec_params(
             "SELECT id, title, platform, url, thumbnail_url, duration_seconds"
             " FROM recipe_videos"
@@ -609,6 +619,7 @@ PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
         pqxx::work txn(*conn);
 
         // 总数
+        LOG_DEBUG("[SQL] findRatings count | recipeId=%d", recipeId);
         pqxx::result countResult = txn.exec_params(
             "SELECT COUNT(*) FROM ratings WHERE recipe_id = $1",
             recipeId);
@@ -616,6 +627,7 @@ PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
 
         // 分页数据
         int offset = (page - 1) * size;
+        LOG_DEBUG("[SQL] findRatings data | recipeId=%d page=%d size=%d", recipeId, page, size);
         pqxx::result rows = txn.exec_params(
             "SELECT r.id, r.user_id, u.username, r.rating, r.comment, r.created_at"
             " FROM ratings r"
@@ -679,6 +691,7 @@ SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRe
             nutritionJson = json::object();
         }
 
+        LOG_DEBUG("[SQL] INSERT recipes (create) | author_id=%d name=%s", userId, data.name.c_str());
         pqxx::result r = txn.exec_params(
             "INSERT INTO recipes (name, description, image_url,"
             " ingredients, steps, nutrition_info, tags,"
@@ -729,6 +742,7 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
             pb.add(status);
         }
 
+        LOG_DEBUG("[SQL] findMySubmittedRecipes count | userId=%d", userId);
         std::string countSql = "SELECT COUNT(*) FROM recipes " + where;
         int total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
                         [0][0].as<int>();
@@ -741,6 +755,7 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
         std::string dataSql = "SELECT id, name, status, reject_reason, submitted_at"
                               " FROM recipes " + where;
 
+        LOG_DEBUG("[SQL] findMySubmittedRecipes data | userId=%d", userId);
         auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
 
         for (const auto& row : rows) {
@@ -775,6 +790,7 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
         pqxx::work txn(*conn);
 
         // 1. 验证菜谱存在、归属以及是否可编辑
+        LOG_DEBUG("[SQL] SELECT author_id, status FROM recipes WHERE id = $1 (update verify) | $1=%d", recipeId);
         pqxx::result r = txn.exec_params(
             "SELECT author_id, status FROM recipes WHERE id = $1", recipeId);
 
@@ -815,6 +831,7 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
         }
 
         // 3. 更新菜谱，编辑后始终回到 pending 状态等待重新审核
+        LOG_DEBUG("[SQL] UPDATE recipes (update) | id=%d", recipeId);
         pqxx::result updateResult = txn.exec_params(
             "UPDATE recipes SET"
             " name = $1, description = $2, image_url = $3,"
@@ -852,6 +869,7 @@ void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<
         pqxx::work txn(*conn);
 
         // Check if already favorited
+        LOG_DEBUG("[SQL] toggleFavorite check | userId=%d recipeId=%d", userId, recipeId);
         pqxx::result existing = txn.exec_params(
             "SELECT id FROM favorites WHERE user_id = $1 AND recipe_id = $2",
             userId, recipeId
@@ -863,11 +881,13 @@ void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<
             bool pub = isPublic.has_value() ? isPublic.value() : true;
 
             if (gid > 0) {
+                LOG_DEBUG("[SQL] toggleFavorite INSERT (with group) | userId=%d recipeId=%d", userId, recipeId);
                 txn.exec_params(
                     "INSERT INTO favorites (user_id, recipe_id, group_id, is_public) VALUES ($1, $2, $3, $4)",
                     userId, recipeId, gid, pub
                 );
             } else {
+                LOG_DEBUG("[SQL] toggleFavorite INSERT (no group) | userId=%d recipeId=%d", userId, recipeId);
                 txn.exec_params(
                     "INSERT INTO favorites (user_id, recipe_id, is_public) VALUES ($1, $2, $3)",
                     userId, recipeId, pub
@@ -875,6 +895,7 @@ void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<
             }
         } else {
             // Already favorited → unfavorite (toggle off)
+            LOG_DEBUG("[SQL] toggleFavorite DELETE | userId=%d recipeId=%d", userId, recipeId);
             txn.exec_params(
                 "DELETE FROM favorites WHERE user_id = $1 AND recipe_id = $2",
                 userId, recipeId
@@ -894,6 +915,7 @@ void PgRecipeRepository::rateRecipe(int userId, int recipeId,
         pqxx::work txn(*conn);
 
         // 检查是否已评过分
+        LOG_DEBUG("[SQL] rateRecipe check existing | userId=%d recipeId=%d", userId, recipeId);
         pqxx::result existing = txn.exec_params(
             "SELECT id FROM ratings WHERE user_id = $1 AND recipe_id = $2",
             userId, recipeId);
@@ -901,12 +923,14 @@ void PgRecipeRepository::rateRecipe(int userId, int recipeId,
             throw ServiceException("您已评过分", 409);
         }
 
+        LOG_DEBUG("[SQL] rateRecipe INSERT | userId=%d recipeId=%d rating=%d", userId, recipeId, req.rating);
         txn.exec_params(
             "INSERT INTO ratings (user_id, recipe_id, rating, comment)"
             " VALUES ($1, $2, $3, $4)",
             userId, recipeId, req.rating, req.comment);
 
         // 更新菜谱平均分
+        LOG_DEBUG("[SQL] rateRecipe update avg_rating | recipeId=%d", recipeId);
         txn.exec_params(
             "UPDATE recipes SET avg_rating = ("
             "  SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0)"
@@ -929,6 +953,7 @@ void PgRecipeRepository::updateRating(int userId, int recipeId, int ratingId,
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] updateRating | ratingId=%d userId=%d recipeId=%d", ratingId, userId, recipeId);
         pqxx::result r = txn.exec_params(
             "UPDATE ratings SET rating = $1, comment = $2, updated_at = NOW()"
             " WHERE id = $3 AND user_id = $4 AND recipe_id = $5"
@@ -940,6 +965,7 @@ void PgRecipeRepository::updateRating(int userId, int recipeId, int ratingId,
         }
 
         // 更新菜谱平均分
+        LOG_DEBUG("[SQL] updateRating avg_rating | recipeId=%d", recipeId);
         txn.exec_params(
             "UPDATE recipes SET avg_rating = ("
             "  SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0)"
@@ -961,6 +987,7 @@ void PgRecipeRepository::deleteRating(int userId, int recipeId, int ratingId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] deleteRating | ratingId=%d userId=%d recipeId=%d", ratingId, userId, recipeId);
         pqxx::result r = txn.exec_params(
             "DELETE FROM ratings WHERE id = $1 AND user_id = $2 AND recipe_id = $3"
             " RETURNING id",
@@ -971,6 +998,7 @@ void PgRecipeRepository::deleteRating(int userId, int recipeId, int ratingId) {
         }
 
         // 更新菜谱平均分
+        LOG_DEBUG("[SQL] deleteRating avg_rating | recipeId=%d", recipeId);
         txn.exec_params(
             "UPDATE recipes SET avg_rating = ("
             "  SELECT COALESCE(ROUND(AVG(rating)::numeric, 1), 0.0)"
@@ -992,6 +1020,7 @@ std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int rec
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] findMyRating | userId=%d recipeId=%d", userId, recipeId);
         pqxx::result r = txn.exec_params(
             "SELECT r.id, r.user_id, u.username, r.rating, r.comment, r.created_at"
             " FROM ratings r"
@@ -1029,6 +1058,7 @@ PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int siz
         pqxx::work txn(*conn);
 
         // 总数
+        LOG_DEBUG("[SQL] findMyRatings count | userId=%d", userId);
         pqxx::result countResult = txn.exec_params(
             "SELECT COUNT(*) FROM ratings WHERE user_id = $1",
             userId);
@@ -1036,6 +1066,7 @@ PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int siz
 
         // 分页数据
         int offset = (page - 1) * size;
+        LOG_DEBUG("[SQL] findMyRatings data | userId=%d page=%d size=%d", userId, page, size);
         pqxx::result rows = txn.exec_params(
             "SELECT r.id, r.recipe_id, rec.name AS recipe_name,"
             "       r.rating, r.comment, r.created_at, r.updated_at"
@@ -1077,6 +1108,7 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] findNutrition | recipeId=%d", recipeId);
         pqxx::result r = txn.exec_params(
             "SELECT r.id, r.name, r.nutrition_info"
             " FROM recipes r"

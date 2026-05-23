@@ -304,8 +304,12 @@ namespace DataMapper {
         map["type"]             = QString::fromStdString(item.type);
         map["subType"]         = QString::fromStdString(item.sub_type);
         map["is_read"]          = item.is_read;
-        map["relatedId"]       = item.related_id;
-        map["triggerUserName"]= QString::fromStdString(item.trigger_user_name);
+        map["relatedId"]       = item.related_id.has_value()
+                                     ? QVariant(item.related_id.value())
+                                     : QVariant();
+        map["triggerUserName"]= item.trigger_user_name.has_value()
+                                     ? QString::fromStdString(item.trigger_user_name.value())
+                                     : QVariant();
         map["createdAt"]        = QString::fromStdString(item.created_at);
         return map;
     }

@@ -17,10 +17,12 @@ public:
     std::optional<int> findIdByEmail(const std::string& email) override;
     std::optional<int> findIdByUsernameAndEmail(const std::string& username,
                                                  const std::string& email) override;
-    void createPasswordResetToken(int userId, const std::string& token,
-                                  const std::string& expiresAt) override;
+    void createPasswordResetToken(int userId, const std::string& token) override;
     std::optional<int> findUserIdByResetToken(const std::string& token) override;
     void markResetTokenUsed(const std::string& token) override;
+    void resetPasswordAndMarkTokenUsed(int userId,
+                                       const std::string& newPasswordHash,
+                                       const std::string& token) override;
     void updateProfile(int userId,
                        const gocook::models::UpdateProfileRequest& profile) override;
     std::string getPasswordHash(int userId) override;

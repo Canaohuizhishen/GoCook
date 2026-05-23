@@ -142,11 +142,15 @@ Page {
             ListView {
                 id: resultListView
                 anchors.fill: parent
-                anchors.leftMargin: Theme.spacingMedium
-                anchors.rightMargin: Theme.spacingMedium
+                leftMargin: Theme.spacingMedium
+                rightMargin: Theme.spacingMedium
                 spacing: Theme.spacingSmall
                 clip: true
                 visible: recipeVM.searchResults.length > 0
+
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
 
                 model: recipeVM.searchResults
 

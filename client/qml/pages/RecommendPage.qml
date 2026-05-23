@@ -46,13 +46,17 @@ Page {
     GridView {
         id: recipeGridView
         anchors.fill: parent
-        anchors.leftMargin: gridHMargin
-        anchors.rightMargin: gridHMargin
         cellWidth: gridCellWidth
         cellHeight: gridCellHeight
         clip: true
         boundsBehavior: Flickable.DragOverBounds
         bottomMargin: Theme.spacingLarge
+        leftMargin: gridHMargin
+        rightMargin: gridHMargin
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
         model: recipeVM.recipes
 

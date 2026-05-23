@@ -247,15 +247,20 @@ Page {
                 ListView {
                     id: favoritesListView
                     anchors.fill: parent
-                    anchors.margins: Theme.spacingMedium
+                    leftMargin: Theme.spacingMedium
+                    rightMargin: Theme.spacingMedium
                     spacing: Theme.spacingMedium
                     clip: true
                     visible: recipeVM.favorites.length > 0
 
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
+
                     model: recipeVM.favorites
 
                     delegate: Rectangle {
-                        width: favoritesListView.width
+                        width: favoritesListView.width - favoritesListView.leftMargin - favoritesListView.rightMargin
                         height: 110
                         radius: Theme.radiusMedium
                         color: Theme.cardBackground

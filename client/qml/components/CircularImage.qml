@@ -41,6 +41,13 @@ Item {
         anchors.fill: parent
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
+
+        onStatusChanged: {
+            if (img.status === Image.Error)
+                console.log("[CircularImage] ERROR loading image:", img.source)
+            else if (img.status === Image.Ready)
+                console.log("[CircularImage] image loaded:", img.source.toString().substring(0, 80))
+        }
     }
 
     // ============================================================

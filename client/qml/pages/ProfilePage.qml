@@ -63,9 +63,14 @@ Page {
                 placeholderText.color: Theme.textHint
 
                 // 直接绑定 source，比 Connections 命令式赋值更稳定
+                // 不使用 ?t= 查询参数（httplib 将其包含在文件名中导致 404），
+                // 改用 avatarVersion 属性变化触发绑定重新求值，从而强制 Image 重新加载
                 source: {
                     var url = authViewModel.profileAvatarUrl
-                    return url.length > 0 ? authViewModel.apiBaseUrl + url : ""
+                    if (url.length === 0) return ""
+                    // 依赖 avatarVersion 确保版本变化时重新求值
+                    var v = authViewModel.avatarVersion
+                    return authViewModel.apiBaseUrl + url
                 }
             }
 
@@ -84,6 +89,23 @@ Page {
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSizeCaption
                 color: Theme.textHint
+                visible: authViewModel.loggedIn
+            }
+
+            // ★ 调试：显示当前头像 URL
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "URL: " + (function() {
+                    var u = authViewModel.profileAvatarUrl;
+                    if (u.length === 0) return "(空)";
+                    return authViewModel.apiBaseUrl + u + "?t=" + authViewModel.avatarVersion;
+                })()
+                font.family: Theme.fontFamily; font.pointSize: 8
+                color: "gray"
+                elide: Text.ElideMiddle
+                maximumLineCount: 2
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
                 visible: authViewModel.loggedIn
             }
         }

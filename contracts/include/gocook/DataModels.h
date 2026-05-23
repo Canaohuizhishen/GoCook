@@ -504,8 +504,8 @@ namespace gocook::models {
         std::string type;               // "system", "review", "interaction"
         std::string sub_type;           // 用于 interaction 的细分
         bool is_read = false;
-        int related_id = 0;
-        std::string trigger_user_name;
+        std::optional<int> related_id;
+        std::optional<std::string> trigger_user_name;
         std::string created_at;
     };
 

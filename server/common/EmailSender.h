@@ -9,10 +9,11 @@
  * 使用 OpenSSL 建立 TLS 连接，通过 SMTP 协议发送邮件。
  * 配置通过环境变量读取：
  *   GOCOOK_SMTP_HOST     — SMTP 服务器地址（默认 smtp.gmail.com）
- *   GOCOOK_SMTP_PORT     — SMTP 端口（默认 465）
- *   GOCOOK_SMTP_USER     — SMTP 用户名（邮箱地址）
- *   GOCOOK_SMTP_PASS     — SMTP 密码/应用专用密码
- *   GOCOOK_SMTP_FROM     — 发件人地址（默认同 GOCOOK_SMTP_USER）
+ *   GOCOOK_SMTP_PORT         — SMTP 端口（默认 465；587 自动使用 STARTTLS）
+ *   GOCOOK_SMTP_USER         — SMTP 用户名（邮箱地址）
+ *   GOCOOK_SMTP_PASS         — SMTP 密码/应用专用密码
+ *   GOCOOK_SMTP_FROM         — 发件人地址（默认同 GOCOOK_SMTP_USER）
+ *   GOCOOK_SMTP_TLS_INSECURE — 设为 true 可跳过证书验证（仅开发环境）
  */
 class EmailSender {
 public:
@@ -23,6 +24,9 @@ public:
     static bool sendEmail(const std::string& to,
                           const std::string& subject,
                           const std::string& body);
+
+    /// SMTP 是否已配置（有用户名和密码）
+    static bool isConfigured();
 
 private:
     /// SMTP 配置
