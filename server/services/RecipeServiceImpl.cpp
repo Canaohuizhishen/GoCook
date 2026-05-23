@@ -351,8 +351,9 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     return result;
 }
 
-RecipeDetail RecipeServiceImpl::getRecipeDetail(int recipeId) {
-    return recipeRepo_->findById(recipeId);
+RecipeDetail RecipeServiceImpl::getRecipeDetail(int recipeId, int userId) {
+    return recipeRepo_->findById(recipeId, userId);
+
 }
 
 SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int userId, const SubmitRecipeRequest& data) {
@@ -372,8 +373,13 @@ PagedMyRecipes RecipeServiceImpl::getMySubmittedRecipes(int userId, int page, in
 std::string RecipeServiceImpl::editRecipe(int userId, int recipeId, const EditRecipeRequest& updates) {
     return recipeRepo_->update(userId, recipeId, updates);
 }
-void RecipeServiceImpl::toggleFavorite(int, int, std::optional<int>, std::optional<bool>) {
-    throw ServiceException("Not implemented", 501);
+void RecipeServiceImpl::toggleFavorite(int userId, int recipeId, std::optional<int> groupId, std::optional<bool> isPublic) {
+    // Verify recipe exists
+    auto recipe = recipeRepo_->findById(recipeId);
+    if (recipe.id == 0) {
+        throw ServiceException("菜谱不存在", 404);
+    }
+    recipeRepo_->toggleFavorite(userId, recipeId, groupId, isPublic);
 }
 void RecipeServiceImpl::rateRecipe(int userId, int recipeId,
                                    const RateRecipeRequest& request) {

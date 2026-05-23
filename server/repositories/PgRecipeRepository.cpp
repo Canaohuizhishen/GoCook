@@ -467,13 +467,19 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
     return result;
 }
 
-RecipeDetail PgRecipeRepository::findById(int recipeId) {
+RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
     try {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        pqxx::result r = txn.exec_params(
-            "SELECT r.id, r.name, r.description, r.image_url,"
+        bool checkFav = (userId > 0);
+        std::string favSelect = checkFav
+            ? ", CASE WHEN f.id IS NOT NULL THEN true ELSE false END AS is_favorited"
+            : "";
+        std::string favJoin = checkFav
+            ? " LEFT JOIN favorites f ON f.recipe_id = r.id AND f.user_id = $2"
+            : "";
+        std::string sql = "SELECT r.id, r.name, r.description, r.image_url,"
             " r.cooking_method, r.flavor,"
             " r.prep_time_minutes, r.cook_time_minutes,"
             " r.view_count, r.avg_rating,"
@@ -481,10 +487,17 @@ RecipeDetail PgRecipeRepository::findById(int recipeId) {
             " array_to_json(r.tags) AS tags_json,"
             " r.author_id, u.username AS author_name,"
             " r.created_at"
-            " FROM recipes r"
-            " LEFT JOIN users u ON r.author_id = u.id"
-            " WHERE r.id = $1",
-            recipeId);
+            + favSelect
+            + " FROM recipes r"
+            + " LEFT JOIN users u ON r.author_id = u.id"
+            + favJoin
+            + " WHERE r.id = $1";
+
+        pqxx::result r;
+        if (checkFav)
+            r = txn.exec_params(sql, recipeId, userId);
+        else
+            r = txn.exec_params(sql, recipeId);
 
         if (r.empty()) {
             throw ServiceException("菜谱不存在", 404);
@@ -503,6 +516,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId) {
         detail.cook_time_minutes = row["cook_time_minutes"].as<int>(0);
         detail.view_count = row["view_count"].as<int>(0);
         detail.avg_rating = row["avg_rating"].as<double>(0.0);
+        detail.is_favorited = checkFav ? row["is_favorited"].as<bool>(false) : false;
 
         if (!row["ingredients"].is_null()) {
             auto ingredientsArr = json::parse(row["ingredients"].c_str());
@@ -832,8 +846,45 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
     }
 }
 
-void PgRecipeRepository::toggleFavorite(int, int, std::optional<int>, std::optional<bool>) {
-    throw ServiceException("Not implemented", 501);
+void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<int> groupId, std::optional<bool> isPublic) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // Check if already favorited
+        pqxx::result existing = txn.exec_params(
+            "SELECT id FROM favorites WHERE user_id = $1 AND recipe_id = $2",
+            userId, recipeId
+        );
+
+        if (existing.empty()) {
+            // Insert new favorite
+            int gid = groupId.has_value() ? groupId.value() : 0;
+            bool pub = isPublic.has_value() ? isPublic.value() : true;
+
+            if (gid > 0) {
+                txn.exec_params(
+                    "INSERT INTO favorites (user_id, recipe_id, group_id, is_public) VALUES ($1, $2, $3, $4)",
+                    userId, recipeId, gid, pub
+                );
+            } else {
+                txn.exec_params(
+                    "INSERT INTO favorites (user_id, recipe_id, is_public) VALUES ($1, $2, $3)",
+                    userId, recipeId, pub
+                );
+            }
+        } else {
+            // Already favorited → unfavorite (toggle off)
+            txn.exec_params(
+                "DELETE FROM favorites WHERE user_id = $1 AND recipe_id = $2",
+                userId, recipeId
+            );
+        }
+        txn.commit();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in toggleFavorite: %s", e.what());
+        throw ServiceException("操作失败");
+    }
 }
 
 void PgRecipeRepository::rateRecipe(int userId, int recipeId,

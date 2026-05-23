@@ -14,8 +14,16 @@ public:
                     const std::string& email) override;
 
     std::optional<gocook::models::UserProfile> findById(int userId) override;
+    std::optional<int> findIdByEmail(const std::string& email) override;
+    std::optional<int> findIdByUsernameAndEmail(const std::string& username,
+                                                 const std::string& email) override;
+    void createPasswordResetToken(int userId, const std::string& token,
+                                  const std::string& expiresAt) override;
+    std::optional<int> findUserIdByResetToken(const std::string& token) override;
+    void markResetTokenUsed(const std::string& token) override;
     void updateProfile(int userId,
                        const gocook::models::UpdateProfileRequest& profile) override;
+    std::string getPasswordHash(int userId) override;
     void changePassword(int userId, const std::string& newPasswordHash) override;
     void deleteAccount(int userId) override;
 
@@ -28,6 +36,7 @@ public:
     std::vector<std::string> getHealthConditions(int userId) override;
     gocook::models::HealthProfileResponse updateHealthProfile(
         int userId, const gocook::models::HealthProfileRequest& req) override;
+    gocook::models::HealthProfileResponse getHealthProfile(int userId) override;
 
     gocook::models::PagedFavorites getFavorites(int userId, int page, int size,
                                                 const std::string& group) override;

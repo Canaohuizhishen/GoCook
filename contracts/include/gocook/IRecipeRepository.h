@@ -22,7 +22,7 @@ public:
                                                                     int page,
                                                                     int size) = 0;
 
-    virtual models::RecipeDetail findById(int recipeId) = 0;
+    virtual models::RecipeDetail findById(int recipeId, int userId = 0) = 0;
 
     virtual std::vector<models::RecipeVideo> findVideos(int recipeId) = 0;
 

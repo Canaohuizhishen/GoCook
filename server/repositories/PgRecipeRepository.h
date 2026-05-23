@@ -18,7 +18,7 @@ public:
                                                                     int page,
                                                                     int size) override;
 
-    gocook::models::RecipeDetail findById(int recipeId) override;
+    gocook::models::RecipeDetail findById(int recipeId, int userId = 0) override;
 
     std::vector<gocook::models::RecipeVideo> findVideos(int recipeId) override;
 

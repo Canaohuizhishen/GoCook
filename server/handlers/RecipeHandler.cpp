@@ -97,7 +97,12 @@ void RecipeHandler::getRecommendedRecipes(const httplib::Request& req, httplib::
 void RecipeHandler::getRecipeDetail(const httplib::Request& req, httplib::Response& res) {
     try {
         int recipeId = std::stoi(req.matches[1]);
-        auto detail = service_.getRecipeDetail(recipeId);
+        // 可选认证：有 token 时查询当前用户收藏状态
+        int userId = 0;
+        auto tokenInfo = auth_.authenticate(req.get_header_value("Authorization"));
+        if (tokenInfo.valid)
+            userId = tokenInfo.userId;
+        auto detail = service_.getRecipeDetail(recipeId, userId);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
         res.body = JsonSerializer::toJson(detail).dump();

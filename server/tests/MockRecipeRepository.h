@@ -11,7 +11,7 @@ public:
                 (const std::string&, int, int, const nlohmann::json&), (override));
     MOCK_METHOD(gocook::models::PagedRecommendedRecipes, findRecommendedRecipes,
                 (int, int, int), (override));
-    MOCK_METHOD(gocook::models::RecipeDetail, findById, (int), (override));
+    MOCK_METHOD(gocook::models::RecipeDetail, findById, (int, int), (override));
     MOCK_METHOD(std::vector<gocook::models::RecipeVideo>, findVideos, (int), (override));
     MOCK_METHOD(gocook::models::PagedRatings, findRatings, (int, int, int), (override));
     MOCK_METHOD(gocook::models::SubmitRecipeResponse, create,

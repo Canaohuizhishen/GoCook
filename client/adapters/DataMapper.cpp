@@ -135,6 +135,7 @@ namespace DataMapper {
         item["imageUrl"]          = QString::fromStdString(detail.image_url);
         item["prepTime"]          = detail.prep_time_minutes;
         item["cookTime"]          = detail.cook_time_minutes;
+        item["isFavorited"]       = detail.is_favorited;
 
         // 食材列表
         QVariantList ingredients;
@@ -228,9 +229,11 @@ namespace DataMapper {
     {
         QVariantMap map;
         map["id"]           = item.id;
+        map["recipeId"]     = item.recipe_id;
         map["name"]         = QString::fromStdString(item.name);
         map["description"]  = QString::fromStdString(item.description);
         map["imageUrl"]     = QString::fromStdString(item.image_url);
+        map["groupName"]    = QString::fromStdString(item.group_name);
         map["favoritedAt"]  = QString::fromStdString(item.favorited_at);
         return map;
     }

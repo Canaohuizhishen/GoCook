@@ -92,3 +92,6 @@ CMakeLists.txt.user*
 build/
 
 .env
+
+# user-uploaded files — runtime directory, not git
+server/uploads/

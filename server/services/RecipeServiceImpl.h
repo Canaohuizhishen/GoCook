@@ -25,7 +25,7 @@ public:
     gocook::models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
                                                                    int page, int size) override;
 
-    gocook::models::RecipeDetail getRecipeDetail(int recipeId) override;
+    gocook::models::RecipeDetail getRecipeDetail(int recipeId, int userId = 0) override;
 
     std::vector<gocook::models::RecipeVideo> getRecipeVideos(int recipeId) override;
 
