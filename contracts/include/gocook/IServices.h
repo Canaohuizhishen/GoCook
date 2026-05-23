@@ -36,8 +36,8 @@ namespace gocook::services {
         virtual models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
                                                                       int page, int size) = 0;
 
-        /// 获取菜谱详情
-        virtual models::RecipeDetail getRecipeDetail(int recipeId) = 0;
+        /// 获取菜谱详情（可传 userId 查询当前用户收藏状态）
+        virtual models::RecipeDetail getRecipeDetail(int recipeId, int userId = 0) = 0;
 
         /// 获取菜谱关联视频列表
         virtual std::vector<models::RecipeVideo> getRecipeVideos(int recipeId) = 0;
@@ -100,7 +100,10 @@ namespace gocook::services {
         virtual models::LoginResponse login(const models::LoginRequest& request) = 0;
 
         /// 发送密码重置邮件（无需认证，对应 API 3.11.2）
-        virtual void requestPasswordReset(const std::string& email) = 0;
+        /// @param username 用户名（用于双重验证）
+        /// @param email 注册邮箱
+        virtual void requestPasswordReset(const std::string& username,
+                                           const std::string& email) = 0;
 
         /// 重置密码（无需认证）
         virtual void resetPassword(const std::string& token,
@@ -135,6 +138,8 @@ namespace gocook::services {
         /// 录入/更新健康指标（需认证）
         virtual models::HealthProfileResponse updateHealthProfile(
             int userId, const models::HealthProfileRequest& healthProfile) = 0;
+        /// 获取健康指标（需认证）
+        virtual models::HealthProfileResponse getHealthProfile(int userId) = 0;
 
         /// 获取用户收藏列表（分页，需认证，可选按分组筛选）
         /// @param group 可选分组名，空字符串表示所有分组

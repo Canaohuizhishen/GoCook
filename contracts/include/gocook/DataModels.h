@@ -109,8 +109,11 @@ namespace gocook::models {
         std::string reason;
     };
 
-    /// 健康指标分析响应
+    /// 健康指标分析响应（也作为 GET 响应体，包含全部字段）
     struct HealthProfileResponse {
+        std::optional<int> height_cm;
+        std::optional<double> weight_kg;
+        std::vector<std::string> conditions;
         std::vector<AvoidanceItem> suggested_avoidances;
     };
 
@@ -122,7 +125,8 @@ namespace gocook::models {
 
     /// 收藏菜谱项
     struct FavoriteItem {
-        int id = 0;
+        int id = 0;                     // 收藏记录 ID
+        int recipe_id = 0;              // 菜谱 ID（用于导航到详情页）
         std::string name;
         std::string description;
         std::string image_url;
@@ -217,6 +221,7 @@ namespace gocook::models {
         int cook_time_minutes = 0;
         int view_count = 0;
         double avg_rating = 0.0;
+        bool is_favorited = false;      // 当前用户是否已收藏
         std::vector<Ingredient> ingredients;
         std::vector<CookingStep> steps;
         Nutrition nutrition;

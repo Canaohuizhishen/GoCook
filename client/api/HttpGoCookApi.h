@@ -75,6 +75,11 @@ public:
     // 供 C++ 调用的 PUT 请求方法
     void put(const QString &endpoint, const QVariantMap &data,
              std::function<void(bool, const QString&, const QJsonDocument&)> callback);
+    // 供 QML 调用的 PATCH 请求方法
+    Q_INVOKABLE void patch(const QString &endpoint, const QVariantMap &data, const QJSValue &callback);
+    // 供 C++ 调用的 PATCH 请求方法
+    void patch(const QString &endpoint, const QVariantMap &data,
+               std::function<void(bool, const QString&, const QJsonDocument&)> callback);
 
     // ---------- 实现 GoCookApi 抽象接口 ----------
     // 认证
@@ -82,7 +87,8 @@ public:
                       SuccessCallback callback) override;
     void login(const gocook::models::LoginRequest& request,
                LoginCallback callback) override;
-    void forgotPassword(const std::string& email,
+    void forgotPassword(const std::string& username,
+                        const std::string& email,
                         SuccessCallback callback) override;
     void resetPassword(const std::string& token,
                        const std::string& newPassword,
@@ -97,6 +103,7 @@ public:
                            SuccessCallback callback) override;
     void updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                              HealthProfileCallback callback) override;
+    void getHealthProfile(HealthProfileCallback callback) override;
     void uploadAvatar(const std::string& filePath,
                       AvatarUploadCallback callback) override;
     void changePassword(const std::string& currentPassword,
@@ -249,6 +256,7 @@ public:
     void sendNotification(const gocook::models::NotificationRequest& notification,
                           NotificationCallback callback) override;
     void getStatistics(StatisticsCallback callback) override;
+    void resetTestNotifications(SuccessCallback callback) override;
     void getAdminLogs(int page, int size,
                       const std::string& type,
                       int userId,
@@ -292,19 +300,22 @@ private:
     // 内部通用请求发送方法（返回 QNetworkReply* 用于统一处理）
     QNetworkReply* sendRequestInternal(QNetworkAccessManager::Operation op,
                                        const QString &endpoint,
-                                       const QVariantMap &data);
+                                       const QVariantMap &data,
+                                       const QString &methodOverride = "");
     // 统一发送 HTTP 请求的内部方法（用于 QJSValue 回调），增加重试计数参数
     void sendRequest(QNetworkAccessManager::Operation op,
                      const QString &endpoint,
                      const QVariantMap &data,
                      const QJSValue &callback,
-                     int retryCount = 0);
+                     int retryCount = 0,
+                     const QString &methodOverride = "");
     // 统一发送 HTTP 请求的内部方法（用于 std::function 回调），增加重试计数参数
     void sendRequest(QNetworkAccessManager::Operation op,
                      const QString &endpoint,
                      const QVariantMap &data,
                      std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                     int retryCount = 0);
+                     int retryCount = 0,
+                     const QString &methodOverride = "");
 
     // 网络访问管理器
     QNetworkAccessManager m_nam;

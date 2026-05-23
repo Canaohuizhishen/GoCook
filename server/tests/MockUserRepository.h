@@ -11,10 +11,18 @@ public:
     MOCK_METHOD(void, createUser,
                 (const std::string&, const std::string&, const std::string&), (override));
     MOCK_METHOD(std::optional<gocook::models::UserProfile>, findById, (int), (override));
+    MOCK_METHOD(std::optional<int>, findIdByEmail, (const std::string&), (override));
+    MOCK_METHOD(std::optional<int>, findIdByUsernameAndEmail,
+                (const std::string&, const std::string&), (override));
+    MOCK_METHOD(void, createPasswordResetToken,
+                (int, const std::string&, const std::string&), (override));
+    MOCK_METHOD(std::optional<int>, findUserIdByResetToken, (const std::string&), (override));
+    MOCK_METHOD(void, markResetTokenUsed, (const std::string&), (override));
     MOCK_METHOD(void, updateProfile,
                 (int, const gocook::models::UpdateProfileRequest&), (override));
     MOCK_METHOD(void, changePassword, (int, const std::string&), (override));
     MOCK_METHOD(void, deleteAccount, (int), (override));
+    MOCK_METHOD(std::string, getPasswordHash, (int), (override));
     MOCK_METHOD(gocook::models::AvatarUploadResponse, uploadAvatar,
                 (int, const std::string&), (override));
     MOCK_METHOD(gocook::models::UserPreferences, getPreferences, (int), (override));
@@ -23,6 +31,8 @@ public:
     MOCK_METHOD(std::vector<std::string>, getHealthConditions, (int), (override));
     MOCK_METHOD(gocook::models::HealthProfileResponse, updateHealthProfile,
                 (int, const gocook::models::HealthProfileRequest&), (override));
+    MOCK_METHOD(gocook::models::HealthProfileResponse, getHealthProfile,
+                (int), (override));
     MOCK_METHOD(gocook::models::PagedFavorites, getFavorites,
                 (int, int, int, const std::string&), (override));
     MOCK_METHOD(std::vector<gocook::models::FavoriteGroup>, getFavoriteGroups,

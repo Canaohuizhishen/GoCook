@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import client.styles
+import client
 import "../components"
 
 Page {
@@ -14,6 +14,8 @@ Page {
     signal showMyRatingsRequest()
     signal showSearchRequest()
     signal showRecommendFromInventory()
+    signal showSettingsRequest()
+    signal showNotificationRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -83,6 +85,9 @@ Page {
             }
 
             FavoritesPage {
+                onShowDetailRequest: (recipeId) => {
+                    homePage.showDetailRequest(recipeId)
+                }
             }
 
             ProfilePage {
@@ -94,6 +99,12 @@ Page {
                 }
                 onShowMyRatingsRequest: {
                     homePage.showMyRatingsRequest()
+                }
+                onShowSettingsRequest: {
+                    homePage.showSettingsRequest()
+                }
+                onShowNotificationRequest: {
+                    homePage.showNotificationRequest()
                 }
             }
         }

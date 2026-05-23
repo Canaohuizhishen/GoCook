@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import client.styles
+import client
 import "../components"
 
 Page {
@@ -30,7 +30,7 @@ Page {
         CustomButton {
             id: recommendButton
             Layout.fillWidth: true
-            buttonText: qsTr("🧠 一键智能推荐")
+            buttonText: qsTr("✦ 一键智能推荐")
             buttonType: CustomButton.ButtonType.Secondary
             enabled: inventoryVM.items.length > 0
             onClicked: homePage.showRecommendFromInventory()
@@ -124,6 +124,14 @@ Page {
                                 moreMenu.popup()
                             }
                         }
+                    }
+
+                    BusyIndicator {
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        running: inventoryVM.deletingId === modelData.id
+                        width: 20
+                        height: 20
+                        visible: inventoryVM.deletingId === modelData.id
                     }
                 }
             }

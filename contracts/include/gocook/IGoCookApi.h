@@ -196,7 +196,8 @@ public:
      * @param email 注册邮箱
      * @param callback 回调 (success, error)，无论成功与否统一返回成功信息（防枚举）
      */
-    virtual void forgotPassword(const std::string& email,
+    virtual void forgotPassword(const std::string& username,
+                                const std::string& email,
                                 SuccessCallback callback) = 0;
 
     /**
@@ -245,6 +246,7 @@ public:
      */
     virtual void updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                                      HealthProfileCallback callback) = 0;
+    virtual void getHealthProfile(HealthProfileCallback callback) = 0;
 
     /**
      * @brief 上传头像
@@ -815,6 +817,12 @@ public:
                                  int userId,
                                  const std::string& action,
                                  PagedActivityLogsCallback callback) = 0;
+
+    // ---------- 测试辅助（调试用） ----------
+    /**
+     * @brief 重置测试用户的通知数据（仅开发环境可用）
+     */
+    virtual void resetTestNotifications(SuccessCallback callback) = 0;
 
     // ---------- 令牌管理 ----------
     /**

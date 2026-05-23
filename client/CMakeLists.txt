@@ -34,12 +34,14 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeCard.qml
     QML_FILES qml/components/RecipeGridCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
+    QML_FILES qml/components/CircularImage.qml
     QML_FILES qml/pages/FavoritesPage.qml
     SOURCES ../contracts/include/gocook/DataModels.h
     SOURCES ../contracts/include/gocook/IGoCookApi.h
     SOURCES viewmodels/RecipeViewModel.cpp viewmodels/RecipeViewModel.h
     SOURCES viewmodels/AuthViewModel.cpp viewmodels/AuthViewModel.h
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
+    SOURCES viewmodels/NotificationViewModel.cpp viewmodels/NotificationViewModel.h
     SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
@@ -47,6 +49,14 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/RecommendResultsPage.qml
     QML_FILES qml/pages/MyRecipesPage.qml
     QML_FILES qml/pages/MyRatingsPage.qml
+    QML_FILES qml/pages/PreferencesPage.qml
+    QML_FILES qml/pages/HealthProfilePage.qml
+    QML_FILES qml/pages/ProfileEditPage.qml
+    QML_FILES qml/pages/ChangePasswordPage.qml
+    QML_FILES qml/pages/AccountSecurityPage.qml
+    QML_FILES qml/pages/NotificationPage.qml
+    QML_FILES qml/pages/NotificationDetailPage.qml
+    QML_FILES qml/pages/SettingsPage.qml
 )
 
 # 增加头文件查找路径

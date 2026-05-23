@@ -40,6 +40,7 @@ json toJson(const NutritionReport& report);
 json toJson(const UserProfile& user);
 json toJson(const UserPreferences& prefs);
 json toJson(const HealthProfileResponse& resp);
+json toJson(const AvatarUploadResponse& avatarResp);
 json toJson(const FavoriteItem& item);
 json toJson(const FavoriteGroup& group);
 

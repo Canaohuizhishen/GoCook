@@ -16,7 +16,7 @@ bool ConnectionPool::isConnectionAlive(pqxx::connection& conn) {
     try {
         pqxx::work txn(conn);
         txn.exec("SELECT 1");
-        txn.commit();
+        txn.abort();
         return true;
     } catch (...) {
         return false;
@@ -46,7 +46,7 @@ ConnectionPool::ConnectionGuard ConnectionPool::getConnection(
         auto raw = std::move(pool_.front());
         pool_.pop_front();
         pqxx::connection* ptr = raw.get();
-        if (!isConnectionAlive(*ptr)) {
+        if (!ptr->is_open()) {
             LOG_WARN("Stale connection detected, discarding");
             ptr = nullptr;
             raw.reset();
@@ -70,12 +70,7 @@ ConnectionPool::ConnectionGuard ConnectionPool::getConnection(
 
 void ConnectionPool::returnConnection(std::unique_ptr<pqxx::connection> conn) {
     std::unique_lock lock(mutex_);
-    if (!isConnectionAlive(*conn)) {
-        LOG_WARN("Connection dead on return, discarding");
-        --activeCount_;
-    } else {
-        pool_.push_back(std::move(conn));
-    }
+    pool_.push_back(std::move(conn));
     if (activeCount_ < maxSize_) {
         cv_.notify_one();
     }

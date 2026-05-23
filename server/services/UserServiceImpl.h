@@ -19,7 +19,8 @@ public:
     void registerUser(const gocook::models::RegisterRequest& request) override;
     gocook::models::LoginResponse login(const gocook::models::LoginRequest& request) override;
 
-    void requestPasswordReset(const std::string& email) override;
+    void requestPasswordReset(const std::string& username,
+                              const std::string& email) override;
     void resetPassword(const std::string& token,
                        const std::string& newPassword) override;
     gocook::models::UserProfile getCurrentUser(int userId) override;
@@ -36,6 +37,7 @@ public:
                            const gocook::models::UserPreferences& prefs) override;
     gocook::models::HealthProfileResponse updateHealthProfile(
         int userId, const gocook::models::HealthProfileRequest& healthProfile) override;
+    gocook::models::HealthProfileResponse getHealthProfile(int userId) override;
     gocook::models::PagedFavorites getFavorites(int userId, int page, int size,
                                                 const std::string& group = "") override;
     std::vector<gocook::models::FavoriteGroup> getFavoriteGroups(int userId) override;

@@ -32,7 +32,7 @@ QtObject {
     readonly property color textSecondary: isDarkMode ? "#A0A0A0" : "#757575"
     readonly property color textHint: isDarkMode ? "#707070" : "#9E9E9E"
     readonly property color dividerColor: isDarkMode ? "#3A3A3A" : "#E0E0E0"
-    readonly property color backgroundColor: isDarkMode ? "#121212" : "#F5F5F5"
+    readonly property color backgroundColor: isDarkMode ? "#202326" : "#F5F5F5"
     readonly property color cardBackground: isDarkMode ? "#1E1E1E" : "#FFFFFF"
 
     readonly property color cardShadowColor: isDarkMode ? Qt.rgba(0, 0, 0, 0.20) : Qt.rgba(0, 0, 0, 0.08)

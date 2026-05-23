@@ -162,6 +162,12 @@ ApplicationWindow {
             onShowRecommendFromInventory: () => {
                 stackView.push(recommendResultsPage)
             }
+            onShowSettingsRequest: () => {
+                stackView.push(settingsPage)
+            }
+            onShowNotificationRequest: () => {
+                stackView.push(notificationPage)
+            }
         }
     }
 
@@ -209,6 +215,70 @@ ApplicationWindow {
             onRecipeClicked: (recipeId) => {
                 stackView.push(recipeDetailPage, {recipeId: recipeId})
             }
+        }
+    }
+
+    Component {
+        id: profileEditPage
+        ProfileEditPage { }
+    }
+
+    Component {
+        id: settingsPage
+        SettingsPage {
+            onEditProfileRequest: () => {
+                stackView.push(profileEditPage)
+            }
+            onAccountSecurityRequest: () => {
+                stackView.push(accountSecurityPage)
+            }
+            onDietaryPreferencesRequest: () => {
+                stackView.push(preferencesPage)
+            }
+            onHealthProfileRequest: () => {
+                stackView.push(healthProfilePage)
+            }
+        }
+    }
+
+    Component {
+        id: preferencesPage
+        PreferencesPage { }
+    }
+
+    Component {
+        id: healthProfilePage
+        HealthProfilePage { }
+    }
+
+    Component {
+        id: changePasswordPage
+        ChangePasswordPage { }
+    }
+
+    Component {
+        id: accountSecurityPage
+        AccountSecurityPage {
+            onShowChangePasswordRequest: () => {
+                stackView.push(changePasswordPage)
+            }
+        }
+    }
+
+    Component {
+        id: notificationPage
+        NotificationPage {
+            property var _stackView: stackView
+            onShowDetailRequest: (data) => {
+                stackView.push(notificationDetailPage, {notificationData: data})
+            }
+        }
+    }
+
+    Component {
+        id: notificationDetailPage
+        NotificationDetailPage {
+            property var _stackView: stackView
         }
     }
 

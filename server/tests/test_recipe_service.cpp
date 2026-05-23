@@ -26,7 +26,7 @@ namespace {
 
     RecipeDetail makeDetail(int id = 1) {
         return {id, "Test Recipe", "Detailed description", "img.jpg",
-                "炒", "清淡", 10, 20, 100, 4.5, {}, {}, {}, {"test"}, 1, "Chef", "2026-01-01"};
+                "炒", "清淡", 10, 20, 100, 4.5, false, {}, {}, {}, {"test"}, 1, "Chef", "2026-01-01"};
     }
 
     SubmitRecipeRequest makeSubmitReq() {
@@ -102,7 +102,7 @@ TEST(RecipeServiceTest, 菜谱详情正确委派) {
     RecipeServiceImpl service(std::move(mock));
 
     auto expected = makeDetail(5);
-    EXPECT_CALL(*repo, findById(5)).WillOnce(Return(expected));
+    EXPECT_CALL(*repo, findById(5, testing::_)).WillOnce(Return(expected));
 
     auto result = service.getRecipeDetail(5);
     EXPECT_EQ(result.id, 5);
@@ -323,7 +323,7 @@ TEST(RecipeServiceTest, 关联视频查询成功) {
     RecipeServiceImpl service(std::move(mock));
 
     RecipeDetail recipe = makeDetail(1);
-    EXPECT_CALL(*repo, findById(1)).WillOnce(Return(recipe));
+    EXPECT_CALL(*repo, findById(1, testing::_)).WillOnce(Return(recipe));
 
     std::vector<RecipeVideo> fakeVideos;
     RecipeVideo v1;
@@ -360,7 +360,7 @@ TEST(RecipeServiceTest, 关联视频菜谱不存在) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, findById(999))
+    EXPECT_CALL(*repo, findById(999, testing::_))
         .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
 
     EXPECT_THROW(service.getRecipeVideos(999), ServiceException);
@@ -561,7 +561,7 @@ TEST(RecipeServiceTest, 获取评分列表成功) {
     RecipeServiceImpl service(std::move(mock));
 
     RecipeDetail dummy = makeDetail(42);
-    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(dummy));
+    EXPECT_CALL(*repo, findById(42, testing::_)).WillOnce(Return(dummy));
 
     auto fakeRatings = makePagedRatings(3);
     EXPECT_CALL(*repo, findRatings(42, 1, 10)).WillOnce(Return(fakeRatings));
@@ -583,7 +583,7 @@ TEST(RecipeServiceTest, 获取评分列表菜谱不存在) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, findById(999))
+    EXPECT_CALL(*repo, findById(999, testing::_))
         .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
 
     EXPECT_THROW(service.getRecipeRatings(999, 1, 10), ServiceException);
@@ -598,7 +598,7 @@ TEST(RecipeServiceTest, 评分菜谱成功) {
 
     RateRecipeRequest req{5, "非常好吃"};
 
-    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeDetail(42)));
+    EXPECT_CALL(*repo, findById(42, testing::_)).WillOnce(Return(makeDetail(42)));
     EXPECT_CALL(*repo, rateRecipe(1, 42, Truly([](const auto& r) {
         return r.rating == 5 && r.comment == "非常好吃";
     }))).Times(1);
@@ -611,7 +611,7 @@ TEST(RecipeServiceTest, 评分菜谱重复提交) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeDetail(42)));
+    EXPECT_CALL(*repo, findById(42, testing::_)).WillOnce(Return(makeDetail(42)));
     EXPECT_CALL(*repo, rateRecipe(1, 42, _))
         .WillOnce(Throw(ServiceException("您已评过分", 409)));
 
@@ -623,7 +623,7 @@ TEST(RecipeServiceTest, 评分菜谱不存在) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, findById(999))
+    EXPECT_CALL(*repo, findById(999, testing::_))
         .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
 
     EXPECT_THROW(service.rateRecipe(1, 999, {5, ""}), ServiceException);
