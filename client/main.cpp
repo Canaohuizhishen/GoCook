@@ -13,9 +13,20 @@ int main(int argc, char *argv[])
 {
     //qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
 
+    // Use Fusion style instead of Breeze — Breeze's ButtonBackground.qml:19
+    // assumes the background item's parent is always a T.AbstractButton, which
+    // breaks when our custom Button.background is set.
+    qputenv("QT_QUICK_CONTROLS_STYLE", "Fusion");
+
     QGuiApplication app(argc, argv);
 
-    // Register Theme.qml singleton under the "client" module (same URI as qt_add_qml_module)
+    // QSettings needs these identifiers to determine config file paths
+    QCoreApplication::setOrganizationName("GoCook");
+    QCoreApplication::setOrganizationDomain("gocook.app");
+
+    // Register Theme.qml as a singleton under the "client" module URI.
+    // Theme.qml is also listed in qt_add_qml_module QML_FILES; the manual
+    // registration makes it accessible via "import client" in non-module files.
     qmlRegisterSingletonType(
         QUrl("qrc:/client/qml/styles/Theme.qml"),
         "client",

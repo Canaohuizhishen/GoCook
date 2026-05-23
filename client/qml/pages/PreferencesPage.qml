@@ -126,7 +126,7 @@ Page {
                             Rectangle {
                                 width: 4; height: 16; radius: 2
                                 color: colorLikes
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             Text {
                                 text: qsTr("偏好口味/菜系")
@@ -187,7 +187,7 @@ Page {
                             Rectangle {
                                 width: 4; height: 16; radius: 2
                                 color: colorDislikes
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             Text {
                                 text: qsTr("饮食禁忌")
@@ -248,7 +248,7 @@ Page {
                             Rectangle {
                                 width: 4; height: 16; radius: 2
                                 color: colorHealthGoal
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             Text {
                                 text: qsTr("健康目标")

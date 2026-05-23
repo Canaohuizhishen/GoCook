@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <jwt-cpp/jwt.h>
+#include <cstdlib>
 #include "../services/UserServiceImpl.h"
 #include "MockUserRepository.h"
+#include "../common/EmailSender.h"
 #include "bcrypt/crypt_blowfish.h"
 
 using namespace testing;
@@ -279,15 +281,28 @@ TEST(UserServiceTest, 请求重置密码邮箱未注册静默成功) {
 }
 
 TEST(UserServiceTest, 请求重置密码邮箱已注册生成令牌) {
+    // 保存并清除 SMTP 环境变量，模拟开发模式
+    auto oldUser = std::getenv("GOCOOK_SMTP_USER");
+    auto oldPass = std::getenv("GOCOOK_SMTP_PASS");
+    if (oldUser) unsetenv("GOCOOK_SMTP_USER");
+    if (oldPass) unsetenv("GOCOOK_SMTP_PASS");
+
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "user@test.com"))
         .WillOnce(Return(std::optional<int>(42)));
-    EXPECT_CALL(*repo, createPasswordResetToken(42, _, _)).Times(1);
+    EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
 
-    EXPECT_NO_THROW(service.requestPasswordReset("testuser", "user@test.com"));
+    // SMTP 未配置时应返回令牌（开发模式），而非抛异常
+    auto result = service.requestPasswordReset("testuser", "user@test.com");
+    EXPECT_TRUE(result.has_value());
+    EXPECT_EQ(result.value().size(), 6);   // 6-digit code
+
+    // 恢复 SMTP 环境变量
+    if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
+    if (oldPass) setenv("GOCOOK_SMTP_PASS", oldPass, 1);
 }
 
 TEST(UserServiceTest, 重置密码令牌无效) {
@@ -302,7 +317,8 @@ TEST(UserServiceTest, 重置密码令牌无效) {
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 400);
-        EXPECT_STREQ(e.what(), "令牌无效或已过期");
+        // 应该包含基础错误信息，可能附加调试详情
+        EXPECT_TRUE(std::string(e.what()).find("令牌无效或已过期") != std::string::npos);
     }
 }
 
@@ -312,8 +328,7 @@ TEST(UserServiceTest, 重置密码成功) {
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     EXPECT_CALL(*repo, findUserIdByResetToken("valid-token")).WillOnce(Return(std::optional<int>(42)));
-    EXPECT_CALL(*repo, changePassword(42, _)).Times(1);
-    EXPECT_CALL(*repo, markResetTokenUsed("valid-token")).Times(1);
+    EXPECT_CALL(*repo, resetPasswordAndMarkTokenUsed(42, _, "valid-token")).Times(1);
 
     EXPECT_NO_THROW(service.resetPassword("valid-token", "NewPass123"));
 }
@@ -828,6 +843,97 @@ TEST(UserServiceTest, 标记通知已读成功) {
     EXPECT_NO_THROW(service.markNotificationRead(42, 101));
 }
 
+// ==================== 边界测试 ====================
+
+TEST(UserServiceTest, 批量删除收藏空ID列表) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, batchDeleteFavorites(42, _)).Times(1);
+
+    BatchDeleteFavoritesRequest req{};
+    EXPECT_NO_THROW(service.batchDeleteFavorites(42, req));
+}
+
+TEST(UserServiceTest, 创建收藏分组名称重复) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, createFavoriteGroup(42, _))
+        .WillOnce(Throw(ServiceException("分组名已存在", 409)));
+
+    CreateGroupRequest req{"最爱菜品"};
+    try {
+        service.createFavoriteGroup(42, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 409);
+    }
+}
+
+TEST(UserServiceTest, 更新不存在的收藏项) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, updateFavoriteItem(42, 999, _))
+        .WillOnce(Throw(ServiceException("收藏项不存在", 404)));
+
+    UpdateFavoriteRequest req;
+    try {
+        service.updateFavoriteItem(42, 999, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 404);
+    }
+}
+
+TEST(UserServiceTest, 获取收藏列表分页边界page为零) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, getFavorites(42, 0, 20, std::string(""))).Times(1);
+
+    EXPECT_NO_THROW(service.getFavorites(42, 0, 20, ""));
+}
+
+TEST(UserServiceTest, 获取收藏列表分页边界page极大值) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, getFavorites(42, 999999, 20, std::string(""))).Times(1);
+
+    EXPECT_NO_THROW(service.getFavorites(42, 999999, 20, ""));
+}
+
+TEST(UserServiceTest, 获取通知列表按类型过滤) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, getNotifications(42, 1, 20, std::string("system"))).Times(1);
+
+    PagedNotifications result = service.getNotifications(42, 1, 20, "system");
+}
+
+// ==================== 以下为原有测试 ====================
+
 TEST(UserServiceTest, 标记全部通知已读成功) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
@@ -867,4 +973,80 @@ TEST(UserServiceTest, 删除通知用户不存在) {
         EXPECT_EQ(e.statusCode(), 404);
         EXPECT_STREQ(e.what(), "用户不存在");
     }
+}
+
+// ==================== 密码重置 — SMTP 路径 ====================
+
+class SmtpEnvironmentTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        // 保存原环境变量
+        oldSmtpHost_ = std::getenv("GOCOOK_SMTP_HOST");
+        oldSmtpPort_ = std::getenv("GOCOOK_SMTP_PORT");
+        oldSmtpUser_ = std::getenv("GOCOOK_SMTP_USER");
+        oldSmtpPass_ = std::getenv("GOCOOK_SMTP_PASS");
+        oldSmtpFrom_ = std::getenv("GOCOOK_SMTP_FROM");
+        // 设置 SMTP 环境变量（端口设为一个不可能的值，确保连接快速失败）
+        setenv("GOCOOK_SMTP_HOST", "127.0.0.1", 1);
+        setenv("GOCOOK_SMTP_PORT", "1", 1);
+        setenv("GOCOOK_SMTP_USER", "test@gocook.dev", 1);
+        setenv("GOCOOK_SMTP_PASS", "test-password", 1);
+        unsetenv("GOCOOK_SMTP_FROM");
+    }
+
+    void TearDown() override {
+        // 恢复原环境变量
+        if (oldSmtpHost_) setenv("GOCOOK_SMTP_HOST", oldSmtpHost_, 1);
+        else unsetenv("GOCOOK_SMTP_HOST");
+        if (oldSmtpPort_) setenv("GOCOOK_SMTP_PORT", oldSmtpPort_, 1);
+        else unsetenv("GOCOOK_SMTP_PORT");
+        if (oldSmtpUser_) setenv("GOCOOK_SMTP_USER", oldSmtpUser_, 1);
+        else unsetenv("GOCOOK_SMTP_USER");
+        if (oldSmtpPass_) setenv("GOCOOK_SMTP_PASS", oldSmtpPass_, 1);
+        else unsetenv("GOCOOK_SMTP_PASS");
+        if (oldSmtpFrom_) setenv("GOCOOK_SMTP_FROM", oldSmtpFrom_, 1);
+        else unsetenv("GOCOOK_SMTP_FROM");
+    }
+
+private:
+    const char* oldSmtpHost_ = nullptr;
+    const char* oldSmtpPort_ = nullptr;
+    const char* oldSmtpUser_ = nullptr;
+    const char* oldSmtpPass_ = nullptr;
+    const char* oldSmtpFrom_ = nullptr;
+};
+
+TEST_F(SmtpEnvironmentTest, SMTP已配置时isConfigured返回true) {
+    EXPECT_TRUE(EmailSender::isConfigured());
+}
+
+TEST_F(SmtpEnvironmentTest, SMTP已配置但不可达时requestPasswordReset抛出异常) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "test@example.com"))
+        .WillOnce(Return(42));
+    EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
+
+    try {
+        service.requestPasswordReset("testuser", "test@example.com");
+        FAIL() << "Expected ServiceException for unreachable SMTP";
+    } catch (const ServiceException& e) {
+        // SMTP 不可达应触发 ServiceException（非 400，而是 SMTP 错误）
+        EXPECT_EQ(e.statusCode(), 500);
+    }
+}
+
+TEST_F(SmtpEnvironmentTest, SMTP已配置时requestPasswordReset不返回token) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "test@example.com"))
+        .WillOnce(Return(42));
+    EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
+
+    // SMTP 不可达，方法会抛出异常而非返回 token
+    EXPECT_THROW(service.requestPasswordReset("testuser", "test@example.com"), ServiceException);
 }

@@ -11,6 +11,7 @@
 #include "../common/EmailSender.h"
 #include "bcrypt/crypt_blowfish.h"
 #include <openssl/crypto.h>
+#include <openssl/rand.h>
 
 #define BCRYPT_OUTPUT_SIZE 128
 
@@ -145,8 +146,8 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
 
 // ==================== 密码重置 ====================
 
-void UserServiceImpl::requestPasswordReset(const std::string& username,
-                                              const std::string& email) {
+std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::string& username,
+                                                                   const std::string& email) {
     // 1. Verify username + email match (双重验证)
     auto userIdOpt = userRepo_->findIdByUsernameAndEmail(username, email);
     if (!userIdOpt.has_value()) {
@@ -155,43 +156,45 @@ void UserServiceImpl::requestPasswordReset(const std::string& username,
         throw ServiceException("用户名和邮箱不匹配", 400);
     }
 
-    // 2. Generate random token (64 hex chars = 256 bits)
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> distrib(0, 15);
-    std::ostringstream tokenStream;
-    for (int i = 0; i < 64; ++i) {
-        tokenStream << std::hex << distrib(gen);
+    // 注意：开发模式下返回 dev_token 可能被利用枚举已注册用户名+邮箱组合。
+    // 未来改进：对已验证身份（如 session/IP）返回 token，未验证者始终返回 200 + nullopt。
+    // 2. Generate 6-digit numeric code (CSPRNG, range 100000-999999)
+    unsigned char randomBytes[4];
+    if (RAND_bytes(randomBytes, sizeof(randomBytes)) != 1) {
+        throw ServiceException("无法生成安全令牌");
     }
-    std::string token = tokenStream.str();
+    uint32_t val = (static_cast<uint32_t>(randomBytes[0]) << 24)
+                 | (static_cast<uint32_t>(randomBytes[1]) << 16)
+                 | (static_cast<uint32_t>(randomBytes[2]) << 8)
+                 | static_cast<uint32_t>(randomBytes[3]);
+    int code = (val % 900000) + 100000;  // always 6 digits
+    std::string token = std::to_string(code);
 
-    // 3. Set expiry to 1 hour from now (ISO 8601 format for PostgreSQL timestamp)
-    auto now = std::chrono::system_clock::now();
-    auto exp = now + std::chrono::hours(1);
-    auto expTt = std::chrono::system_clock::to_time_t(exp);
-    std::ostringstream expStream;
-    expStream << std::put_time(std::gmtime(&expTt), "%Y-%m-%dT%H:%M:%SZ");
-    std::string expiresAt = expStream.str();
+    // 3. Store token in database — expiry is computed in SQL as NOW() + INTERVAL '15 minutes'
+    userRepo_->createPasswordResetToken(userIdOpt.value(), token);
 
-    // 4. Store token in database
-    userRepo_->createPasswordResetToken(userIdOpt.value(), token, expiresAt);
-
-    // 5. Send email (fallback to log if SMTP not configured)
-    bool sent = EmailSender::sendPasswordResetEmail(email, token);
-    if (!sent) {
-        LOG_WARN("SMTP not configured for %s, token logged to stderr", email.c_str());
-        std::cerr << "\n*** PASSWORD RESET TOKEN ***" << std::endl;
-        std::cerr << "Email: " << email << std::endl;
-        std::cerr << "Token: " << token << std::endl;
-        std::cerr << "Expires: " << expiresAt << std::endl;
-        std::cerr << "To reset: POST /api/password/reset with {token, new_password}" << std::endl;
-        std::cerr << "*** END TOKEN ***\n" << std::endl;
-    } else {
+    // 5. Send email
+    //    - SMTP configured + sent OK → return nullopt (token delivered via email)
+    //    - SMTP not configured → return token for dev-mode response
+    //      (safer than printing to stderr — the token goes to the API caller, not the log)
+    //    - SMTP configured but send failed → throw (real error)
+    if (EmailSender::isConfigured()) {
+        bool sent = EmailSender::sendPasswordResetEmail(email, token);
+        if (!sent) {
+            LOG_ERROR("SMTP send failed for %s", email.c_str());
+            throw ServiceException("密码重置邮件发送失败，请稍后再试或联系管理员", 500);
+        }
         LOG_INFO("Password reset email sent to %s", email.c_str());
+        return std::nullopt;
+    } else {
+        LOG_WARN("SMTP not configured — password reset token will be returned in response (dev mode)");
+        return token;
     }
 }
 
 void UserServiceImpl::resetPassword(const std::string& token, const std::string& newPassword) {
+    // \note 已知限制：密码重置后，旧的 JWT 令牌在过期前仍然有效。
+    //       当前无服务器端令牌黑名单/版本号机制。
     // 1. Validate token — find user_id from valid (unused & not expired) token
     auto userIdOpt = userRepo_->findUserIdByResetToken(token);
     if (!userIdOpt.has_value()) {
@@ -214,11 +217,8 @@ void UserServiceImpl::resetPassword(const std::string& token, const std::string&
     // 3. Hash new password
     std::string newHash = hashPassword(newPassword);
 
-    // 4. Update password
-    userRepo_->changePassword(userIdOpt.value(), newHash);
-
-    // 5. Mark token as used (one-time use)
-    userRepo_->markResetTokenUsed(token);
+    // 4. Update password + mark token as used in one transaction (防重放)
+    userRepo_->resetPasswordAndMarkTokenUsed(userIdOpt.value(), newHash, token);
 }
 UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileRequest& profile) {
     // Validate: at least one field must be provided
@@ -261,6 +261,9 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
     }
     return *updated;
 }
+/// \note 已知限制：密码修改后，旧的 JWT 令牌在过期前仍然有效。
+///       当前无服务器端令牌黑名单/版本号机制。
+///       若需立即吊销令牌，后续需引入 token 版本号字段并嵌入 JWT payload。
 void UserServiceImpl::changePassword(int userId,
                                       const std::string& currentPassword,
                                       const std::string& newPassword) {

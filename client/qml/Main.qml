@@ -1,7 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt.labs.settings
+import QtCore
+import client
 import "./pages"
 
 ApplicationWindow {
@@ -36,83 +37,48 @@ ApplicationWindow {
         initialItem: isLoading ? loadingComponent :
                      isLoggedIn ? homePage : loginPage
 
-        // 页面推入动画（新页从右侧滑入）
+        // 页面推入动画（淡入）
+        // Note: x animation removed because anchors.fill:parent conflicts with direct x assignment
         pushEnter: Transition {
-            ParallelAnimation {
-                PropertyAnimation {
-                    property: "x"
-                    from: stackView.width * 0.3
-                    to: 0
-                    duration: 280
-                    easing.type: Easing.OutCubic
-                }
-                PropertyAnimation {
-                    property: "opacity"
-                    from: 0.0
-                    to: 1.0
-                    duration: 240
-                    easing.type: Easing.OutCubic
-                }
+            PropertyAnimation {
+                property: "opacity"
+                from: 0.0
+                to: 1.0
+                duration: 240
+                easing.type: Easing.OutCubic
             }
         }
 
-        // 页面推出动画（旧页向左淡出）
+        // 页面推出动画（淡出）
         pushExit: Transition {
-            ParallelAnimation {
-                PropertyAnimation {
-                    property: "x"
-                    from: 0
-                    to: -stackView.width * 0.2
-                    duration: 280
-                    easing.type: Easing.InCubic
-                }
-                PropertyAnimation {
-                    property: "opacity"
-                    from: 1.0
-                    to: 0.3
-                    duration: 200
-                    easing.type: Easing.InCubic
-                }
+            PropertyAnimation {
+                property: "opacity"
+                from: 1.0
+                to: 0.3
+                duration: 200
+                easing.type: Easing.InCubic
             }
         }
 
-        // 页面返回动画（当前页向右滑出）
+        // 页面返回动画（淡入）
         popEnter: Transition {
-            ParallelAnimation {
-                PropertyAnimation {
-                    property: "x"
-                    from: -stackView.width * 0.2
-                    to: 0
-                    duration: 280
-                    easing.type: Easing.OutCubic
-                }
-                PropertyAnimation {
-                    property: "opacity"
-                    from: 0.3
-                    to: 1.0
-                    duration: 240
-                    easing.type: Easing.OutCubic
-                }
+            PropertyAnimation {
+                property: "opacity"
+                from: 0.3
+                to: 1.0
+                duration: 240
+                easing.type: Easing.OutCubic
             }
         }
 
-        // 页面返回动画（新页从左侧出现）
+        // 页面返回动画（淡出）
         popExit: Transition {
-            ParallelAnimation {
-                PropertyAnimation {
-                    property: "x"
-                    from: 0
-                    to: stackView.width * 0.3
-                    duration: 280
-                    easing.type: Easing.InCubic
-                }
-                PropertyAnimation {
-                    property: "opacity"
-                    from: 1.0
-                    to: 0.0
-                    duration: 200
-                    easing.type: Easing.InCubic
-                }
+            PropertyAnimation {
+                property: "opacity"
+                from: 1.0
+                to: 0.0
+                duration: 200
+                easing.type: Easing.InCubic
             }
         }
 
@@ -285,7 +251,6 @@ ApplicationWindow {
     Component {
         id: loadingComponent
         Item {
-            anchors.fill: parent
             Text {
                 anchors.centerIn: parent
                 text: qsTr("加载中...")

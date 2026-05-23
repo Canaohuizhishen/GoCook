@@ -16,12 +16,14 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Theme.spacingMedium
         spacing: Theme.spacingSmall
 
         CustomButton {
             id: addButton
             Layout.fillWidth: true
+            Layout.topMargin: Theme.spacingMedium
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
             buttonText: qsTr("+ 添加食材")
             buttonType: CustomButton.ButtonType.Primary
             onClicked: addDialog.open()
@@ -30,6 +32,8 @@ Page {
         CustomButton {
             id: recommendButton
             Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
             buttonText: qsTr("✦ 一键智能推荐")
             buttonType: CustomButton.ButtonType.Secondary
             enabled: inventoryVM.items.length > 0
@@ -38,6 +42,8 @@ Page {
 
         Text {
             Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
             text: qsTr("暂无库存，点击上方按钮添加食材")
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSizeBody
@@ -50,14 +56,20 @@ Page {
             id: inventoryListView
             Layout.fillWidth: true
             Layout.fillHeight: true
+            leftMargin: Theme.spacingMedium
+            rightMargin: Theme.spacingMedium
             spacing: Theme.spacingXSmall
             clip: true
             visible: inventoryVM.items.length > 0
 
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
+
             model: inventoryVM.items
 
             delegate: Rectangle {
-                width: inventoryListView.width
+                width: inventoryListView.width - inventoryListView.leftMargin - inventoryListView.rightMargin
                 height: 48
                 radius: Theme.radiusSmall
                 color: Theme.cardBackground
@@ -137,7 +149,7 @@ Page {
             }
 
             footer: Item {
-                width: inventoryListView.width
+                width: inventoryListView.width - inventoryListView.leftMargin - inventoryListView.rightMargin
                 height: 40
 
                 BusyIndicator {

@@ -24,12 +24,23 @@ Page {
             anchors.verticalCenter: parent.verticalCenter
             width: 40; height: 40
             flat: true
-            contentItem: Text {
-                text: "\u2190"
-                font.pointSize: 22
-                color: Theme.primaryColor
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+            contentItem: Canvas {
+                width: 22
+                height: 22
+                property color arrowColor: Theme.textPrimary
+                onArrowColorChanged: requestPaint()
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.strokeStyle = arrowColor
+                    ctx.lineWidth = 2
+                    ctx.lineCap = "round"
+                    ctx.lineJoin = "round"
+                    ctx.beginPath()
+                    ctx.moveTo(14, 5)
+                    ctx.lineTo(6, 11)
+                    ctx.lineTo(14, 17)
+                    ctx.stroke()
+                }
             }
             onClicked: {
                 if (_stackView) _stackView.pop()

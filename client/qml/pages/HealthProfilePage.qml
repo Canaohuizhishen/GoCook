@@ -83,16 +83,24 @@ Page {
         anchors.fill: parent
         anchors.topMargin: 48
 
-        ScrollView {
+        Flickable {
             anchors.fill: parent
-            clip: true; contentWidth: availableWidth
+            contentWidth: width
+            contentHeight: outerColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: true
+
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
+
             ColumnLayout {
                 id: outerColumn
                 anchors.left: parent.left
                 anchors.leftMargin: Theme.spacingMedium
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacingMedium
-                anchors.top: parent.top; anchors.topMargin: Theme.spacingMedium
                 spacing: Theme.spacingLarge
 
                 // ====================================================
@@ -214,7 +222,7 @@ Page {
                             Rectangle {
                                 width: 4; height: 16; radius: 2
                                 color: colorCondition
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             Text {
                                 text: qsTr("健康问题")
@@ -274,7 +282,7 @@ Page {
                             Rectangle {
                                 width: 4; height: 16; radius: 2
                                 color: colorCondition
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             Text {
                                 text: qsTr("饮食建议")
@@ -401,7 +409,7 @@ Page {
                                     id: weightInput
                                     Layout.fillWidth: true; verticalAlignment: TextInput.AlignVCenter
                                     font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
-                                    inputMethodHints: Qt.ImhDecimalDigitsOnly; selectByMouse: true
+                                    inputMethodHints: Qt.ImhFormattedNumbersOnly; selectByMouse: true
                                     text: healthProfilePage.weightValue > 0 ? healthProfilePage.weightValue : ""
                                     onTextChanged: {
                                         var val = parseFloat(text)

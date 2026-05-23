@@ -19,8 +19,8 @@ public:
     void registerUser(const gocook::models::RegisterRequest& request) override;
     gocook::models::LoginResponse login(const gocook::models::LoginRequest& request) override;
 
-    void requestPasswordReset(const std::string& username,
-                              const std::string& email) override;
+    std::optional<std::string> requestPasswordReset(const std::string& username,
+                                                     const std::string& email) override;
     void resetPassword(const std::string& token,
                        const std::string& newPassword) override;
     gocook::models::UserProfile getCurrentUser(int userId) override;

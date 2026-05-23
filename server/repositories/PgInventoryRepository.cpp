@@ -13,12 +13,14 @@ PagedInventory PgInventoryRepository::findInventory(int userId, int page, int si
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] findInventory count | userId=%d", userId);
         pqxx::result countRes = txn.exec_params(
             "SELECT COUNT(*) FROM inventory WHERE user_id = $1", userId);
         int total = countRes[0][0].as<int>();
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
+        LOG_DEBUG("[SQL] findInventory data | userId=%d page=%d size=%d", userId, page, size);
         pqxx::result rows = txn.exec_params(
             "SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
             "FROM inventory WHERE user_id = $1 "
@@ -57,6 +59,7 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        LOG_DEBUG("[SQL] upsertInventory check existing | userId=%d ing=%s", userId, item.ingredient_name.c_str());
         pqxx::result existing = txn.exec_params(
             "SELECT id FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
             userId, item.ingredient_name);
@@ -64,10 +67,12 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
         if (!existing.empty()) {
             int existingId = existing[0]["id"].as<int>();
             if (item.expiry_date.has_value()) {
+                LOG_DEBUG("[SQL] upsertInventory UPDATE (with expiry) | id=%d", existingId);
                 txn.exec_params(
                     "UPDATE inventory SET quantity = $1, unit = $2, expiry_date = $3, added_at = NOW() WHERE id = $4",
                     item.quantity, item.unit, item.expiry_date.value(), existingId);
             } else {
+                LOG_DEBUG("[SQL] upsertInventory UPDATE (no expiry) | id=%d", existingId);
                 txn.exec_params(
                     "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
                     item.quantity, item.unit, existingId);
@@ -76,6 +81,7 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
             return existingId;
         } else {
             if (item.expiry_date.has_value()) {
+                LOG_DEBUG("[SQL] upsertInventory INSERT (with expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
                 pqxx::result res = txn.exec_params(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit, expiry_date) "
                     "VALUES ($1, $2, $3, $4, $5) RETURNING id",
@@ -83,6 +89,7 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
                 txn.commit();
                 return res[0][0].as<int>();
             } else {
+                LOG_DEBUG("[SQL] upsertInventory INSERT (no expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
                 pqxx::result res = txn.exec_params(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
                     "VALUES ($1, $2, $3, $4) RETURNING id",
@@ -103,6 +110,7 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
     try {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
+        LOG_DEBUG("[SQL] deleteInventoryItem | id=%d userId=%d", itemId, userId);
         auto res = txn.exec_params(
             "DELETE FROM inventory WHERE id = $1 AND user_id = $2",
             itemId, userId);

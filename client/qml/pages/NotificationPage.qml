@@ -10,15 +10,6 @@ Page {
 
     signal showDetailRequest(var data)
 
-    // F5 重置测试通知（开发用）
-    focus: true
-    Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_F5) {
-            notifyVM.resetTestData()
-            event.accepted = true
-        }
-    }
-
     property string errorMessage: ""
 
     // 错误提示自动消失

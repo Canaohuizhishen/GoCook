@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <filesystem>
 #include <stdexcept>
 
 struct Config {
@@ -20,12 +21,19 @@ struct Config {
     static Config load() {
         const char* candidates[] = {".env", "../../../.env", "../../.env", "../.env"};
         bool loaded = false;
+        std::string envPath;
         for (auto p : candidates) {
             if (fileExists(p)) {
+                envPath = p;
                 loadEnvFile(p);
                 loaded = true;
                 break;
             }
+        }
+        if (!envPath.empty()) {
+            // chdir to the directory containing .env so all relative paths resolve consistently
+            auto dir = std::filesystem::absolute(envPath).parent_path();
+            std::filesystem::current_path(dir);
         }
         if (!loaded) {
             // .env 不存在也没关系，调用方可能通过环境变量设了

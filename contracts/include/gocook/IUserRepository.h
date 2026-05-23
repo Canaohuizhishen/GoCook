@@ -7,6 +7,9 @@
 
 namespace gocook::repository {
 
+/// 密码重置令牌过期时间（分钟）
+inline constexpr int TOKEN_EXPIRY_MINUTES = 15;
+
 struct UserAuthInfo {
     int id = 0;
     std::string username;
@@ -31,13 +34,16 @@ public:
     virtual std::optional<int> findIdByUsernameAndEmail(const std::string& username,
                                                         const std::string& email) = 0;
 
-    /// 创建密码重置令牌
-    virtual void createPasswordResetToken(int userId, const std::string& token,
-                                          const std::string& expiresAt) = 0;
+    /// 创建密码重置令牌（过期时间由 SQL 层统一设置为 NOW() + INTERVAL '15 minutes'）
+    virtual void createPasswordResetToken(int userId, const std::string& token) = 0;
     /// 根据令牌查找对应用户ID（仅返回未使用且未过期的令牌）
     virtual std::optional<int> findUserIdByResetToken(const std::string& token) = 0;
     /// 标记密码重置令牌为已使用
     virtual void markResetTokenUsed(const std::string& token) = 0;
+    /// 在同一事务中重置密码并标记令牌为已用（防止令牌重放）
+    virtual void resetPasswordAndMarkTokenUsed(int userId,
+                                                const std::string& newPasswordHash,
+                                                const std::string& token) = 0;
     virtual void updateProfile(int userId,
                                const models::UpdateProfileRequest& profile) = 0;
     /// 获取用户密码哈希（用于修改密码时验证原密码）
