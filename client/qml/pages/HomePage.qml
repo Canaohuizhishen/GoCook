@@ -16,6 +16,7 @@ Page {
     signal showRecommendFromInventory()
     signal showSettingsRequest()
     signal showNotificationRequest()
+    signal showShoppingListRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -82,6 +83,9 @@ Page {
             }
 
             InventoryPage {
+                onShowShoppingListRequest: {
+                    homePage.showShoppingListRequest()
+                }
             }
 
             FavoritesPage {

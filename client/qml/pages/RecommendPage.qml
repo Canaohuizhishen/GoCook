@@ -21,7 +21,7 @@ Page {
     property bool spinning: false
 
     readonly property real gridHMargin: Theme.spacingMedium
-    readonly property real gridCellWidth: (width - gridHMargin * 2 - Theme.gridSpacing) / 2
+    readonly property real gridCellWidth: (width - gridHMargin * 2) / 2
     readonly property real gridCellHeight: gridCellWidth + 50
 
     onSpinningChanged: {

@@ -86,12 +86,6 @@ Page {
             visible: notifyVM.unreadCount > 0
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSizeBody
-            contentItem: Text {
-                text: parent.text
-                font: parent.font
-                color: Theme.primaryColor
-                verticalAlignment: Text.AlignVCenter
-            }
             onClicked: notifyVM.markAllRead()
         }
     }
@@ -147,20 +141,18 @@ Page {
                             text: qsTr("全部")
                             flat: true
                             height: 30
+                            highlighted: notifyVM.currentType === ""
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
                                 radius: 6
-                                color: notifyVM.currentType === "" ? Theme.primaryColor : Theme.searchBarBackground
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                font: parent.font
-                                color: notifyVM.currentType === "" ? "white" : Theme.textPrimary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
+                                color: parent.highlighted ? Theme.primaryColor
+                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                     : Theme.searchBarBackground
+                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                             }
                             onClicked: notifyVM.currentType = ""
                         }
@@ -169,20 +161,18 @@ Page {
                             text: qsTr("系统公告")
                             flat: true
                             height: 30
+                            highlighted: notifyVM.currentType === "system"
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
                                 radius: 6
-                                color: notifyVM.currentType === "system" ? Theme.primaryColor : Theme.searchBarBackground
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                font: parent.font
-                                color: notifyVM.currentType === "system" ? "white" : Theme.textPrimary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
+                                color: parent.highlighted ? Theme.primaryColor
+                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                     : Theme.searchBarBackground
+                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                             }
                             onClicked: notifyVM.currentType = "system"
                         }
@@ -191,20 +181,18 @@ Page {
                             text: qsTr("审核结果")
                             flat: true
                             height: 30
+                            highlighted: notifyVM.currentType === "review"
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
                                 radius: 6
-                                color: notifyVM.currentType === "review" ? Theme.primaryColor : Theme.searchBarBackground
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                font: parent.font
-                                color: notifyVM.currentType === "review" ? "white" : Theme.textPrimary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
+                                color: parent.highlighted ? Theme.primaryColor
+                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                     : Theme.searchBarBackground
+                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                             }
                             onClicked: notifyVM.currentType = "review"
                         }
@@ -213,20 +201,18 @@ Page {
                             text: qsTr("互动提醒")
                             flat: true
                             height: 30
+                            highlighted: notifyVM.currentType === "interaction"
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSizeCaption
                             leftPadding: 12; rightPadding: 12
                             topPadding: 0; bottomPadding: 0
                             background: Rectangle {
                                 radius: 6
-                                color: notifyVM.currentType === "interaction" ? Theme.primaryColor : Theme.searchBarBackground
-                            }
-                            contentItem: Text {
-                                text: parent.text
-                                font: parent.font
-                                color: notifyVM.currentType === "interaction" ? "white" : Theme.textPrimary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
+                                color: parent.highlighted ? Theme.primaryColor
+                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                     : Theme.searchBarBackground
+                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                             }
                             onClicked: notifyVM.currentType = "interaction"
                         }

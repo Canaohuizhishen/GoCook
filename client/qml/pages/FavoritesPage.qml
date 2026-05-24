@@ -154,7 +154,11 @@ Page {
 
                                 background: Rectangle {
                                     radius: Theme.radiusSmall
-                                    color: currentGroupFilter === "" ? Theme.primaryColor : Theme.searchBarBackground
+                                    color: currentGroupFilter === "" ? Theme.primaryColor
+                                         : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                         : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                         : Theme.searchBarBackground
+                                    Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                 }
                                 contentItem: Text {
                                     text: parent.text
@@ -183,7 +187,11 @@ Page {
 
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: currentGroupFilter === modelData.name ? Theme.primaryColor : Theme.searchBarBackground
+                                        color: currentGroupFilter === modelData.name ? Theme.primaryColor
+                                             : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                             : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                             : Theme.searchBarBackground
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
                                     contentItem: Text {
                                         text: parent.text
@@ -360,8 +368,11 @@ Page {
                                     topPadding: 4; bottomPadding: 4
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: Theme.primaryColor
+                                        color: parent.down ? Theme.primaryDarkColor
+                                             : parent.hovered ? Theme.primaryLightColor
+                                             : Theme.primaryColor
                                         opacity: 0.9
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
                                     contentItem: Text {
                                         text: parent.text
@@ -386,8 +397,11 @@ Page {
                                     topPadding: 4; bottomPadding: 4
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: "#E74C3C"
+                                        color: parent.down ? "#C62828"
+                                             : parent.hovered ? "#EF5350"
+                                             : "#E74C3C"
                                         opacity: 0.9
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
                                     contentItem: Text {
                                         text: parent.text
@@ -487,6 +501,13 @@ Page {
                 Layout.preferredWidth: 80
                 implicitHeight: 34
                 leftPadding: 0; rightPadding: 0
+                background: Rectangle {
+                    radius: Theme.radiusSmall
+                    color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                         : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.08)
+                         : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                }
                 contentItem: Text {
                     text: parent.text
                     font: parent.font
@@ -516,9 +537,13 @@ Page {
                 Layout.alignment: Qt.AlignVCenter
                 background: Rectangle {
                     radius: Theme.radiusSmall
-                    color: parent.enabled ? Theme.primaryColor : Theme.searchBarBackground
-                    border.color: parent.enabled ? "transparent" : Theme.dividerColor
+                    color: !parent.enabled ? Theme.searchBarBackground
+                         : parent.down ? Theme.primaryDarkColor
+                         : parent.hovered ? Theme.primaryLightColor
+                         : Theme.primaryColor
+                    border.color: !parent.enabled ? Theme.dividerColor : "transparent"
                     border.width: 1
+                    Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                 }
                 contentItem: Text {
                     text: parent.text
@@ -543,9 +568,13 @@ Page {
                 Layout.alignment: Qt.AlignVCenter
                 background: Rectangle {
                     radius: Theme.radiusSmall
-                    color: parent.enabled ? "#E74C3C" : Theme.searchBarBackground
-                    border.color: parent.enabled ? "transparent" : Theme.dividerColor
+                    color: !parent.enabled ? Theme.searchBarBackground
+                         : parent.down ? "#C62828"
+                         : parent.hovered ? "#EF5350"
+                         : "#E74C3C"
+                    border.color: !parent.enabled ? Theme.dividerColor : "transparent"
                     border.width: 1
+                    Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                 }
                 contentItem: Text {
                     text: parent.text
@@ -605,9 +634,15 @@ Page {
                     flat: true
                     background: Rectangle {
                         radius: Theme.radiusMedium
-                        color: "transparent"
-                        border.color: Theme.dividerColor
+                        color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
+                             : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.06)
+                             : "transparent"
+                        border.color: parent.down ? Theme.primaryDarkColor
+                                    : parent.hovered ? Theme.primaryColor
+                                    : Theme.dividerColor
                         border.width: 1
+                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                     }
                     contentItem: Text {
                         text: parent.text; font: parent.font
@@ -620,7 +655,13 @@ Page {
                 Button {
                     Layout.fillWidth: true; height: 40
                     text: qsTr("删除")
-                    background: Rectangle { radius: Theme.radiusMedium; color: "#E74C3C" }
+                    background: Rectangle {
+                        radius: Theme.radiusMedium
+                        color: parent.down ? "#C62828"
+                             : parent.hovered ? "#EF5350"
+                             : "#E74C3C"
+                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                    }
                     contentItem: Text {
                         text: parent.text; font: parent.font
                         color: "white"
@@ -782,7 +823,15 @@ Page {
                     flat: true
                     background: Rectangle {
                         radius: Theme.radiusMedium
-                        color: "transparent"; border.color: Theme.dividerColor; border.width: 1
+                        color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
+                             : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.06)
+                             : "transparent"
+                        border.color: parent.down ? Theme.primaryDarkColor
+                                    : parent.hovered ? Theme.primaryColor
+                                    : Theme.dividerColor
+                        border.width: 1
+                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                     }
                     contentItem: Text {
                         text: parent.text; font: parent.font
@@ -793,7 +842,13 @@ Page {
                 Button {
                     Layout.fillWidth: true; height: 40
                     text: qsTr("创建")
-                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.primaryColor }
+                    background: Rectangle {
+                        radius: Theme.radiusMedium
+                        color: parent.down ? Theme.primaryDarkColor
+                             : parent.hovered ? Theme.primaryLightColor
+                             : Theme.primaryColor
+                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                    }
                     contentItem: Text {
                         text: parent.text; font: parent.font
                         color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
@@ -884,7 +939,15 @@ Page {
                     flat: true
                     background: Rectangle {
                         radius: Theme.radiusMedium
-                        color: "transparent"; border.color: Theme.dividerColor; border.width: 1
+                        color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
+                             : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.06)
+                             : "transparent"
+                        border.color: parent.down ? Theme.primaryDarkColor
+                                    : parent.hovered ? Theme.primaryColor
+                                    : Theme.dividerColor
+                        border.width: 1
+                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                     }
                     contentItem: Text {
                         text: parent.text; font: parent.font
@@ -896,7 +959,13 @@ Page {
                 Button {
                     Layout.fillWidth: true; height: 40
                     text: qsTr("保存")
-                    background: Rectangle { radius: Theme.radiusMedium; color: Theme.primaryColor }
+                    background: Rectangle {
+                        radius: Theme.radiusMedium
+                        color: parent.down ? Theme.primaryDarkColor
+                             : parent.hovered ? Theme.primaryLightColor
+                             : Theme.primaryColor
+                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                    }
                     contentItem: Text {
                         text: parent.text; font: parent.font
                         color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter

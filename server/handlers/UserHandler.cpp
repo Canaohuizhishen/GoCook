@@ -165,9 +165,8 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
         // 校验文件类型
         if (contentType != "image/jpeg" && contentType != "image/png"
             && contentType != "image/jpg" && contentType != "image/gif"
-            && contentType != "image/bmp" && contentType != "image/webp"
-            && contentType != "image/svg+xml") {
-            setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/WEBP/SVG");
+            && contentType != "image/bmp" && contentType != "image/svg+xml") {
+            setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）");
             return;
         }
 
@@ -182,7 +181,6 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
         if (contentType == "image/png")          ext = ".png";
         else if (contentType == "image/gif")      ext = ".gif";
         else if (contentType == "image/bmp")      ext = ".bmp";
-        else if (contentType == "image/webp")     ext = ".webp";
         else if (contentType == "image/svg+xml")  ext = ".svg";
         std::string tempPath = "/tmp/gocook_avatar_" + std::to_string(info.userId)
                              + "_" + std::to_string(std::chrono::system_clock::now()

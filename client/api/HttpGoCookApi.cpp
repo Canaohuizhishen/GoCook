@@ -1759,51 +1759,218 @@ void HttpGoCookApi::deleteInventoryItem(int itemId,
 // ======================= 购物清单 / 膳食计划 =======================
 void HttpGoCookApi::getShoppingLists(ShoppingListsCallback callback)
 {
-    if (callback) callback(false, std::vector<gocook::models::ShoppingListSummary>{}, "Not implemented");
+    get("/api/inventory/shopping-lists", [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, std::vector<gocook::models::ShoppingListSummary>{}, errorMsg.toStdString());
+            return;
+        }
+        std::vector<gocook::models::ShoppingListSummary> result;
+        const QJsonArray arr = doc.array();
+        for (const QJsonValue& val : arr) {
+            QJsonObject obj = val.toObject();
+            gocook::models::ShoppingListSummary summary;
+            summary.id = obj["id"].toInt();
+            summary.name = obj["name"].toString().toStdString();
+            summary.item_count = obj["item_count"].toInt();
+            summary.created_at = obj["created_at"].toString().toStdString();
+            result.push_back(std::move(summary));
+        }
+        if (callback) callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListRequest& request,
                                         ShoppingListCallback callback)
 {
-    Q_UNUSED(request);
-    if (callback) callback(false, gocook::models::ShoppingList{}, "Not implemented");
+    QVariantMap data;
+    data["name"] = QString::fromStdString(request.name);
+    if (request.plan_id.has_value())
+        data["plan_id"] = QString::fromStdString(request.plan_id.value());
+
+    post("/api/inventory/shopping-lists", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
+            return;
+        }
+        gocook::models::ShoppingList list;
+        QJsonObject obj = doc.object();
+        list.id = obj["id"].toInt();
+        list.name = obj["name"].toString().toStdString();
+        if (obj.contains("items") && obj["items"].isArray()) {
+            const QJsonArray itemsArr = obj["items"].toArray();
+            for (const QJsonValue& val : itemsArr) {
+                QJsonObject itemObj = val.toObject();
+                gocook::models::ShoppingListItem item;
+                item.id = itemObj["id"].toInt();
+                item.ingredient_name = itemObj["ingredient_name"].toString().toStdString();
+                item.required_quantity = itemObj["required_quantity"].toDouble();
+                item.inventory_quantity = itemObj["inventory_quantity"].toDouble();
+                item.to_buy_quantity = itemObj["to_buy_quantity"].toDouble();
+                item.unit = itemObj["unit"].toString().toStdString();
+                item.checked = itemObj["checked"].toBool();
+                list.items.push_back(std::move(item));
+            }
+        }
+        if (callback) callback(true, list, "");
+    });
 }
 
 void HttpGoCookApi::getShoppingListDetail(int listId,
                                            ShoppingListCallback callback)
 {
-    Q_UNUSED(listId);
-    if (callback) callback(false, gocook::models::ShoppingList{}, "Not implemented");
+    QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
+            return;
+        }
+        QJsonObject obj = doc.object();
+        gocook::models::ShoppingList result;
+        result.id = obj["id"].toInt();
+        result.name = obj["name"].toString().toStdString();
+        if (obj.contains("items") && obj["items"].isArray()) {
+            const QJsonArray itemsArr = obj["items"].toArray();
+            for (const QJsonValue& val : itemsArr) {
+                QJsonObject itemObj = val.toObject();
+                gocook::models::ShoppingListItem item;
+                item.id = itemObj["id"].toInt();
+                item.ingredient_name = itemObj["ingredient_name"].toString().toStdString();
+                item.required_quantity = itemObj["required_quantity"].toDouble();
+                item.inventory_quantity = itemObj["inventory_quantity"].toDouble();
+                item.to_buy_quantity = itemObj["to_buy_quantity"].toDouble();
+                item.unit = itemObj["unit"].toString().toStdString();
+                item.checked = itemObj["checked"].toBool();
+                result.items.push_back(std::move(item));
+            }
+        }
+        callback(true, result, "");
+    });
 }
 
 void HttpGoCookApi::deleteShoppingList(int listId,
                                         SuccessCallback callback)
 {
-    Q_UNUSED(listId);
-    if (callback) callback(false, "Not implemented");
+    QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
+    deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (callback) callback(success, success ? "" : errorMsg.toStdString());
+    });
 }
 
 void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
                                            const gocook::models::UpdateShoppingItemRequest& request,
-                                           SuccessCallback callback) {
-    Q_UNUSED(listId); Q_UNUSED(itemId); Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+                                           SuccessCallback callback)
+{
+    QUrl url(m_baseUrl + QString("/api/inventory/shopping-lists/%1/items/%2").arg(listId).arg(itemId));
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_token.isEmpty()) {
+        req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    }
+
+    QJsonObject body;
+    body["checked"] = request.checked;
+    QByteArray payload = QJsonDocument(body).toJson();
+
+    QNetworkReply* reply = m_nam.sendCustomRequest(req, "PATCH", payload);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        reply->deleteLater();
+
+        if (statusCode == 200) {
+            callback(true, "");
+        } else {
+            QByteArray responseData = reply->readAll();
+            callback(false, QString::fromUtf8(responseData).toStdString());
+        }
+    });
 }
 
 void HttpGoCookApi::batchAddShoppingItems(int listId,
                                           const std::vector<gocook::models::BatchShoppingItem>& items,
-                                          BatchShoppingCallback callback) {
-    Q_UNUSED(listId); Q_UNUSED(items);
-    if (callback) callback(false, gocook::models::BatchShoppingResponse{}, "Not implemented");
+                                          BatchShoppingCallback callback)
+{
+    QUrl url(m_baseUrl + QString("/api/inventory/shopping-lists/%1/items/batch").arg(listId));
+    QNetworkRequest request(url);
+    request.setTransferTimeout(15000);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!m_token.isEmpty()) {
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    }
+
+    QJsonArray arr;
+    for (const auto& item : items) {
+        QJsonObject obj;
+        obj["ingredient_name"] = QString::fromStdString(item.ingredient_name);
+        obj["quantity"] = item.quantity;
+        if (!item.unit.empty())
+            obj["unit"] = QString::fromStdString(item.unit);
+        arr.append(obj);
+    }
+    QByteArray body = QJsonDocument(arr).toJson();
+
+    QNetworkReply* reply = m_nam.post(request, body);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        reply->deleteLater();
+
+        if (statusCode == 201) {
+            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+            QJsonObject obj = doc.object();
+            gocook::models::BatchShoppingResponse resp;
+            resp.message = obj["message"].toString().toStdString();
+            if (obj.contains("items") && obj["items"].isArray()) {
+                const QJsonArray itemsArr = obj["items"].toArray();
+                for (const auto& val : itemsArr) {
+                    QJsonObject itemObj = val.toObject();
+                    gocook::models::ShoppingListItem item;
+                    item.id = itemObj["id"].toInt();
+                    item.ingredient_name = itemObj["ingredient_name"].toString().toStdString();
+                    item.required_quantity = itemObj["required_quantity"].toDouble();
+                    item.inventory_quantity = itemObj["inventory_quantity"].toDouble();
+                    item.to_buy_quantity = itemObj["to_buy_quantity"].toDouble();
+                    item.unit = itemObj["unit"].toString().toStdString();
+                    item.checked = itemObj["checked"].toBool();
+                    resp.items.push_back(std::move(item));
+                }
+            }
+            callback(true, resp, "");
+        } else {
+            callback(false, gocook::models::BatchShoppingResponse{}, QString::fromUtf8(responseData).toStdString());
+        }
+    });
 }
 
 void HttpGoCookApi::exportShoppingList(int listId,
                                         const std::string& format,
                                         std::function<void(bool, const std::string&, const std::string&)> callback)
 {
-    Q_UNUSED(listId);
-    Q_UNUSED(format);
-    if (callback) callback(false, "", "Not implemented");
+    QString endpoint = QString("/api/inventory/shopping-lists/%1/export?format=%2")
+        .arg(listId).arg(QString::fromStdString(format));
+    QUrl url(m_baseUrl + endpoint);
+    QNetworkRequest req(url);
+    req.setTransferTimeout(15000);
+    if (!m_token.isEmpty()) {
+        req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    }
+
+    QNetworkReply* reply = m_nam.get(req);
+    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray body = reply->readAll();
+        reply->deleteLater();
+
+        if (callback) {
+            if (statusCode == 200) {
+                callback(true, QString::fromUtf8(body).toStdString(), "");
+            } else {
+                callback(false, "", QString::fromUtf8(body).toStdString());
+            }
+        }
+    });
 }
 
 // ======================= 膳食计划 =======================
@@ -1852,8 +2019,35 @@ void HttpGoCookApi::getNutritionTrend(const std::string& startDate,
 // ======================= 公告 =======================
 void HttpGoCookApi::getAnnouncements(int page, int size,
                                      PagedAnnouncementsCallback callback) {
-    Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedAnnouncements{}, "Not implemented");
+    QString endpoint = QString("/api/announcements?page=%1&size=%2").arg(page).arg(size);
+    get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (!success) {
+            if (callback) callback(false, gocook::models::PagedAnnouncements{}, errorMsg.toStdString());
+            return;
+        }
+        gocook::models::PagedAnnouncements result;
+        QJsonObject root = doc.object();
+        if (root.contains("pagination") && root["pagination"].isObject()) {
+            QJsonObject pag = root["pagination"].toObject();
+            result.pagination.page        = pag["page"].toInt();
+            result.pagination.size        = pag["size"].toInt();
+            result.pagination.total       = pag["total"].toInt();
+            result.pagination.total_pages = pag["total_pages"].toInt();
+        }
+        if (root.contains("data") && root["data"].isArray()) {
+            const QJsonArray dataArr = root["data"].toArray();
+            for (const QJsonValue& val : dataArr) {
+                QJsonObject obj = val.toObject();
+                gocook::models::AnnouncementItem item;
+                item.id = obj["id"].toInt();
+                item.title = obj["title"].toString().toStdString();
+                item.content = obj["content"].toString().toStdString();
+                item.created_at = obj["created_at"].toString().toStdString();
+                result.data.push_back(std::move(item));
+            }
+        }
+        if (callback) callback(true, result, "");
+    });
 }
 
 // ======================= 管理员功能 =======================

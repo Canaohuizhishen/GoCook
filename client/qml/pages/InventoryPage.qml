@@ -10,6 +10,8 @@ Page {
     // 当前正在编辑的库存项ID
     property int currentEditItemId: -1
 
+    signal showShoppingListRequest()
+
     Component.onCompleted: {
         inventoryVM.loadInventory()
     }
@@ -38,6 +40,15 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             enabled: inventoryVM.items.length > 0
             onClicked: homePage.showRecommendFromInventory()
+        }
+
+        CustomButton {
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
+            buttonText: qsTr("☑ 购物清单")
+            buttonType: CustomButton.ButtonType.Secondary
+            onClicked: showShoppingListRequest()
         }
 
         Text {
@@ -97,13 +108,16 @@ Page {
 
                     Row {
                         spacing: Theme.spacingXSmall
+                        Layout.fillHeight: true
+                        Layout.alignment: Qt.AlignVCenter
 
                         ToolButton {
                             id: deleteBtn
-                            implicitWidth: 44
-                            implicitHeight: 44
+                            implicitWidth: 40
+                            implicitHeight: 32
                             text: "删除"
                             font.pointSize: 13
+                            flat: true
                             contentItem: Text {
                                 text: deleteBtn.text
                                 font: deleteBtn.font
@@ -116,10 +130,11 @@ Page {
 
                         ToolButton {
                             id: moreBtn
-                            implicitWidth: 44
-                            implicitHeight: 44
+                            implicitWidth: 40
+                            implicitHeight: 32
                             text: "更多"
                             font.pointSize: 13
+                            flat: true
                             contentItem: Text {
                                 text: moreBtn.text
                                 font: moreBtn.font

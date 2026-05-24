@@ -134,6 +134,9 @@ ApplicationWindow {
             onShowNotificationRequest: () => {
                 stackView.push(notificationPage)
             }
+            onShowShoppingListRequest: () => {
+                stackView.push(shoppingListPage)
+            }
         }
     }
 
@@ -185,6 +188,18 @@ ApplicationWindow {
     }
 
     Component {
+        id: shoppingListPage
+        ShoppingListPage {
+            onGoBack: {
+                stackView.pop()
+            }
+            onShowDetailRequest: (listId) => {
+                stackView.push(shoppingListDetailPage, {listId: listId})
+            }
+        }
+    }
+
+    Component {
         id: profileEditPage
         ProfileEditPage { }
     }
@@ -203,6 +218,15 @@ ApplicationWindow {
             }
             onHealthProfileRequest: () => {
                 stackView.push(healthProfilePage)
+            }
+        }
+    }
+
+    Component {
+        id: shoppingListDetailPage
+        ShoppingListDetailPage {
+            onGoBack: {
+                stackView.pop()
             }
         }
     }

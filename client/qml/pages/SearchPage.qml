@@ -69,12 +69,12 @@ Page {
                         Layout.fillHeight: true
                         topPadding: 6
                         bottomPadding: 6
+                        background: null
                         font.pointSize: Theme.fontSizeBody
                         color: Theme.textPrimary
                         placeholderText: qsTr("搜索菜谱、食材...")
                         placeholderTextColor: Theme.textHint
                         verticalAlignment: TextInput.AlignVCenter
-                        background: Item {}
                         selectByMouse: true
 
                         onAccepted: searchPage.doSearch()
