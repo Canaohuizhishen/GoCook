@@ -355,7 +355,6 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
             if (lower == ".png")      ext = ".png";
             else if (lower == ".gif") ext = ".gif";
             else if (lower == ".bmp") ext = ".bmp";
-            else if (lower == ".webp") ext = ".webp";
             else if (lower == ".svg")  ext = ".svg";
         }
 

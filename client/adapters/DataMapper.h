@@ -58,6 +58,9 @@ namespace DataMapper {
 
     // ========== 公告相关 ==========
     QVariantMap toMap(const gocook::models::AnnouncementItem& ann);
+    /// 将公告项映射为通知格式（附加 is_read=true, type="system"），
+    /// 使公告可直接在消息通知页的"系统公告"标签中展示，无需为每个用户创建副本。
+    QVariantMap toNotificationMap(const gocook::models::AnnouncementItem& ann);
 
     // ========== 分页结果 ==========
     QVariantMap toMap(const gocook::models::PagedRecipes& paged);

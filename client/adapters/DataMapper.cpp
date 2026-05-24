@@ -448,6 +448,18 @@ namespace DataMapper {
         return map;
     }
 
+    QVariantMap toNotificationMap(const gocook::models::AnnouncementItem& ann)
+    {
+        QVariantMap map;
+        map["id"]        = ann.id;
+        map["title"]     = QString::fromStdString(ann.title);
+        map["content"]   = QString::fromStdString(ann.content);
+        map["createdAt"] = QString::fromStdString(ann.created_at);
+        map["is_read"]   = true;
+        map["type"]      = QStringLiteral("system");
+        return map;
+    }
+
     // ---------- 分页结果（通用辅助模板，不再依赖 value_type） ----------
     namespace {
         // 泛型版本，使用 decltype 推导元素类型

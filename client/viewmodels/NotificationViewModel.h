@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QSet>
 #include <gocook/IGoCookApi.h>
 
 class NotificationViewModel : public QObject
@@ -48,9 +49,16 @@ signals:
 
 private:
     void recalcUnreadCount();
+    /// 当筛选类型为"system"时，从公告接口加载数据并映射为通知格式
+    void loadAnnouncements(int page, int size);
+    /// 仅从通知接口加载（不处理公告），供"全部"标签链式调用
+    void loadNotificationsOnly(int page, int size, bool needsResort = false);
+    /// 判断某条通知是否来自系统公告（非 per-user 通知）
+    bool isAnnouncementItem(int notificationId) const { return m_announcementIds.contains(notificationId); }
 
     IGoCookApi *m_api;
     QVariantList m_notifications;
+    QSet<int> m_announcementIds;  ///< 跟踪来自公告的数据 ID，跳过删除/标记已读
     bool m_isLoading = false;
     bool m_hasMore = false;
     int m_currentPage = 1;

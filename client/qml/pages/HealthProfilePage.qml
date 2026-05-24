@@ -439,9 +439,17 @@ Page {
                                     leftPadding: 12; rightPadding: 12; topPadding: 0; bottomPadding: 0
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: selectedConditions.indexOf(conditionOptions[index]) >= 0 ? colorCondition : Theme.searchBarBackground
-                                        border.color: selectedConditions.indexOf(conditionOptions[index]) >= 0 ? colorCondition : Theme.dividerColor
+                                        color: selectedConditions.indexOf(conditionOptions[index]) >= 0 ? colorCondition
+                                             : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                                             : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                             : Theme.searchBarBackground
+                                        border.color: selectedConditions.indexOf(conditionOptions[index]) >= 0 ? colorCondition
+                                                    : parent.down ? Theme.primaryColor
+                                                    : parent.hovered ? Theme.primaryLightColor
+                                                    : Theme.dividerColor
                                         border.width: 1
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
                                     contentItem: Text {
                                         text: conditionOptions[index]; font: parent.font

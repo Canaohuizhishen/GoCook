@@ -19,12 +19,19 @@ Button {
     property alias buttonText: buttonText.text
     property alias textColor: buttonText.color
     property alias fontSize: buttonText.font.pointSize
+    property color buttonColor: "transparent"
 
     // 基础样式
     implicitWidth: 120
     implicitHeight: 44
     flat: true
     hoverEnabled: true
+
+    // 按下/抬起缩放动效
+    scale: control.pressed ? 0.95 : 1.0
+    Behavior on scale {
+        NumberAnimation { duration: 80; easing.type: Easing.InOutQuad }
+    }
 
     // 背景
     background: Rectangle {
@@ -34,9 +41,13 @@ Button {
         color: {
             if (!control.enabled) return Theme.dividerColor
             if (control.buttonType === CustomButton.ButtonType.Primary) {
-                if (control.pressed) return Theme.primaryDarkColor
-                if (control.hovered) return Theme.primaryLightColor
-                return Theme.primaryColor
+                if (control.pressed) return control.buttonColor.a > 0 ? Qt.darker(control.buttonColor) : Theme.primaryDarkColor
+                if (control.hovered) return control.buttonColor.a > 0 ? Qt.lighter(control.buttonColor) : Theme.primaryLightColor
+                return control.buttonColor.a > 0 ? control.buttonColor : Theme.primaryColor
+            }
+            if (control.buttonType === CustomButton.ButtonType.Secondary) {
+                if (control.pressed) return Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                if (control.hovered) return Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.1)
             }
             if (control.buttonType === CustomButton.ButtonType.Destructive) {
                 if (control.pressed) return "#D32F2F"
@@ -47,6 +58,7 @@ Button {
         }
         border.color: {
             if (control.buttonType === CustomButton.ButtonType.Secondary) {
+                if (control.hovered) return Qt.lighter(Theme.primaryColor, 1.2)
                 return Theme.primaryColor
             }
             return "transparent"

@@ -7,7 +7,7 @@ project(client VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat)
+find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat Widgets)
 
 # 自动设置所有推荐的策略
 qt_standard_project_setup()
@@ -35,13 +35,18 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeGridCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
     QML_FILES qml/components/CircularImage.qml
+    QML_FILES qml/components/SwipeToDeleteItem.qml
     QML_FILES qml/pages/FavoritesPage.qml
+    QML_FILES qml/pages/ShoppingListPage.qml
+    QML_FILES qml/pages/ShoppingListDetailPage.qml
     SOURCES ../contracts/include/gocook/DataModels.h
     SOURCES ../contracts/include/gocook/IGoCookApi.h
     SOURCES viewmodels/RecipeViewModel.cpp viewmodels/RecipeViewModel.h
     SOURCES viewmodels/AuthViewModel.cpp viewmodels/AuthViewModel.h
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     SOURCES viewmodels/NotificationViewModel.cpp viewmodels/NotificationViewModel.h
+    SOURCES viewmodels/ShoppingListViewModel.cpp viewmodels/ShoppingListViewModel.h
+    SOURCES dialogs/NativeFileDialog.h dialogs/NativeFileDialog.cpp
     SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
@@ -83,6 +88,7 @@ target_link_libraries(appclient
         Qt6::Sql
         Qt6::Qml
         Qt6::Core5Compat
+        Qt6::Widgets
 )
 
 set_target_properties(appclient PROPERTIES

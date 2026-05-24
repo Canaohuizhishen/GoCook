@@ -1,4 +1,4 @@
-#include <QGuiApplication>
+#include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 
@@ -8,25 +8,28 @@
 #include "viewmodels/RecipeViewModel.h"
 #include "viewmodels/InventoryViewModel.h"
 #include "viewmodels/NotificationViewModel.h"
+#include "viewmodels/ShoppingListViewModel.h"
+#include "dialogs/NativeFileDialog.h"
 
 int main(int argc, char *argv[])
 {
     //qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
 
-    // Use Fusion style instead of Breeze — Breeze's ButtonBackground.qml:19
-    // assumes the background item's parent is always a T.AbstractButton, which
-    // breaks when our custom Button.background is set.
-    qputenv("QT_QUICK_CONTROLS_STYLE", "Fusion");
+    // 显式使用 Breeze 风格（非 KDE 系统默认是 Fusion，但原应用是基于 Breeze 设计的）
+    qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.breeze");
 
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
 
-    // QSettings needs these identifiers to determine config file paths
+    // QSettings 需要这些标识符来确定配置文件路径
     QCoreApplication::setOrganizationName("GoCook");
     QCoreApplication::setOrganizationDomain("gocook.app");
 
-    // Register Theme.qml as a singleton under the "client" module URI.
-    // Theme.qml is also listed in qt_add_qml_module QML_FILES; the manual
-    // registration makes it accessible via "import client" in non-module files.
+    // 注册 C++ 类型供 QML 使用
+    qmlRegisterType<NativeFileDialog>("client", 1, 0, "NativeFileDialog");
+
+    // 将 Theme.qml 注册为 "client" 模块下的单例
+    // Theme.qml 已在 qt_add_qml_module 的 QML_FILES 中列出；此处手动注册
+    // 使其在非 module 文件中也可通过 "import client" 访问
     qmlRegisterSingletonType(
         QUrl("qrc:/client/qml/styles/Theme.qml"),
         "client",
@@ -40,12 +43,14 @@ int main(int argc, char *argv[])
     RecipeViewModel recipeVM(httpApi, &app);
     InventoryViewModel inventoryVM(httpApi, &app);
     NotificationViewModel notifyVM(httpApi, &app);
+    ShoppingListViewModel shoppingListVM(httpApi, &app);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
     engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
     engine.rootContext()->setContextProperty("inventoryVM", &inventoryVM);
     engine.rootContext()->setContextProperty("notifyVM", &notifyVM);
+    engine.rootContext()->setContextProperty("shoppingListVM", &shoppingListVM);
 
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
 

@@ -363,9 +363,17 @@ Page {
 
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: prefLikes.indexOf(likeOptions[index]) >= 0 ? colorLikes : Theme.searchBarBackground
-                                        border.color: prefLikes.indexOf(likeOptions[index]) >= 0 ? colorLikes : Theme.dividerColor
+                                        color: prefLikes.indexOf(likeOptions[index]) >= 0 ? colorLikes
+                                             : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                                             : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                             : Theme.searchBarBackground
+                                        border.color: prefLikes.indexOf(likeOptions[index]) >= 0 ? colorLikes
+                                                    : parent.down ? Theme.primaryColor
+                                                    : parent.hovered ? Theme.primaryLightColor
+                                                    : Theme.dividerColor
                                         border.width: 1
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
 
                                     contentItem: Text {
@@ -419,9 +427,17 @@ Page {
 
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: prefDislikes.indexOf(dislikeOptions[index]) >= 0 ? colorDislikes : Theme.searchBarBackground
-                                        border.color: prefDislikes.indexOf(dislikeOptions[index]) >= 0 ? colorDislikes : Theme.dividerColor
+                                        color: prefDislikes.indexOf(dislikeOptions[index]) >= 0 ? colorDislikes
+                                             : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                                             : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                             : Theme.searchBarBackground
+                                        border.color: prefDislikes.indexOf(dislikeOptions[index]) >= 0 ? colorDislikes
+                                                    : parent.down ? Theme.primaryColor
+                                                    : parent.hovered ? Theme.primaryLightColor
+                                                    : Theme.dividerColor
                                         border.width: 1
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
 
                                     contentItem: Text {
@@ -475,9 +491,17 @@ Page {
 
                                     background: Rectangle {
                                         radius: Theme.radiusSmall
-                                        color: prefHealthGoal === healthGoalOptions[index] ? colorHealthGoal : Theme.searchBarBackground
-                                        border.color: prefHealthGoal === healthGoalOptions[index] ? colorHealthGoal : Theme.dividerColor
+                                        color: prefHealthGoal === healthGoalOptions[index] ? colorHealthGoal
+                                             : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.2)
+                                             : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                             : Theme.searchBarBackground
+                                        border.color: prefHealthGoal === healthGoalOptions[index] ? colorHealthGoal
+                                                    : parent.down ? Theme.primaryColor
+                                                    : parent.hovered ? Theme.primaryLightColor
+                                                    : Theme.dividerColor
                                         border.width: 1
+                                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
+                                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                                     }
 
                                     contentItem: Text {

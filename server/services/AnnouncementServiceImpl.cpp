@@ -10,6 +10,6 @@ AnnouncementServiceImpl::AnnouncementServiceImpl(
 {
 }
 
-PagedAnnouncements AnnouncementServiceImpl::getAnnouncements(int, int) {
-    throw ServiceException("Not implemented", 501);
+PagedAnnouncements AnnouncementServiceImpl::getAnnouncements(int page, int size) {
+    return announcementRepo_->findAll(page, size);
 }
