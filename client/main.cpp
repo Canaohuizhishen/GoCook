@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
 {
     //qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
 
-    // 显式使用 Breeze 风格（非 KDE 系统默认是 Fusion，但原应用是基于 Breeze 设计的）
+    // 使用 Breeze 风格
     qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.breeze");
 
     QApplication app(argc, argv);

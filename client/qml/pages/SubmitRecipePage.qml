@@ -234,6 +234,7 @@ Page {
                             Layout.preferredWidth: 36
                             Layout.preferredHeight: 36
                             fillMode: Image.PreserveAspectCrop
+                            cache: false
                             asynchronous: true
                             visible: model.imageDisplayUrl ? model.imageDisplayUrl !== "" : false
                             source: model.imageDisplayUrl || ""

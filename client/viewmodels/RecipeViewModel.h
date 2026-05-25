@@ -74,8 +74,8 @@ public:
     bool favoritesLoading() const { return m_favoritesLoading; }
     QVariantList favoriteGroups() const { return m_favoriteGroups; }
 
-    Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 20);
-    Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 20);
+    Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 30);
+    Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 30);
     Q_INVOKABLE void loadNextPage();
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void loadRecipeDetail(int recipeId);
@@ -184,7 +184,7 @@ private:
     bool m_healthFilterApplied = false;
     bool m_detailLoading = false;
     int m_currentPage = 1;
-    int m_pageSize = 20;
+    int m_pageSize = 30;
     int m_totalPages = 0;
 
     // 搜索状态

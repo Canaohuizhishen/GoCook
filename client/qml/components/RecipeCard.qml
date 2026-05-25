@@ -64,7 +64,7 @@ Rectangle {
                 id: recipeImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
-                source: modelData.imageUrl ? authViewModel.apiBaseUrl + modelData.imageUrl : ""
+                cache: false
                 asynchronous: true
 
                 // ── 匹配度徽章（推荐模式） ──

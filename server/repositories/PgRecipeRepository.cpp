@@ -28,9 +28,16 @@ struct ParamBuilder {
     }
 };
 
-std::vector<std::string> parseTags(const pqxx::field& field) {
-    if (field.is_null()) return {};
-    auto arr = json::parse(field.c_str());
+// libpqxx 8: convert string vector to pqxx::params
+pqxx::params makeParams(const std::vector<std::string>& values) {
+    pqxx::params p;
+    for (const auto& v : values) p.append(v);
+    return p;
+}
+
+std::vector<std::string> parseTags(const std::string& jsonStr) {
+    if (jsonStr.empty()) return {};
+    auto arr = json::parse(jsonStr);
     std::vector<std::string> tags;
     for (const auto& t : arr)
         tags.push_back(t.get<std::string>());
@@ -105,7 +112,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
             total = txn.exec(countSql)[0][0].as<int>();
         } else {
             LOG_DEBUG("[SQL] findPublicRecipes count");
-            total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
+            total = txn.exec(countSql, makeParams(pb.values))
                         [0][0].as<int>();
         }
 
@@ -135,7 +142,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
         )" + where;
 
         LOG_DEBUG("[SQL] findPublicRecipes data");
-        auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
+        auto rows = txn.exec(dataSql, makeParams(pb.values));
 
         for (const auto& row : rows) {
             RecipeSummary recipe;
@@ -147,7 +154,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
             if (!row["image_url"].is_null())
                 recipe.image_url = row["image_url"].c_str();
 
-            recipe.tags = parseTags(row["tags_json"]);
+            recipe.tags = parseTags(row["tags_json"].as<std::string>());
             recipe.calories = row["calories"].as<int>(0);
 
             recipe.author_id = row["author_id"].as<int>(0);
@@ -214,7 +221,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             total = txn.exec(countSql)[0][0].as<int>();
         } else {
             LOG_DEBUG("[SQL] searchRecipes count | keyword=%s", keyword.c_str());
-            total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
+            total = txn.exec(countSql, makeParams(pb.values))
                         [0][0].as<int>();
         }
 
@@ -244,7 +251,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
         )" + where;
 
         LOG_DEBUG("[SQL] searchRecipes data | keyword=%s", keyword.c_str());
-        auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
+        auto rows = txn.exec(dataSql, makeParams(pb.values));
 
         for (const auto& row : rows) {
             RecipeSummary recipe;
@@ -256,7 +263,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             if (!row["image_url"].is_null())
                 recipe.image_url = row["image_url"].c_str();
 
-            recipe.tags = parseTags(row["tags_json"]);
+            recipe.tags = parseTags(row["tags_json"].as<std::string>());
             recipe.calories = row["calories"].as<int>(0);
 
             recipe.author_id = row["author_id"].as<int>(0);
@@ -412,7 +419,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
             rec.cook_time_minutes = row["cook_time_minutes"].as<int>(0);
             if (!row["image_url"].is_null())
                 rec.image_url = row["image_url"].c_str();
-            rec.tags = parseTags(row["tags_json"]);
+            rec.tags = parseTags(row["tags_json"].as<std::string>());
             rec.calories = row["calories"].as<int>(0);
             rec.author_id = row["author_id"].as<int>(0);
             rec.author_name = row["author_name"].is_null()
@@ -562,7 +569,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             detail.nutrition.carbs = nutJson.value("carbs", 0.0);
         }
 
-        detail.tags = parseTags(row["tags_json"]);
+        detail.tags = parseTags(row["tags_json"].as<std::string>());
 
         detail.author_id = row["author_id"].as<int>(0);
         if (!row["author_name"].is_null())
@@ -751,7 +758,7 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
 
         LOG_DEBUG("[SQL] findMySubmittedRecipes count | userId=%d", userId);
         std::string countSql = "SELECT COUNT(*) FROM recipes " + where;
-        int total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
+        int total = txn.exec(countSql, makeParams(pb.values))
                         [0][0].as<int>();
 
         where += " ORDER BY updated_at DESC LIMIT " + pb.next();
@@ -763,7 +770,7 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
                               " FROM recipes " + where;
 
         LOG_DEBUG("[SQL] findMySubmittedRecipes data | userId=%d", userId);
-        auto rows = txn.exec_params(dataSql, pqxx::prepare::make_dynamic_params(pb.values));
+        auto rows = txn.exec(dataSql, makeParams(pb.values));
 
         for (const auto& row : rows) {
             MyRecipeStatus item;
