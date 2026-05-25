@@ -52,6 +52,7 @@ Rectangle {
                 id: recipeImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
+                cache: false
                 source: gridCard.imageSource || ""
                 asynchronous: true
 

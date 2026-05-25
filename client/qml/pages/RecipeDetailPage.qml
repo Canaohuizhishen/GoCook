@@ -18,7 +18,7 @@ Page {
     property string editComment: ""
     readonly property var recipeTags: recipeVM.recipeDetail.tags || []
     readonly property var nutrition: recipeVM.recipeDetail.nutrition || {}
-    readonly property real imageHeight: Math.min(250, (flickable.width - Theme.spacingMedium * 2) * 0.6)
+    readonly property real imageHeight: (flickable.width - Theme.spacingMedium * 2) * 0.5
     readonly property real navThreshold: imageHeight - navBar.height
 
     Component.onCompleted: {
@@ -60,6 +60,7 @@ Page {
                     id: detailImage
                     anchors.fill: parent
                     fillMode: Image.PreserveAspectCrop
+                    cache: false
                     source: recipeVM.recipeDetail.imageUrl ? authViewModel.apiBaseUrl + recipeVM.recipeDetail.imageUrl : "qrc:/img-placeholder.svg"
                     asynchronous: true
                 }

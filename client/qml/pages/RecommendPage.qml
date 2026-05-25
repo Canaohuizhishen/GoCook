@@ -33,7 +33,7 @@ Page {
     }
 
     Component.onCompleted: {
-        recipeVM.loadPublicRecipes(1, 20)
+        recipeVM.loadPublicRecipes(1)
     }
 
     LoadingIndicator {
@@ -68,7 +68,7 @@ Page {
                 anchors.fill: parent
                 anchors.margins: Theme.spacingXSmall
                 recipeName: modelData.name
-                imageSource: modelData.imageUrl || ""
+                imageSource: modelData.imageUrl ? authViewModel.apiBaseUrl + modelData.imageUrl : ""
                 prepTime: modelData.prepTime + qsTr("分钟")
 
                 onClicked: recommendPage.recipeClicked(modelData.id)

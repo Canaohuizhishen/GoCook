@@ -120,7 +120,7 @@ Page {
                     width: recListView.width - recListView.leftMargin - recListView.rightMargin
                     recipeName: modelData.name
                     recipeDescription: modelData.description
-                    imageSource: modelData.imageUrl || ""
+                    imageSource: modelData.imageUrl ? authViewModel.apiBaseUrl + modelData.imageUrl : ""
                     prepTime: (modelData.prepTime || "0") + qsTr("分钟")
                     cookTime: (modelData.cookTime || "0") + qsTr("分钟")
                     tags: modelData.tags || []

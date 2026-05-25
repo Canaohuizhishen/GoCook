@@ -158,7 +158,7 @@ Page {
                     width: resultListView.width - resultListView.leftMargin - resultListView.rightMargin
                     recipeName: modelData.name
                     recipeDescription: modelData.description
-                    imageSource: modelData.imageUrl || ""
+                    imageSource: modelData.imageUrl ? authViewModel.apiBaseUrl + modelData.imageUrl : ""
                     prepTime: modelData.prepTime + qsTr("分钟")
                     cookTime: modelData.cookTime + qsTr("分钟")
                     tags: modelData.tags || []

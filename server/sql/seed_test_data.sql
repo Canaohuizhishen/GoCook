@@ -400,9 +400,37 @@ WHERE NOT EXISTS (
     SELECT 1 FROM recipe_videos rv WHERE rv.title = d.title
 );
 
--- 给所有菜谱填充默认封面图（占位图 URL）
-UPDATE recipes SET image_url = 'https://placehold.co/800x600/e0e0e0/666?text=' || replace(name, ' ', '+')
-WHERE image_url IS NULL OR image_url = '';
+-- 给所有菜谱填充真实封面图（来自 server/uploads/recipes/）
+UPDATE recipes SET image_url = CASE name
+    WHEN '番茄炒蛋' THEN '/uploads/recipes/tomato-egg.jpg'
+    WHEN '清炒西兰花' THEN '/uploads/recipes/broccoli.jpg'
+    WHEN '鸡胸肉沙拉' THEN '/uploads/recipes/chicken-salad.jpg'
+    WHEN '麻婆豆腐' THEN '/uploads/recipes/mapo-tofu.jpg'
+    WHEN '糖醋里脊' THEN '/uploads/recipes/sweet-sour-pork.jpg'
+    WHEN '宫保鸡丁' THEN '/uploads/recipes/kung-pao-chicken.jpg'
+    WHEN '清蒸鲈鱼' THEN '/uploads/recipes/steamed-fish.jpg'
+    WHEN '酸辣土豆丝' THEN '/uploads/recipes/shredded-potato.jpg'
+    WHEN '红烧肉' THEN '/uploads/recipes/braised-pork.jpg'
+    WHEN '蒜蓉生菜' THEN '/uploads/recipes/garlic-lettuce.jpg'
+    WHEN '回锅肉' THEN '/uploads/recipes/twice-cooked-pork.jpg'
+    WHEN '水煮鱼片' THEN '/uploads/recipes/poached-fish.jpg'
+    WHEN '蚝油牛肉' THEN '/uploads/recipes/oyster-beef.jpg'
+    WHEN '醋溜白菜' THEN '/uploads/recipes/vinegar-cabbage.jpg'
+    WHEN '干煸四季豆' THEN '/uploads/recipes/dry-fried-beans.jpg'
+    WHEN '葱爆羊肉' THEN '/uploads/recipes/lamb-onion.jpg'
+    WHEN '紫菜蛋花汤' THEN '/uploads/recipes/seaweed-egg-soup.jpg'
+    WHEN '鱼香肉丝' THEN '/uploads/recipes/yu-shiang-pork.jpg'
+    WHEN '西红柿炖牛腩' THEN '/uploads/recipes/tomato-beef-brisket.jpg'
+    WHEN '蒜蓉粉丝蒸虾' THEN '/uploads/recipes/garlic-shrimp.jpg'
+    WHEN '地三鲜' THEN '/uploads/recipes/three-veggies.jpg'
+    WHEN '口水鸡' THEN '/uploads/recipes/mouthwatering-chicken.jpg'
+    WHEN '蛋炒饭' THEN '/uploads/recipes/egg-fried-rice.jpg'
+END
+WHERE name IN ('番茄炒蛋','清炒西兰花','鸡胸肉沙拉','麻婆豆腐','糖醋里脊',
+               '宫保鸡丁','清蒸鲈鱼','酸辣土豆丝','红烧肉','蒜蓉生菜',
+               '回锅肉','水煮鱼片','蚝油牛肉','醋溜白菜','干煸四季豆',
+               '葱爆羊肉','紫菜蛋花汤','鱼香肉丝','西红柿炖牛腩',
+               '蒜蓉粉丝蒸虾','地三鲜','口水鸡','蛋炒饭');
 
 -- 完成提示
 \echo 'Test data seeded successfully!'

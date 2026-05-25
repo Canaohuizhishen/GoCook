@@ -309,7 +309,8 @@ Page {
                                 color: Theme.searchBarBackground
                                 Image {
                                     anchors.fill: parent
-                                    source: modelData.imageUrl || ""
+                                    cache: false
+                                    source: modelData.imageUrl ? authViewModel.apiBaseUrl + modelData.imageUrl : ""
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     visible: status === Image.Ready
