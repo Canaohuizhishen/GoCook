@@ -4,6 +4,7 @@
 #include <optional>
 #include <sstream>
 #include <vector>
+#include <fstream>
 #include "../common/ErrorHelper.h"
 #include "../common/PaginationHelper.h"
 #include "../common/JsonSerializer.h"
@@ -13,6 +14,14 @@
 using json = nlohmann::json;
 using namespace gocook::services;
 using namespace gocook::models;
+
+static std::string extractMime(const std::string& ct) {
+    auto p = ct.find(';');
+    std::string m = (p == std::string::npos) ? ct : ct.substr(0, p);
+    while (!m.empty() && (m.front()==' '||m.front()=='\t')) m.erase(0,1);
+    while (!m.empty() && (m.back()==' '||m.back()=='\t')) m.pop_back();
+    return m;
+}
 
 RecipeHandler::RecipeHandler(IRecipeService& service, AuthMiddleware& auth)
     : service_(service), auth_(auth) {}
@@ -167,6 +176,7 @@ void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response&
                 CookingStep step;
                 step.order = stepJson.value("order", 0);
                 step.description = stepJson.value("description", "");
+                step.image_url = stepJson.value("image_url", "");
                 if (stepJson.contains("duration"))
                     step.duration = stepJson["duration"].get<int>();
                 request.steps.push_back(step);
@@ -237,6 +247,7 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
                 CookingStep step;
                 step.order = stepJson.value("order", 0);
                 step.description = stepJson.value("description", "");
+                step.image_url = stepJson.value("image_url", "");
                 if (stepJson.contains("duration"))
                     step.duration = stepJson["duration"].get<int>();
                 updates.steps.push_back(step);
@@ -392,6 +403,140 @@ void RecipeHandler::deleteRating(const httplib::Request& req, httplib::Response&
         service_.deleteRating(info.userId, recipeId, ratingId);
         res.status = 200;
         res.body = json{{"message", "Rating deleted"}}.dump();
+    } catch (const ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        int recipeId = std::stoi(req.matches[1]);
+        const std::string& content = req.body;
+
+        if (content.empty()) {
+            setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
+            return;
+        }
+
+        std::string contentType = extractMime(req.get_header_value("Content-Type"));
+        if (contentType != "image/jpeg" && contentType != "image/png"
+            && contentType != "image/jpg" && contentType != "image/gif"
+            && contentType != "image/bmp" && contentType != "image/svg+xml") {
+            setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG");
+            return;
+        }
+
+        if (content.size() > 5 * 1024 * 1024) {
+            setErrorResponse(res, 400, "图片大小不能超过5MB");
+            return;
+        }
+
+        std::string ext = ".jpg";
+        if (contentType == "image/png")          ext = ".png";
+        else if (contentType == "image/gif")      ext = ".gif";
+        else if (contentType == "image/bmp")      ext = ".bmp";
+        else if (contentType == "image/svg+xml")  ext = ".svg";
+        std::string tempPath = "/tmp/gocook_recipe_" + std::to_string(recipeId)
+                             + "_" + std::to_string(std::chrono::system_clock::now()
+                                   .time_since_epoch().count()) + ext;
+
+        {
+            std::ofstream ofs(tempPath, std::ios::binary);
+            if (!ofs) {
+                setErrorResponse(res, 500, "文件写入失败");
+                return;
+            }
+            ofs.write(content.data(), content.size());
+            ofs.close();
+        }
+
+        auto imageUrl = service_.uploadRecipeImage(recipeId, tempPath);
+
+        res.status = 200;
+        res.set_header("Content-Type", "application/json");
+        res.body = json{
+            {"image_url", imageUrl}
+        }.dump();
+
+    } catch (const ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        int recipeId = std::stoi(req.matches[1]);
+        int stepIndex = std::stoi(req.matches[2]);
+        const std::string& content = req.body;
+
+        if (content.empty()) {
+            setErrorResponse(res, 400, "请选择图片");
+            return;
+        }
+
+        std::string contentType = extractMime(req.get_header_value("Content-Type"));
+        if (contentType != "image/jpeg" && contentType != "image/png"
+            && contentType != "image/jpg" && contentType != "image/gif"
+            && contentType != "image/bmp" && contentType != "image/svg+xml") {
+            setErrorResponse(res, 400, "不支持的图片格式");
+            return;
+        }
+
+        if (content.size() > 5 * 1024 * 1024) {
+            setErrorResponse(res, 400, "图片大小不能超过5MB");
+            return;
+        }
+
+        std::string ext = ".jpg";
+        if (contentType == "image/png")          ext = ".png";
+        else if (contentType == "image/gif")      ext = ".gif";
+        else if (contentType == "image/bmp")      ext = ".bmp";
+        else if (contentType == "image/svg+xml")  ext = ".svg";
+        std::string tempPath = "/tmp/gocook_recipe_" + std::to_string(recipeId)
+                             + "_step_" + std::to_string(stepIndex)
+                             + "_" + std::to_string(std::chrono::system_clock::now()
+                                   .time_since_epoch().count()) + ext;
+
+        {
+            std::ofstream ofs(tempPath, std::ios::binary);
+            if (!ofs) {
+                setErrorResponse(res, 500, "文件写入失败");
+                return;
+            }
+            ofs.write(content.data(), content.size());
+            ofs.close();
+        }
+
+        std::string imageUrl = service_.uploadStepImage(recipeId, stepIndex, tempPath);
+
+        res.status = 200;
+        res.set_header("Content-Type", "application/json");
+        res.body = json{ {"image_url", imageUrl}, {"message", "Step image uploaded"} }.dump();
+
+    } catch (const ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void RecipeHandler::deleteRecipe(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        int recipeId = std::stoi(req.matches[1]);
+        service_.deleteRecipe(info.userId, recipeId);
+        res.status = 200;
+        res.set_header("Content-Type", "application/json");
+        res.body = json{ {"message", "Recipe deleted"} }.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

@@ -91,6 +91,14 @@ target_link_libraries(appclient
         Qt6::Widgets
 )
 
+# 嵌入占位图资源
+set(_placeholder "${CMAKE_CURRENT_SOURCE_DIR}/assets/img-placeholder.svg")
+set_source_files_properties("${_placeholder}" PROPERTIES QT_RESOURCE_ALIAS "img-placeholder.svg")
+qt_add_resources(appclient "placeholder"
+    PREFIX "/"
+    FILES "${_placeholder}"
+)
+
 set_target_properties(appclient PROPERTIES
     AUTORCC TRUE                              #  set(CMAKE_AUTORCC ON)
 #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appclient

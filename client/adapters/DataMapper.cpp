@@ -40,6 +40,8 @@ namespace DataMapper {
         map["description"] = QString::fromStdString(step.description);
         if (step.duration.has_value())
             map["duration"] = step.duration.value();
+        if (!step.image_url.empty())
+            map["image_url"] = QString::fromStdString(step.image_url);
         return map;
     }
 
@@ -162,6 +164,8 @@ namespace DataMapper {
         item["authorId"]   = detail.author_id;
         item["authorName"] = QString::fromStdString(detail.author_name);
         item["createdAt"]  = QString::fromStdString(detail.created_at);
+        if (!detail.updated_at.empty())
+            item["updatedAt"] = QString::fromStdString(detail.updated_at);
 
         return item;
     }
@@ -259,6 +263,7 @@ namespace DataMapper {
         if (status.reject_reason.has_value())
             map["rejectReason"] = QString::fromStdString(status.reject_reason.value());
         map["submittedAt"]  = QString::fromStdString(status.submitted_at);
+        map["updatedAt"]    = QString::fromStdString(status.updated_at);
         return map;
     }
 

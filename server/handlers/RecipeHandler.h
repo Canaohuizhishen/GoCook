@@ -41,6 +41,12 @@ public:
     void getMyRecipeRating(const httplib::Request& req, httplib::Response& res);
     // 获取当前用户的所有评论列表
     void getMyRatings(const httplib::Request& req, httplib::Response& res);
+    // 上传菜谱封面图片
+    void uploadRecipeImage(const httplib::Request& req, httplib::Response& res);
+    // 上传菜谱步骤图片
+    void uploadStepImage(const httplib::Request& req, httplib::Response& res);
+    // 删除待审核菜谱
+    void deleteRecipe(const httplib::Request& req, httplib::Response& res);
 
 private:
     nlohmann::json parseFilterParams(const httplib::Request& req);

@@ -81,37 +81,48 @@ Page {
         }
     }
 
-    // ---- 顶部状态筛选栏 ----
-    RowLayout {
+    // ========== 顶部状态筛选栏 ==========
+    Rectangle {
         id: filterBar
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.margins: Theme.spacingMedium
-        spacing: Theme.spacingSmall
+        height: 44
+        color: Theme.cardBackground
+        border.color: Theme.dividerColor
+        border.width: 1
 
-        Repeater {
-            model: filterOptions
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.spacingSmall
+            anchors.rightMargin: Theme.spacingSmall
+            spacing: Theme.spacingXSmall
 
-            delegate: Rectangle {
-                id: filterBtn
-                height: 32
-                implicitWidth: filterLabel.implicitWidth + 20
-                radius: Theme.radiusSmall
-                color: currentFilterIndex === index ? Theme.primaryColor : Theme.cardBackground
-                border.width: currentFilterIndex === index ? 0 : 1
-                border.color: Theme.dividerColor
+            Repeater {
+                model: filterOptions
 
-                Text {
-                    id: filterLabel
-                    anchors.centerIn: parent
+                delegate: Button {
+                    id: filterBtn
                     text: modelData.label
-                    font { family: Theme.fontFamily; pointSize: Theme.fontSizeCaption }
-                    color: currentFilterIndex === index ? "#FFFFFF" : Theme.textPrimary
-                }
-
-                MouseArea {
-                    anchors.fill: parent
+                    flat: true
+                    Layout.preferredHeight: 30
+                    highlighted: currentFilterIndex === index
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSizeCaption
+                    leftPadding: 12; rightPadding: 12
+                    topPadding: 0; bottomPadding: 0
+                    background: Rectangle {
+                        radius: 6
+                        color: parent.highlighted ? Theme.primaryColor
+                             : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                             : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                             : Theme.searchBarBackground
+                        Behavior on color {
+                            ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic }
+                        }
+                    }
                     onClicked: {
                         currentFilterIndex = index
                         recipeVM.loadMyRecipes(1, 20, modelData.value)
@@ -181,13 +192,17 @@ Page {
                         }
 
                         Text {
-                            text: modelData.submittedAt || ""
+                            text: {
+                                var t = modelData.updatedAt || ""
+                                var dot = t.indexOf(".")
+                                return dot > 0 ? t.substring(0, dot) : t
+                            }
                             font { family: Theme.fontFamily; pointSize: Theme.fontSizeCaption }
                             color: Theme.textHint
                         }
                     }
 
-                    // ---- 编辑图标按钮（仅待审核/未通过时显示） ----
+                    // ---- 编辑图标按钮 ----
                     Rectangle {
                         id: editBtn
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -230,6 +245,7 @@ Page {
                             hoverEnabled: true
                             onClicked: _stackView.push("../pages/SubmitRecipePage.qml",
                                                         { recipeId: modelData.id,
+                                                          recipeStatus: modelData.status,
                                                           _stackView: _stackView })
                         }
                     }

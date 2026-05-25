@@ -114,7 +114,7 @@ ApplicationWindow {
                 stackView.push(recipeDetailPage, {recipeId: recipeId})
             }
             onShowSubmitRequest: () => {
-                stackView.push(submitRecipePage, { _stackView: stackView })
+                coverImageDialog.openWithFilter(qsTr("选择封面图片"), "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.svg)")
             }
             onShowMyRecipesRequest: () => {
                 stackView.push(myRecipesPage)
@@ -144,6 +144,13 @@ ApplicationWindow {
         id: recipeDetailPage
         RecipeDetailPage {
             property var _stackView: stackView
+        }
+    }
+
+    NativeFileDialog {
+        id: coverImageDialog
+        onFileSelected: function(path) {
+            stackView.push(submitRecipePage, { coverImagePath: path, _stackView: stackView })
         }
     }
 

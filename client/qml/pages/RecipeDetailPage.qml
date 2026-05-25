@@ -60,7 +60,7 @@ Page {
                     id: detailImage
                     anchors.fill: parent
                     fillMode: Image.PreserveAspectCrop
-                    source: recipeVM.recipeDetail.imageUrl || ""
+                    source: recipeVM.recipeDetail.imageUrl ? authViewModel.apiBaseUrl + recipeVM.recipeDetail.imageUrl : "qrc:/img-placeholder.svg"
                     asynchronous: true
                 }
             }
@@ -443,7 +443,7 @@ Page {
                                 Image {
                                     id: thumbImage
                                     anchors.fill: parent
-                                    source: (modelData && modelData.thumbnail_url) ? modelData.thumbnail_url : ""
+                                    source: (modelData && modelData.image_url) ? authViewModel.apiBaseUrl + modelData.image_url : ""
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     visible: status === Image.Ready

@@ -57,6 +57,17 @@ public:
                                                    int size) = 0;
 
     virtual models::NutritionReport findNutrition(int recipeId) = 0;
+
+    /// 更新菜谱封面图片：将 imagePath 文件复制到 uploads 目录，返回可访问的 image_url
+    virtual std::string updateRecipeImage(int recipeId,
+                                          const std::string& imagePath) = 0;
+
+    /// 更新菜谱某一步骤的图片：读 steps JSONB → 改 [stepIndex].image_url → 写回，返回 image_url
+    virtual std::string updateStepImage(int recipeId, int stepIndex,
+                                        const std::string& imagePath) = 0;
+
+    /// 删除待审核菜谱（仅 status != 'approved' 的菜谱可删除），同时清理图片文件
+    virtual void deleteRecipe(int userId, int recipeId) = 0;
 };
 
 } // namespace gocook::repository

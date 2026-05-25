@@ -86,6 +86,17 @@ namespace gocook::services {
 
         /// 获取独立营养报告（对应 API 4.15）
         virtual models::NutritionReport getRecipeNutrition(int recipeId) = 0;
+
+        /// 更新菜谱封面图片：上传图片并返回 image_url
+        virtual std::string uploadRecipeImage(int recipeId,
+                                               const std::string& filePath) = 0;
+
+        /// 更新菜谱某一步骤的图片，返回 image_url
+        virtual std::string uploadStepImage(int recipeId, int stepIndex,
+                                             const std::string& filePath) = 0;
+
+        /// 删除待审核菜谱（仅非 approved 状态可删）
+        virtual void deleteRecipe(int userId, int recipeId) = 0;
     };
 
     // ======================== 用户服务接口 ========================

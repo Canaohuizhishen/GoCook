@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QSet>
 #include <memory>
 #include <gocook/IGoCookApi.h>
 
@@ -37,10 +38,12 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool favoritesHasMore READ favoritesHasMore NOTIFY favoritesHasMoreChanged)
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoritesLoadingChanged)
     Q_PROPERTY(QVariantList favoriteGroups READ favoriteGroups NOTIFY favoriteGroupsChanged)
+    Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
 
+    QString apiBaseUrl() const;
     QVariantList recipes() const;
     bool isLoading() const;
     bool hasMore() const;
@@ -79,6 +82,8 @@ public:
     Q_INVOKABLE void submitRecipe(const QString& name, const QString& description,
                                    const QString& imageUrl, const QVariantList& ingredients,
                                    const QVariantList& steps, const QVariantList& tags);
+    Q_INVOKABLE void uploadRecipeImage(int recipeId, const QString& filePath);
+    Q_INVOKABLE void uploadStepImage(int recipeId, int stepIndex, const QString& filePath);
     Q_INVOKABLE void editRecipe(int recipeId, const QString& name, const QString& description,
                                  const QString& imageUrl, const QVariantList& ingredients,
                                  const QVariantList& steps, const QVariantList& tags);
@@ -94,6 +99,7 @@ public:
     Q_INVOKABLE void rateRecipe(int recipeId, int rating, const QString& comment);
     Q_INVOKABLE void updateRating(int recipeId, int ratingId, int rating, const QString& comment);
     Q_INVOKABLE void deleteRating(int recipeId, int ratingId);
+    Q_INVOKABLE void deleteRecipe(int recipeId);
     Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");
     Q_INVOKABLE void loadMyRecipesNextPage();
     Q_INVOKABLE void loadMyRatings(int page = 1, int size = 20);
@@ -135,6 +141,8 @@ signals:
     void ratingUpdated(int ratingId);
     void ratingDeleted(int ratingId);
     void ratingError(const QString& error);
+    void recipeDeleted();
+    void deleteFailed(const QString& error);
     void myRecipesChanged();
     void myRecipesLoadingChanged();
     void myRecipesHasMoreChanged();
@@ -145,6 +153,10 @@ signals:
     void errorOccurred(const QString &error);
     void recipeSubmitted(int id, const QString& status);
     void submitFailed(const QString& error);
+    void recipeImageUploaded(const QString& imageUrl);
+    void recipeImageUploadFailed(const QString& error);
+    void stepImageUploaded(int stepIndex, const QString& imageUrl);
+    void stepImageUploadFailed(int stepIndex, const QString& error);
     void recipeEdited();
     void editFailed(const QString& error);
     void editFormDataReady();
@@ -207,6 +219,7 @@ private:
     int m_myRecipesPage = 1;
     int m_myRecipesTotalPages = 0;
     QString m_myRecipesStatus;
+    QSet<int> m_pendingDeleteIds;  ///< 乐观删除中但 API 尚未返回的菜谱 ID
 
     // 我的评论状态
     QVariantList m_myRatings;

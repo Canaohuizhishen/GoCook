@@ -32,4 +32,7 @@ public:
     MOCK_METHOD(gocook::models::PagedUserRatings, findMyRatings,
                 (int, int, int), (override));
     MOCK_METHOD(gocook::models::NutritionReport, findNutrition, (int), (override));
+    MOCK_METHOD(std::string, updateRecipeImage, (int, const std::string&), (override));
+    MOCK_METHOD(std::string, updateStepImage, (int, int, const std::string&), (override));
+    MOCK_METHOD(void, deleteRecipe, (int, int), (override));
 };
