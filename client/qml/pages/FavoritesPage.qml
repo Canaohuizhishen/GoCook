@@ -18,16 +18,31 @@ Page {
     property var selectedIds: []
     property int moveFavId: 0
 
-    // 错误提示自动消失
-    Timer {
-        id: errorTimer
-        interval: 3000
-        onTriggered: errorMessage = ""
+    // QML 侧缓存的展示列表 — 从 recipeVM.favorites 按 currentGroupFilter 即时过滤
+    property var displayFavorites: []
+
+    function updateDisplayFavorites() {
+        var all = recipeVM.favorites
+        if (currentGroupFilter === "") {
+            displayFavorites = all
+        } else {
+            var filtered = []
+            for (var i = 0; i < all.length; i++) {
+                if (all[i].groupName === currentGroupFilter)
+                    filtered.push(all[i])
+            }
+            displayFavorites = filtered
+        }
     }
+
+    onCurrentGroupFilterChanged: updateDisplayFavorites()
+
+    // 错误提示（由 ErrorBanner 处理自动消失）
 
     // 每次页面可见时重新加载数据（用户从其他 tab 切回来时刷新）
     onVisibleChanged: {
         if (visible) {
+            errorMessage = ""
             recipeVM.loadFavorites(1, 20, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
             __dataLoaded = true
@@ -86,22 +101,11 @@ Page {
         }
     }
 
-    // 错误提示
-    Rectangle {
+    ErrorBanner {
+        id: errorBanner
         anchors.top: parent.top
         anchors.topMargin: 48
-        width: parent.width
-        height: 32
-        color: "#E74C3C"
-        visible: errorMessage.length > 0
-
-        Text {
-            anchors.centerIn: parent
-            text: errorMessage
-            color: "white"
-            font.family: Theme.fontFamily
-            font.pointSize: Theme.fontSizeCaption
-        }
+        text: errorMessage
     }
 
     Item {
@@ -249,7 +253,7 @@ Page {
                     id: loadingIndicator
                     fullscreen: true
                     message: qsTr("正在加载收藏...")
-                    isLoading: recipeVM.favoritesLoading && recipeVM.favorites.length === 0
+                    isLoading: recipeVM.favoritesLoading && displayFavorites.length === 0
                 }
 
                 ListView {
@@ -259,13 +263,13 @@ Page {
                     rightMargin: Theme.spacingMedium
                     spacing: Theme.spacingMedium
                     clip: true
-                    visible: recipeVM.favorites.length > 0
+                    visible: displayFavorites.length > 0
 
                     ScrollBar.vertical: ScrollBar {
                         policy: ScrollBar.AsNeeded
                     }
 
-                    model: recipeVM.favorites
+                    model: displayFavorites
 
                     delegate: Rectangle {
                         width: favoritesListView.width - favoritesListView.leftMargin - favoritesListView.rightMargin
@@ -441,7 +445,7 @@ Page {
                 Column {
                     anchors.centerIn: parent
                     spacing: Theme.spacingMedium
-                    visible: recipeVM.favorites.length === 0 && !recipeVM.favoritesLoading
+                    visible: displayFavorites.length === 0 && !recipeVM.favoritesLoading
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -466,7 +470,7 @@ Page {
 
     // ========== 批量删除底部操作栏 ==========
     Rectangle {
-        visible: editMode && recipeVM.favorites.length > 0
+        visible: editMode && displayFavorites.length > 0
         anchors.bottom: parent.bottom
         width: parent.width
         height: 52
@@ -492,7 +496,7 @@ Page {
             }
 
             Button {
-                text: selectedIds.length === recipeVM.favorites.length
+                text: selectedIds.length === displayFavorites.length
                       ? qsTr("取消全选") : qsTr("全选")
                 flat: true
                 font.family: Theme.fontFamily
@@ -516,12 +520,12 @@ Page {
                     verticalAlignment: Text.AlignVCenter
                 }
                 onClicked: {
-                    if (selectedIds.length === recipeVM.favorites.length) {
+                    if (selectedIds.length === displayFavorites.length) {
                         selectedIds = []
                     } else {
                         var all = []
-                        for (var i = 0; i < recipeVM.favorites.length; i++)
-                            all.push(recipeVM.favorites[i].id)
+                        for (var i = 0; i < displayFavorites.length; i++)
+                            all.push(displayFavorites[i].id)
                         selectedIds = all
                     }
                 }
@@ -589,92 +593,16 @@ Page {
     }
 
     // ========== 批量删除确认弹窗 ==========
-    Dialog {
+    ConfirmDialog {
         id: batchDeleteDialog
-        modal: true
-        standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape
-        x: (parent.width - width) / 2
-        y: (parent.height - height) / 2
-        width: Math.min(parent.width * 0.8, 320)
-
-        background: Rectangle {
-            radius: Theme.radiusMedium
-            color: Theme.cardBackground
-            border.color: Theme.dividerColor
-        }
-
-        Column {
-            spacing: Theme.spacingMedium
-            width: parent.width
-
-            Text {
-                text: qsTr("确认删除")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightBold
-                color: Theme.textPrimary
-            }
-
-            Text {
-                text: qsTr("确定要删除选中的 %1 个收藏吗？").arg(selectedIds.length)
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeBody
-                color: Theme.textSecondary
-                wrapMode: Text.WordWrap
-            }
-
-            RowLayout {
-                width: parent.width
-                spacing: Theme.spacingMedium
-
-                Button {
-                    Layout.fillWidth: true; height: 40
-                    text: qsTr("取消")
-                    flat: true
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
-                             : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.06)
-                             : "transparent"
-                        border.color: parent.down ? Theme.primaryDarkColor
-                                    : parent.hovered ? Theme.primaryColor
-                                    : Theme.dividerColor
-                        border.width: 1
-                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Text {
-                        text: parent.text; font: parent.font
-                        color: Theme.textPrimary
-                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: batchDeleteDialog.close()
-                }
-
-                Button {
-                    Layout.fillWidth: true; height: 40
-                    text: qsTr("删除")
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: parent.down ? "#C62828"
-                             : parent.hovered ? "#EF5350"
-                             : "#E74C3C"
-                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Text {
-                        text: parent.text; font: parent.font
-                        color: "white"
-                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        recipeVM.batchRemoveFavorites(selectedIds)
-                        batchDeleteDialog.close()
-                        editMode = false
-                        selectedIds = []
-                    }
-                }
-            }
+        dialogTitle: qsTr("确认删除")
+        message: qsTr("确定要删除选中的 %1 个收藏吗？").arg(selectedIds.length)
+        confirmText: qsTr("删除")
+        confirmColor: Theme.errorColor
+        onConfirmed: {
+            recipeVM.batchRemoveFavorites(selectedIds)
+            editMode = false
+            selectedIds = []
         }
     }
 
@@ -784,84 +712,13 @@ Page {
         }
     }
 
-    // ========== 创建分组弹窗 ==========
-    Dialog {
+    SimpleListInputDialog {
         id: createGroupDialog
-        modal: true; standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape
-        x: (parent.width - width) / 2; y: (parent.height - height) / 2
-        width: Math.min(parent.width * 0.8, 320)
-
-        Column {
-            spacing: Theme.spacingMedium
-            width: parent.width
-
-            Text {
-                text: qsTr("创建新分组")
-                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightBold; color: Theme.textPrimary
-            }
-
-            TextField {
-                id: groupNameInput
-                width: parent.width; height: 44
-                placeholderText: qsTr("输入分组名称")
-                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
-                verticalAlignment: TextInput.AlignVCenter
-                background: Rectangle {
-                    radius: Theme.radiusMedium
-                    color: Theme.cardBackground; border.color: Theme.dividerColor
-                }
-            }
-
-            RowLayout {
-                width: parent.width
-                spacing: Theme.spacingMedium
-                Button {
-                    Layout.fillWidth: true; height: 40
-                    text: qsTr("取消")
-                    flat: true
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
-                             : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.06)
-                             : "transparent"
-                        border.color: parent.down ? Theme.primaryDarkColor
-                                    : parent.hovered ? Theme.primaryColor
-                                    : Theme.dividerColor
-                        border.width: 1
-                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Text {
-                        text: parent.text; font: parent.font
-                        color: Theme.textPrimary; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: { createGroupDialog.close(); groupNameInput.text = "" }
-                }
-                Button {
-                    Layout.fillWidth: true; height: 40
-                    text: qsTr("创建")
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: parent.down ? Theme.primaryDarkColor
-                             : parent.hovered ? Theme.primaryLightColor
-                             : Theme.primaryColor
-                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Text {
-                        text: parent.text; font: parent.font
-                        color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        if (groupNameInput.text.trim().length > 0) {
-                            recipeVM.createFavoriteGroup(groupNameInput.text.trim())
-                            createGroupDialog.close()
-                            groupNameInput.text = ""
-                        }
-                    }
-                }
-            }
+        dialogTitle: qsTr("创建新分组")
+        placeholderText: qsTr("输入分组名称")
+        confirmText: qsTr("创建")
+        onConfirmed: function(text) {
+            recipeVM.createFavoriteGroup(text)
         }
     }
 
@@ -877,7 +734,6 @@ Page {
             font.pointSize: Theme.fontSizeBody
             enabled: groupContextMenu.groupId > 0
             onClicked: {
-                renameGroupInput.text = groupContextMenu.groupName
                 renameGroupDialog.open()
             }
         }
@@ -889,96 +745,21 @@ Page {
             enabled: groupContextMenu.groupId > 0
             onClicked: {
                 recipeVM.deleteFavoriteGroup(groupContextMenu.groupId)
+                currentGroupFilter = "默认收藏夹"
+                // 模拟点击默认收藏夹标签：加载该分组数据（只查 group_id IS NULL，安全无竞态）
+                recipeVM.loadFavorites(1, 20, "默认收藏夹")
             }
         }
     }
 
-    // ========== 重命名分组弹窗 ==========
-    Dialog {
+    SimpleListInputDialog {
         id: renameGroupDialog
-        modal: true; standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape
-        x: (parent.width - width) / 2; y: (parent.height - height) / 2
-        width: Math.min(parent.width * 0.8, 320)
-
-        background: Rectangle {
-            radius: Theme.radiusMedium
-            color: Theme.cardBackground
-            border.color: Theme.dividerColor
-        }
-
-        Column {
-            spacing: Theme.spacingMedium
-            width: parent.width
-
-            Text {
-                text: qsTr("重命名分组")
-                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightBold; color: Theme.textPrimary
-            }
-
-            TextField {
-                id: renameGroupInput
-                width: parent.width; height: 44
-                placeholderText: qsTr("输入新名称")
-                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeBody; color: Theme.textPrimary
-                verticalAlignment: TextInput.AlignVCenter
-                background: Rectangle {
-                    radius: Theme.radiusMedium
-                    color: Theme.cardBackground; border.color: Theme.dividerColor
-                }
-            }
-
-            RowLayout {
-                width: parent.width
-                spacing: Theme.spacingMedium
-
-                Button {
-                    Layout.fillWidth: true; height: 40
-                    text: qsTr("取消")
-                    flat: true
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.15)
-                             : parent.hovered ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.06)
-                             : "transparent"
-                        border.color: parent.down ? Theme.primaryDarkColor
-                                    : parent.hovered ? Theme.primaryColor
-                                    : Theme.dividerColor
-                        border.width: 1
-                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                        Behavior on border.color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Text {
-                        text: parent.text; font: parent.font
-                        color: Theme.textPrimary; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: { renameGroupDialog.close() }
-                }
-
-                Button {
-                    Layout.fillWidth: true; height: 40
-                    text: qsTr("保存")
-                    background: Rectangle {
-                        radius: Theme.radiusMedium
-                        color: parent.down ? Theme.primaryDarkColor
-                             : parent.hovered ? Theme.primaryLightColor
-                             : Theme.primaryColor
-                        Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Text {
-                        text: parent.text; font: parent.font
-                        color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: {
-                        var newName = renameGroupInput.text.trim()
-                        if (newName.length > 0) {
-                            recipeVM.updateFavoriteGroupName(groupContextMenu.groupId, newName)
-                            renameGroupDialog.close()
-                        }
-                    }
-                }
-            }
+        dialogTitle: qsTr("重命名分组")
+        placeholderText: qsTr("输入新名称")
+        confirmText: qsTr("保存")
+        inputText: groupContextMenu.groupName
+        onConfirmed: function(text) {
+            recipeVM.updateFavoriteGroupName(groupContextMenu.groupId, text)
         }
     }
 
@@ -995,12 +776,22 @@ Page {
 
     Connections {
         target: recipeVM
+        function onFavoritesChanged() {
+            updateDisplayFavorites()
+        }
         function onErrorOccurred(error) { console.log("Favorites error:", error) }
         function onFavoriteOperationFailed(error) {
             errorMessage = error
-            errorTimer.restart()
         }
         function onFavoriteMoved() {
+            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavoriteGroups()
+        }
+        function onFavoriteRemoved() {
+            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavoriteGroups()
+        }
+        function onFavoriteGroupDeleted() {
             recipeVM.loadFavorites(1, 20, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
         }

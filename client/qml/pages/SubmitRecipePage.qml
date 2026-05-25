@@ -121,13 +121,9 @@ Page {
             width: parent.width
             spacing: Theme.spacingMedium
 
-            Text {
+            SectionHeader {
                 width: parent.width
-                text: qsTr("基本信息")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightMedium
-                color: Theme.textPrimary
+                headerText: qsTr("基本信息")
             }
 
             TextField {
@@ -137,42 +133,13 @@ Page {
                 font.pointSize: Theme.fontSizeBody
             }
 
-            // 封面图片预览 + 更换按钮
-            Rectangle {
+            ImagePickerBox {
+                id: coverPreview
                 width: parent.width
                 height: 160
-                radius: Theme.radiusMedium
-                color: Theme.cardBackground
-                border.color: Theme.dividerColor
-                border.width: 1
-
-                Image {
-                    id: coverPreview
-                    anchors.fill: parent
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    source: coverImagePath ? "file:///" + coverImagePath : ""
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: qsTr("点击选择封面图片")
-                    color: Theme.textHint
-                    font.pointSize: Theme.fontSizeBody
-                    visible: coverPreview.source === ""
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: coverImagePicker.open()
-                }
-
-                NativeFileDialog {
-                    id: coverImagePicker
-                    onFileSelected: function(path) {
-                        coverImagePath = path
-                        coverPreview.source = "file:///" + path
-                    }
+                placeholderText: qsTr("点击选择封面图片")
+                onImageSelected: function(path) {
+                    coverImagePath = path
                 }
             }
 
@@ -187,13 +154,9 @@ Page {
 
             Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
 
-            Text {
+            SectionHeader {
                 width: parent.width
-                text: qsTr("食材")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightMedium
-                color: Theme.textPrimary
+                headerText: qsTr("食材")
             }
 
             ListView {
@@ -236,13 +199,9 @@ Page {
 
             Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
 
-            Text {
+            SectionHeader {
                 width: parent.width
-                text: qsTr("步骤")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightMedium
-                color: Theme.textPrimary
+                headerText: qsTr("步骤")
             }
 
             ListView {
@@ -337,53 +296,14 @@ Page {
         }
     }
 
-    // 删除确认弹窗
-    Dialog {
+    ConfirmDialog {
         id: confirmDeleteDialog
-        title: qsTr("确认删除")
-        anchors.centerIn: parent
-        modal: true
-        width: Math.min(parent.width * 0.85, 340)
-        standardButtons: Dialog.NoButton
-
-        background: Rectangle {
-            color: Theme.cardBackground
-            radius: Theme.radiusMedium
-            border.color: Theme.dividerColor
-            border.width: 1
-        }
-
-        ColumnLayout {
-            spacing: Theme.spacingMedium
-            width: parent.width
-
-            Text {
-                text: qsTr("确定要删除这个菜谱吗？此操作不可撤销。")
-                color: Theme.textSecondary
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-
-            RowLayout {
-                spacing: Theme.spacingSmall
-                Layout.fillWidth: true
-
-                CustomButton {
-                    Layout.fillWidth: true
-                    buttonText: qsTr("取消")
-                    buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: confirmDeleteDialog.close()
-                }
-                CustomButton {
-                    Layout.fillWidth: true
-                    buttonText: qsTr("确认删除")
-                    buttonColor: Theme.errorColor
-                    onClicked: {
-                        confirmDeleteDialog.close()
-                        recipeVM.deleteRecipe(recipeId)
-                    }
-                }
-            }
+        dialogTitle: qsTr("确认删除")
+        message: qsTr("确定要删除这个菜谱吗？此操作不可撤销。")
+        confirmText: qsTr("确认删除")
+        confirmColor: Theme.errorColor
+        onConfirmed: {
+            recipeVM.deleteRecipe(recipeId)
         }
     }
 

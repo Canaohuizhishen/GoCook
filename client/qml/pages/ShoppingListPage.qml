@@ -89,11 +89,13 @@ Page {
             // 空状态
             Text {
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 text: qsTr("暂无购物清单，点击下方按钮创建")
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSizeBody
                 color: Theme.textHint
                 horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
                 visible: !shoppingListVM.isLoading && shoppingListVM.shoppingLists.length === 0
             }
 

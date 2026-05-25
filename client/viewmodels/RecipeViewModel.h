@@ -165,6 +165,7 @@ signals:
     void favoritesLoadingChanged();
     void favoriteGroupsChanged();
     void favoriteToggleSuccess(int recipeId, bool isFavorited);
+    void favoriteRemoved();
     void favoriteGroupCreated();
     void favoriteGroupDeleted();
     void favoriteOperationFailed(const QString &error);
