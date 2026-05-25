@@ -62,6 +62,20 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/NotificationPage.qml
     QML_FILES qml/pages/NotificationDetailPage.qml
     QML_FILES qml/pages/SettingsPage.qml
+    QML_FILES qml/components/TagChip.qml
+    QML_FILES qml/components/SectionHeader.qml
+    QML_FILES qml/components/StarRatingSelector.qml
+    QML_FILES qml/components/ConfirmDialog.qml
+    QML_FILES qml/components/ImagePickerBox.qml
+    QML_FILES qml/components/RecipeIngredientItem.qml
+    QML_FILES qml/components/RecipeStepItem.qml
+    QML_FILES qml/components/ErrorBanner.qml
+    QML_FILES qml/components/NutritionSummaryCard.qml
+    QML_FILES qml/components/VideoCardDelegate.qml
+    QML_FILES qml/components/GroupSelectionDialog.qml
+    QML_FILES qml/components/SimpleListInputDialog.qml
+    QML_FILES qml/components/NotificationCardDelegate.qml
+    QML_FILES qml/components/ShoppingListTableHeader.qml
 )
 
 # 增加头文件查找路径
@@ -91,6 +105,9 @@ target_link_libraries(appclient
         Qt6::Widgets
 )
 
+# 将 .desktop 文件拷贝到构建目录（portal 需要真实文件系统路径）
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/assets/gocook.desktop" "${CMAKE_CURRENT_BINARY_DIR}/gocook.desktop" COPYONLY)
+
 # 嵌入占位图资源
 set(_placeholder "${CMAKE_CURRENT_SOURCE_DIR}/assets/img-placeholder.svg")
 set_source_files_properties("${_placeholder}" PROPERTIES QT_RESOURCE_ALIAS "img-placeholder.svg")
@@ -101,7 +118,7 @@ qt_add_resources(appclient "placeholder"
 
 set_target_properties(appclient PROPERTIES
     AUTORCC TRUE                              #  set(CMAKE_AUTORCC ON)
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appclient
+    MACOSX_BUNDLE_GUI_IDENTIFIER com.gocook.app
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE

@@ -34,14 +34,14 @@ Page {
 
                 // ========== 标题 ==========
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    Layout.alignment: Qt.AlignHCenter
                     text: qsTr("修改密码")
                     font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeH2
                     font.weight: Theme.fontWeightBold; color: Theme.textPrimary
                 }
 
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    Layout.alignment: Qt.AlignHCenter
                     text: qsTr("请先验证当前密码，然后设置新密码")
                     font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                     color: Theme.textHint

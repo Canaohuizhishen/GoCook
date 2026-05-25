@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GoCook
+Comment=菜谱与烹饪应用
+Exec=appclient
+Icon=gocook
+Categories=Qt;Utility;
+Terminal=false
+StartupNotify=true
+X-GNOME-Gettext-Domain=appclient

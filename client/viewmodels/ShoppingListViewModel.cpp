@@ -63,8 +63,12 @@ void ShoppingListViewModel::loadShoppingLists()
         }
 
         self->m_shoppingLists.clear();
-        for (const auto& summary : data)
+        for (const auto& summary : data) {
+            // 跳过正在删除中的条目（DELETE 尚未到达服务端，但乐观删除已从 UI 移除）
+            if (self->m_pendingDeleteIds.contains(summary.id))
+                continue;
             self->m_shoppingLists.append(DataMapper::toMap(summary));
+        }
 
         emit self->shoppingListsChanged();
         self->endLoad();
@@ -144,6 +148,7 @@ void ShoppingListViewModel::updateShoppingListItem(int listId, int itemId, bool 
 
 void ShoppingListViewModel::deleteShoppingList(int listId)
 {
+    m_pendingDeleteIds.insert(listId);
     m_deletingListId = listId;
     emit deletingListIdChanged();
     beginLoad();
@@ -151,6 +156,7 @@ void ShoppingListViewModel::deleteShoppingList(int listId)
     m_api->deleteShoppingList(listId,
         [self = QPointer<ShoppingListViewModel>(this), listId](bool success, const std::string& error) {
             if (!self) return;
+            self->m_pendingDeleteIds.remove(listId);
             self->m_deletingListId = -1;
             emit self->deletingListIdChanged();
             self->endLoad();
@@ -176,6 +182,8 @@ void ShoppingListViewModel::deleteShoppingList(int listId)
 void ShoppingListViewModel::deleteShoppingListOptimistic(int listId, QVariantMap listData)
 {
     // 乐观删除：立即从列表移除，API 失败时插回
+    m_pendingDeleteIds.insert(listId);
+
     int removedIndex = -1;
     QVariantList lists = m_shoppingLists;
     for (int i = 0; i < lists.size(); ++i) {
@@ -191,6 +199,8 @@ void ShoppingListViewModel::deleteShoppingListOptimistic(int listId, QVariantMap
     m_api->deleteShoppingList(listId,
         [self = QPointer<ShoppingListViewModel>(this), listId, listData, removedIndex](bool success, const std::string& error) {
             if (!self) return;
+
+            self->m_pendingDeleteIds.remove(listId);
 
             if (success) {
                 emit self->shoppingListDeleted(listId);

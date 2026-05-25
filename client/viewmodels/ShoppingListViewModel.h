@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSet>
 #include <QVariantList>
 #include <QVariantMap>
 #include <gocook/IGoCookApi.h>
@@ -59,6 +60,7 @@ private:
     int m_pendingRequests = 0;
     bool m_creating = false;
     int m_deletingListId = -1;    // 正在删除的 listId（-1 = 无）
+    QSet<int> m_pendingDeleteIds; // 乐观删除中但 API 尚未返回的 listId
 
     // 快速连续点击时：只记最后一次状态，避免静默丢弃或并发覆盖
     int m_updatePendingItemId = -1;   // 等待中的 itemId（-1 = 无）

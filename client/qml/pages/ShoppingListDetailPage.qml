@@ -158,74 +158,12 @@ Page {
                     // 宽度由最宽的子行 implicitWidth 自动决定
                     spacing: 1
 
-                    // 表头行
-                    Rectangle {
-                        height: 32
-                        color: Theme.dividerColor
-                        radius: Theme.radiusSmall
-                        implicitWidth: headerRow.implicitWidth + Theme.spacingSmall * 2
-
-                        Row {
-                            id: headerRow
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.spacingSmall
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 0
-
-                            Text { width: maxNameWidth; height: 32
-                                text: qsTr("食材")
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                font.bold: true
-                                color: Theme.textSecondary
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text { width: maxReqWidth; height: 32
-                                text: qsTr("需购")
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                font.bold: true
-                                color: Theme.textSecondary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text { width: maxInvWidth; height: 32
-                                text: qsTr("库存")
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                font.bold: true
-                                color: Theme.textSecondary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text { width: maxBuyWidth; height: 32
-                                text: qsTr("建议买")
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                font.bold: true
-                                color: Theme.textSecondary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text { width: maxUnitWidth; height: 32
-                                text: qsTr("单位")
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                font.bold: true
-                                color: Theme.textSecondary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            Text { width: 40; height: 32
-                                text: qsTr("状态")
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                font.bold: true
-                                color: Theme.textSecondary
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
+                    ShoppingListTableHeader {
+                        nameWidth: maxNameWidth
+                        reqWidth: maxReqWidth
+                        invWidth: maxInvWidth
+                        buyWidth: maxBuyWidth
+                        unitWidth: maxUnitWidth
                     }
 
                     // 食材数据行

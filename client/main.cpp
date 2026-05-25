@@ -20,6 +20,11 @@ int main(int argc, char *argv[])
 
     QApplication app(argc, argv);
 
+    // 设置桌面入口文件路径，用于 D-Bus 门户集成（文件对话框、通知等）
+    // portal 需要真实文件系统路径来读取 .desktop 文件获取 app ID
+    qputenv("QT_QPA_DESKTOP_ENTRY_PATH",
+            (QCoreApplication::applicationDirPath() + "/gocook.desktop").toLocal8Bit());
+
     // QSettings 需要这些标识符来确定配置文件路径
     QCoreApplication::setOrganizationName("GoCook");
     QCoreApplication::setOrganizationDomain("gocook.app");

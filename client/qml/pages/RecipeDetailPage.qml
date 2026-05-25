@@ -83,18 +83,8 @@ Page {
 
                 Repeater {
                     model: recipeTags
-                    Rectangle {
-                        width: tagText.implicitWidth + 12
-                        height: 24
-                        radius: 12
-                        color: Theme.primaryLightColor
-                        Text {
-                            id: tagText
-                            anchors.centerIn: parent
-                            text: modelData
-                            font.pointSize: Theme.fontSizeSmall
-                            color: "white"
-                        }
+                    TagChip {
+                        text: modelData
                     }
                 }
             }
@@ -187,12 +177,8 @@ Page {
                 color: Theme.dividerColor
             }
 
-            Text {
-                text: qsTr("食材")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightMedium
-                color: Theme.textPrimary
+            SectionHeader {
+                headerText: qsTr("食材")
             }
 
             Text {
@@ -213,45 +199,11 @@ Page {
                 Repeater {
                     id: ingredientsRepeater
                     model: 0
-                    delegate: Rectangle {
+                    delegate: RecipeIngredientItem {
                         width: ingredientsColumn.width
-                        height: 28
-                        color: "transparent"
-
-                        RowLayout {
-                            anchors.fill: parent
-                            spacing: Theme.spacingSmall
-
-                            Text {
-                                text: "\u2022"
-                                font.pointSize: Theme.fontSizeBody
-                                color: Theme.primaryColor
-                                font.bold: true
-                            }
-
-                            Text {
-                                text: modelData.name
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeBody
-                                color: Theme.textPrimary
-                                Layout.fillWidth: true
-                            }
-
-                            Text {
-                                text: modelData.quantity + " " + modelData.unit
-                                font.family: Theme.fontFamily
-                                font.pointSize: Theme.fontSizeCaption
-                                color: Theme.textHint
-                            }
-                        }
-
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: 1
-                            color: Theme.dividerColor
-                            opacity: 0.3
-                        }
+                        name: modelData.name
+                        quantity: modelData.quantity
+                        unit: modelData.unit
                     }
                 }
             }
@@ -262,12 +214,8 @@ Page {
                 color: Theme.dividerColor
             }
 
-            Text {
-                text: qsTr("步骤")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightMedium
-                color: Theme.textPrimary
+            SectionHeader {
+                headerText: qsTr("步骤")
             }
 
             Text {
@@ -288,35 +236,10 @@ Page {
                 Repeater {
                     id: stepsRepeater
                     model: 0
-                    delegate: RowLayout {
+                    delegate: RecipeStepItem {
                         width: stepsColumn.width
-                        spacing: Theme.spacingSmall
-                        layoutDirection: Qt.LeftToRight
-
-                        Rectangle {
-                            Layout.preferredWidth: 20
-                            Layout.preferredHeight: 20
-                            radius: 10
-                            color: Theme.primaryColor
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData.order || index + 1
-                                font.pointSize: Theme.fontSizeSmall - 1
-                                font.bold: true
-                                color: Theme.textOnPrimary
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: modelData.description
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody
-                            color: Theme.textPrimary
-                            wrapMode: Text.WordWrap
-                            Layout.maximumWidth: stepsColumn.width - 40
-                        }
+                        stepNumber: modelData.order || index + 1
+                        description: modelData.description
                     }
                 }
             }
@@ -325,45 +248,12 @@ Page {
                 width: parent.width
                 height: 1
                 color: Theme.dividerColor
-                visible: nutrition.calories > 0
+                visible: nutrition && nutrition.calories > 0
             }
 
-            Column {
-                width: parent.width
-                spacing: Theme.spacingXSmall
-                visible: nutrition.calories > 0
-
-                Text {
-                    text: qsTr("营养信息")
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSizeH3
-                    font.weight: Theme.fontWeightMedium
-                    color: Theme.textPrimary
-                }
-
-                Grid {
-                    columns: 2
-                    width: parent.width
-                    spacing: 4
-
-                    Text { text: qsTr("热量"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: (nutrition.calories || 0) + " kcal"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: qsTr("蛋白质"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: (nutrition.protein || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: qsTr("脂肪"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: (nutrition.fat || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: qsTr("碳水"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
-                    Text { text: (nutrition.carbs || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
-                }
-
-                CustomButton {
-                    width: parent.width
-                    buttonText: "\u2139 " + qsTr("查看详细营养报告")
-                    buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: {
-                        _stackView.push("NutritionReportPage.qml", {recipeId: recipeId, _stackView: _stackView})
-                    }
-                }
+            NutritionSummaryCard {
+                detailRecipeId: recipeId
+                stackView: _stackView
             }
 
             // ---- 关联视频区域 ----
@@ -378,12 +268,8 @@ Page {
                 width: parent.width
                 spacing: Theme.spacingSmall
 
-                Text {
-                    text: qsTr("关联视频")
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSizeH3
-                    font.weight: Theme.fontWeightMedium
-                    color: Theme.textPrimary
+                SectionHeader {
+                    headerText: qsTr("关联视频")
                     visible: recipeVM.recipeVideos.length > 0
                 }
 
@@ -412,103 +298,14 @@ Page {
                 Repeater {
                     id: videosRepeater
                     model: 0
-
-                    Rectangle {
-                        width: parent ? parent.width : 200
-                        height: 72
-                        color: Theme.cardBackground
-                        radius: Theme.radiusMedium
-
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                if (modelData && modelData.url)
-                                    Qt.openUrlExternally(modelData.url)
-                            }
-                        }
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: Theme.spacingSmall
-                            spacing: Theme.spacingSmall
-
-                            // 缩略图
-                            Rectangle {
-                                Layout.preferredWidth: 96
-                                Layout.preferredHeight: 54
-                                radius: Theme.radiusSmall
-                                color: Theme.dividerColor
-                                clip: true
-
-                                Image {
-                                    id: thumbImage
-                                    anchors.fill: parent
-                                    source: (modelData && modelData.image_url) ? authViewModel.apiBaseUrl + modelData.image_url : ""
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    visible: status === Image.Ready
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        color: Theme.dividerColor
-                                        visible: thumbImage.status === Image.Error || thumbImage.source === ""
-
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "\uD83C\uDFAC"
-                                            font.pointSize: 16
-                                        }
-                                    }
-                                }
-                            }
-
-                            Column {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                spacing: 2
-
-                                Text {
-                                    width: parent.width
-                                    text: (modelData && modelData.title) ? modelData.title : ""
-                                    font.family: Theme.fontFamily
-                                    font.pointSize: Theme.fontSizeBody
-                                    font.weight: Theme.fontWeightMedium
-                                    color: Theme.textPrimary
-                                    elide: Text.ElideRight
-                                    maximumLineCount: 2
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                RowLayout {
-                                    spacing: Theme.spacingXSmall
-
-                                    Rectangle {
-                                        radius: Theme.radiusSmall
-                                        color: (modelData && modelData.platform === "youtube") ? "#FF0000" :
-                                               (modelData && modelData.platform === "bilibili") ? "#FB7299" : Theme.dividerColor
-                                        width: platformText.implicitWidth + 10
-                                        height: platformText.implicitHeight + 2
-
-                                        Text {
-                                            id: platformText
-                                            anchors.centerIn: parent
-                                            text: (modelData && modelData.platform) ? modelData.platform : ""
-                                            font.family: Theme.fontFamily
-                                            font.pointSize: Theme.fontSizeSmall
-                                            color: "#FFFFFF"
-                                        }
-                                    }
-
-                                    Text {
-                                        text: (modelData && modelData.duration_seconds > 0) ?
-                                                  Math.floor((modelData.duration_seconds || 0) / 60) + ":" +
-                                                  ("0" + ((modelData.duration_seconds || 0) % 60)).slice(-2) : ""
-                                        font.family: Theme.fontFamily
-                                        font.pointSize: Theme.fontSizeSmall
-                                        color: Theme.textHint
-                                    }
-                                }
-                            }
+                    delegate: VideoCardDelegate {
+                        title: modelData.title || ""
+                        imageUrl: (modelData && modelData.image_url) ? authViewModel.apiBaseUrl + modelData.image_url : ""
+                        platform: modelData.platform || ""
+                        durationSeconds: modelData.duration_seconds || 0
+                        onClicked: {
+                            if (modelData && modelData.url)
+                                Qt.openUrlExternally(modelData.url)
                         }
                     }
                 }
@@ -537,12 +334,8 @@ Page {
                 width: parent.width
                 spacing: Theme.spacingSmall
 
-                Text {
-                    text: qsTr("评分与评论")
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSizeH3
-                    font.weight: Theme.fontWeightMedium
-                    color: Theme.textPrimary
+                SectionHeader {
+                    headerText: qsTr("评分与评论")
                     visible: ratingsTriggered && recipeVM.recipeRatings.length > 0
                 }
 
@@ -685,19 +478,10 @@ Page {
                                 verticalAlignment: Text.AlignVCenter
                             }
 
-                            Repeater {
-                                model: 5
-                                Text {
-                                    text: (index < editRatingValue) ? "\u2605" : "\u2606"
-                                    font.pointSize: Theme.fontSizeH1
-                                    color: (index < editRatingValue) ? Theme.warningColor : Theme.textHint
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: editRatingValue = index + 1
-                                    }
-                                }
+                            StarRatingSelector {
+                                rating: editRatingValue
+                                starSize: Theme.fontSizeH1
+                                onRatingModified: function(r) { editRatingValue = r }
                             }
                         }
 
@@ -788,18 +572,10 @@ Page {
                             color: Theme.textPrimary
                         }
 
-                        Repeater {
-                            model: 5
-                            Text {
-                                text: (index < newRating) ? "\u2605" : "\u2606"
-                                font.pointSize: Theme.fontSizeH2
-                                color: (index < newRating) ? Theme.warningColor : Theme.textHint
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: newRating = index + 1
-                                }
-                            }
+                        StarRatingSelector {
+                            rating: newRating
+                            starSize: Theme.fontSizeH2
+                            onRatingModified: function(r) { newRating = r }
                         }
                     }
 
@@ -922,20 +698,10 @@ Page {
                                 spacing: Theme.spacingXSmall
                                 visible: editRatingId === modelData.id
 
-                                RowLayout {
-                                    width: parent.width
-                                    Repeater {
-                                        model: 5
-                                        Text {
-                                            text: (index < editRatingValue) ? "\u2605" : "\u2606"
-                                            font.pointSize: Theme.fontSizeH2
-                                            color: (index < editRatingValue) ? Theme.warningColor : Theme.textHint
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                onClicked: editRatingValue = index + 1
-                                            }
-                                        }
-                                    }
+                                StarRatingSelector {
+                                    rating: editRatingValue
+                                    starSize: Theme.fontSizeH2
+                                    onRatingModified: function(r) { editRatingValue = r }
                                 }
 
                                 TextArea {
@@ -1026,7 +792,7 @@ Page {
 
         Rectangle {
             anchors.fill: parent
-            color: "#2A2A2A"
+            color: Theme.cardBackground
             opacity: flickable.contentY > navThreshold ? 1.0 : 0.0
             Behavior on opacity { NumberAnimation { duration: 150 } }
         }
@@ -1233,125 +999,12 @@ Page {
         }
     }
 
-    // ========== 收藏分组选择弹窗 ==========
-    Dialog {
+    GroupSelectionDialog {
         id: groupDialog
-        modal: true
-        standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape
-        x: (parent.width - width) / 2
-        y: (parent.height - height) / 2
-        width: Math.min(parent.width * 0.8, 320)
-
-        background: Rectangle {
-            radius: Theme.radiusMedium
-            color: Theme.cardBackground
-            border.color: Theme.dividerColor
-        }
-
-        Column {
-            width: parent.width
-            spacing: Theme.spacingMedium
-            topPadding: Theme.spacingMedium
-            bottomPadding: Theme.spacingMedium
-
-            Text {
-                text: qsTr("选择收藏分组")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.weight: Theme.fontWeightBold
-                color: Theme.textPrimary
-                anchors.horizontalCenter: parent.horizontalCenter
-            }
-
-            Item { width: 1; height: 1 } // spacer
-
-            // 分组列表（包含"默认收藏夹" + 自定义分组）
-            Repeater {
-                id: groupRepeater
-                width: parent.width
-                model: recipeVM.favoriteGroups
-
-                Rectangle {
-                    width: parent.width
-                    height: 44
-                    radius: Theme.radiusSmall
-                    color: groupHovered ? Theme.searchBarBackground : "transparent"
-                    property bool groupHovered: false
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: Theme.spacingMedium
-                        anchors.rightMargin: Theme.spacingMedium
-                        spacing: Theme.spacingSmall
-
-                        Text {
-                            text: "\u2606"
-                            font.pointSize: Theme.fontSizeBody
-                            color: Theme.accentColor
-                        }
-
-                        Text {
-                            text: modelData.name || ""
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeBody
-                            color: Theme.textPrimary
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-
-                        Text {
-                            text: "(" + (modelData.count || 0) + ")"
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeCaption
-                            color: Theme.textHint
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onEntered: parent.groupHovered = true
-                        onExited: parent.groupHovered = false
-                        onClicked: {
-                            isFavorited = true
-                            recipeVM.toggleFavorite(recipeId, modelData.id)
-                            groupDialog.close()
-                        }
-                    }
-
-                    Rectangle {
-                        anchors.bottom: parent.bottom
-                        width: parent.width
-                        height: 1
-                        color: Theme.dividerColor
-                        opacity: 0.3
-                    }
-                }
-            }
-
-            // 取消按钮
-            Rectangle {
-                width: parent.width
-                height: 44
-                radius: Theme.radiusMedium
-                color: "transparent"
-                border.color: Theme.dividerColor
-                border.width: 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: qsTr("取消")
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSizeBody
-                    color: Theme.textSecondary
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: groupDialog.close()
-                }
-            }
+        groupsModel: recipeVM.favoriteGroups
+        onGroupSelected: function(groupId) {
+            isFavorited = true
+            recipeVM.toggleFavorite(recipeId, groupId)
         }
     }
 }

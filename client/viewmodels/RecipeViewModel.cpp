@@ -801,19 +801,33 @@ void RecipeViewModel::deleteFavoriteGroup(int groupId)
     QVariantList oldFavorites = m_favorites;
     int oldTotal = m_favoritesTotal;
 
-    // 1. 立即从分组列表中移除
-    bool found = false;
+    // 找到目标分组的信息
+    QString groupName;
+    int groupCount = 0;
+    int groupIdx = -1;
     for (int i = 0; i < m_favoriteGroups.size(); ++i) {
-        if (m_favoriteGroups[i].toMap().value("id").toInt() == groupId) {
-            m_favoriteGroups.removeAt(i);
-            found = true;
+        auto map = m_favoriteGroups[i].toMap();
+        if (map.value("id").toInt() == groupId) {
+            groupName = map.value("name").toString();
+            groupCount = map.value("count").toInt();
+            groupIdx = i;
             break;
         }
     }
-    if (found) {
+
+    if (groupIdx >= 0) {
+        // 1. 从分组列表中移除
+        m_favoriteGroups.removeAt(groupIdx);
         emit favoriteGroupsChanged();
-        // 2. 该分组下的收藏项不再可见，刷新计数
-        m_favoritesTotal = qMax(0, m_favoritesTotal - 1);
+
+        // 2. 移除该分组下的所有收藏条目
+        QVariantList remaining;
+        for (const auto &v : m_favorites) {
+            if (v.toMap().value("groupName").toString() != groupName)
+                remaining.append(v);
+        }
+        m_favorites = remaining;
+        m_favoritesTotal = qMax(0, m_favoritesTotal - groupCount);
         emit favoritesChanged();
     }
 
@@ -824,8 +838,6 @@ void RecipeViewModel::deleteFavoriteGroup(int groupId)
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
-            // 从服务端刷新确认
-            self->loadFavorites(1, 20);
             emit self->favoriteGroupDeleted();
         } else {
             // 失败 → 回滚
@@ -849,8 +861,7 @@ void RecipeViewModel::removeFavorite(int favoriteId)
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
-            self->m_favoritesLoading = false;
-            self->loadFavorites(1, 20);
+            emit self->favoriteRemoved();
         } else {
             emit self->favoriteOperationFailed(QString::fromStdString(
                 error.empty() ? "取消收藏失败" : error));
@@ -869,9 +880,7 @@ void RecipeViewModel::batchRemoveFavorites(const QVariantList &favoriteIds)
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
-            self->m_favoritesLoading = false;
-            self->loadFavorites(1, 20);
-            self->loadFavoriteGroups();
+            emit self->favoriteRemoved();
         } else {
             emit self->favoriteOperationFailed(QString::fromStdString(
                 error.empty() ? "批量删除失败" : error));
