@@ -44,6 +44,10 @@ using AvatarUploadCallback = std::function<void(bool success,
                                                 const gocook::models::AvatarUploadResponse& data,
                                                 const std::string& error)>;
 
+using RecipeImageCallback = std::function<void(bool success,
+                                               const std::string& imageUrl,
+                                               const std::string& error)>;
+
 // 收藏分组
 using FavoriteGroupsCallback = std::function<void(bool success,
                                                   const std::vector<gocook::models::FavoriteGroup>& data,
@@ -255,6 +259,32 @@ public:
      */
     virtual void uploadAvatar(const std::string& filePath,
                               AvatarUploadCallback callback) = 0;
+
+    /**
+     * @brief 上传菜谱封面图片
+     * @param recipeId 菜谱 ID
+     * @param filePath 本地图片文件路径
+     * @param callback 回调 (success, imageUrl, error)
+     */
+    virtual void uploadRecipeImage(int recipeId,
+                                   const std::string& filePath,
+                                   RecipeImageCallback callback) = 0;
+
+    /**
+     * @brief 上传菜谱步骤图片
+     * @param recipeId 菜谱 ID
+     * @param stepIndex 步骤索引（0-based）
+     * @param filePath 本地图片文件路径
+     * @param callback 回调 (success, error)
+     */
+    virtual void uploadStepImage(int recipeId, int stepIndex,
+                                 const std::string& filePath,
+                                 RecipeImageCallback callback) = 0;
+
+    /**
+     * @brief 删除待审核菜谱
+     */
+    virtual void deleteRecipe(int recipeId, SuccessCallback callback) = 0;
 
     /**
      * @brief 修改密码（需验证原密码）

@@ -54,6 +54,12 @@ public:
 
     gocook::models::NutritionReport findNutrition(int recipeId) override;
 
+    std::string updateRecipeImage(int recipeId, const std::string& imagePath) override;
+
+    std::string updateStepImage(int recipeId, int stepIndex, const std::string& imagePath) override;
+
+    void deleteRecipe(int userId, int recipeId) override;
+
 private:
     ConnectionPool& db_;
 };

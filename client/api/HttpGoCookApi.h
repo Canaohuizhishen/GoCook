@@ -106,6 +106,13 @@ public:
     void getHealthProfile(HealthProfileCallback callback) override;
     void uploadAvatar(const std::string& filePath,
                       AvatarUploadCallback callback) override;
+    void uploadRecipeImage(int recipeId,
+                           const std::string& filePath,
+                           RecipeImageCallback callback) override;
+    void uploadStepImage(int recipeId, int stepIndex,
+                         const std::string& filePath,
+                         RecipeImageCallback callback) override;
+    void deleteRecipe(int recipeId, SuccessCallback callback) override;
     void changePassword(const std::string& currentPassword,
                         const std::string& newPassword,
                         SuccessCallback callback) override;

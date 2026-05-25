@@ -684,6 +684,187 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
     });
 }
 
+void HttpGoCookApi::uploadRecipeImage(int recipeId,
+                                      const std::string& filePath,
+                                      RecipeImageCallback callback)
+{
+    QFile file(QString::fromStdString(filePath));
+    if (!file.exists()) {
+        if (callback) callback(false, "", "文件不存在");
+        return;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (callback) callback(false, "", "无法打开文件");
+        return;
+    }
+    QByteArray fileData = file.readAll();
+    QString fileName = QFileInfo(file.fileName()).fileName();
+    file.close();
+
+    if (fileData.size() > 5 * 1024 * 1024) {
+        if (callback) callback(false, "", "图片大小不能超过5MB");
+        return;
+    }
+
+    QString lower = fileName.toLower();
+    QString contentType = "image/jpeg";
+    if (lower.endsWith(".png"))        contentType = "image/png";
+    else if (lower.endsWith(".gif"))   contentType = "image/gif";
+    else if (lower.endsWith(".bmp"))   contentType = "image/bmp";
+    else if (lower.endsWith(".webp"))  contentType = "image/webp";
+    else if (lower.endsWith(".svg") || lower.endsWith(".svgz"))
+        contentType = "image/svg+xml";
+
+    QUrl url(m_baseUrl + QString("/api/recipes/%1/image").arg(recipeId));
+    QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    if (!m_token.isEmpty())
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+
+    QNetworkReply* reply = m_nam.post(request, fileData);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this)]() {
+        if (!self) return;
+
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        reply->deleteLater();
+
+        if (statusCode == 401) {
+            emit self->unauthorized();
+            self->invokeUnauthorizedHandler();
+            if (callback) callback(false, "", "未授权");
+            return;
+        }
+
+        bool success = (statusCode >= 200 && statusCode < 300);
+        if (!success) {
+            QString err = QString::fromUtf8(responseData);
+            if (doc.isObject() && doc.object().contains("error"))
+                err = doc.object()["error"].toString();
+            if (callback) callback(false, "", err.toStdString());
+            return;
+        }
+
+        if (doc.isObject()) {
+            QJsonObject obj = doc.object();
+            QString imageUrl = obj["image_url"].toString();
+            if (callback) callback(true, imageUrl.toStdString(), "");
+        } else {
+            if (callback) callback(false, "", "无效的响应格式");
+        }
+    });
+}
+
+void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
+                                    const std::string& filePath,
+                                    RecipeImageCallback callback)
+{
+    auto siLog = [](const QString& msg) {
+        QFile f("/tmp/gocook_stepimage_debug.log");
+        if (f.open(QIODevice::Append | QIODevice::Text)) {
+            f.write(("[CLIENT] " + msg + "\n").toUtf8());
+            f.close();
+        }
+    };
+    siLog("=== uploadStepImage ===");
+    siLog("recipeId=" + QString::number(recipeId) + " stepIndex=" + QString::number(stepIndex)
+          + " filePath=" + QString::fromStdString(filePath));
+
+    QFile file(QString::fromStdString(filePath));
+    if (!file.exists()) {
+        siLog("ERROR: file does not exist");
+        if (callback) callback(false, "", "文件不存在");
+        return;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        siLog("ERROR: cannot open file");
+        if (callback) callback(false, "", "无法打开文件");
+        return;
+    }
+    QByteArray fileData = file.readAll();
+    QString fileName = QFileInfo(file.fileName()).fileName();
+    file.close();
+    siLog("fileName=" + fileName + " size=" + QString::number(fileData.size()) + " bytes");
+
+    if (fileData.size() > 5 * 1024 * 1024) {
+        siLog("ERROR: file exceeds 5MB");
+        if (callback) callback(false, "", "图片大小不能超过5MB");
+        return;
+    }
+
+    QString lower = fileName.toLower();
+    QString contentType = "image/jpeg";
+    if (lower.endsWith(".png"))        contentType = "image/png";
+    else if (lower.endsWith(".gif"))   contentType = "image/gif";
+    else if (lower.endsWith(".bmp"))   contentType = "image/bmp";
+    else if (lower.endsWith(".webp"))  contentType = "image/webp";
+    else if (lower.endsWith(".svg") || lower.endsWith(".svgz"))
+        contentType = "image/svg+xml";
+
+    QUrl url(m_baseUrl + QString("/api/recipes/%1/steps/%2/image").arg(recipeId).arg(stepIndex));
+    QNetworkRequest request(url);
+    request.setTransferTimeout(30000);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+    if (!m_token.isEmpty())
+        request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+    siLog("POST " + url.toString() + " Content-Type=" + contentType + " Auth=" + (m_token.isEmpty() ? "NO" : "YES"));
+
+    QNetworkReply* reply = m_nam.post(request, fileData);
+
+    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this), siLog]() {
+        if (!self) {
+            siLog("callback: self is null");
+            return;
+        }
+
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        reply->deleteLater();
+
+        siLog("response status=" + QString::number(statusCode) + " body=" + QString::fromUtf8(responseData));
+
+        if (statusCode == 401) {
+            siLog("unauthorized (401)");
+            emit self->unauthorized();
+            self->invokeUnauthorizedHandler();
+            if (callback) callback(false, "", "未授权");
+            return;
+        }
+
+        bool success = (statusCode >= 200 && statusCode < 300);
+        if (!success) {
+            QString err = QString::fromUtf8(responseData);
+            if (doc.isObject() && doc.object().contains("error"))
+                err = doc.object()["error"].toString();
+            siLog("request failed: " + err);
+            if (callback) callback(false, "", err.toStdString());
+            return;
+        }
+
+        std::string imageUrl;
+        if (doc.isObject() && doc.object().contains("image_url"))
+            imageUrl = doc.object()["image_url"].toString().toStdString();
+        siLog("SUCCESS: image_url=" + QString::fromStdString(imageUrl));
+        if (callback) callback(true, imageUrl, "");
+    });
+}
+
+void HttpGoCookApi::deleteRecipe(int recipeId, SuccessCallback callback)
+{
+    deleteResource(QString("/api/recipes/%1").arg(recipeId), {},
+        [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+            if (!success) {
+                if (callback) callback(false, errorMsg.toStdString());
+                return;
+            }
+            if (callback) callback(true, "");
+        });
+}
+
 void HttpGoCookApi::changePassword(const std::string& currentPassword,
                                    const std::string& newPassword,
                                    SuccessCallback callback)
@@ -1264,6 +1445,8 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
                 step.description = stepObj["description"].toString().toStdString();
                 if (stepObj.contains("duration"))
                     step.duration = stepObj["duration"].toInt();
+                if (stepObj.contains("image_url"))
+                    step.image_url = stepObj["image_url"].toString().toStdString();
                 detail.steps.push_back(step);
             }
         }
@@ -1282,6 +1465,7 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
         detail.author_name = obj["author_name"].toString().toStdString();
         detail.is_favorited = obj["is_favorited"].toBool();
         detail.created_at = obj["created_at"].toString().toStdString();
+        detail.updated_at = obj["updated_at"].toString().toStdString();
         callback(true, detail, "");
     });
 }
@@ -1393,6 +1577,8 @@ void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& reci
         stepMap["description"] = QString::fromStdString(s.description);
         if (s.duration.has_value())
             stepMap["duration"] = s.duration.value();
+        if (!s.image_url.empty())
+            stepMap["image_url"] = QString::fromStdString(s.image_url);
         steps.append(stepMap);
     }
     data["steps"] = steps;
@@ -1475,6 +1661,7 @@ void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
                 if (obj.contains("reject_reason") && !obj["reject_reason"].isNull())
                     item.reject_reason = obj["reject_reason"].toString().toStdString();
                 item.submitted_at = obj["submitted_at"].toString().toStdString();
+                item.updated_at   = obj["updated_at"].toString().toStdString();
                 result.data.push_back(std::move(item));
             }
         }
@@ -1507,6 +1694,8 @@ void HttpGoCookApi::editRecipe(int recipeId,
         stepMap["description"] = QString::fromStdString(s.description);
         if (s.duration.has_value())
             stepMap["duration"] = s.duration.value();
+        if (!s.image_url.empty())
+            stepMap["image_url"] = QString::fromStdString(s.image_url);
         steps.append(stepMap);
     }
     data["steps"] = steps;

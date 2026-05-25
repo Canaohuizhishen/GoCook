@@ -123,99 +123,98 @@ Page {
                 border.color: Theme.dividerColor
                 border.width: 1
 
-                Flickable {
+                RowLayout {
                     anchors.fill: parent
                     anchors.leftMargin: Theme.spacingSmall
-                    contentWidth: row.width
-                    contentHeight: parent.height
-                    flickableDirection: Flickable.HorizontalFlick
-                    interactive: true
-                    clip: true
+                    anchors.rightMargin: Theme.spacingSmall
+                    spacing: Theme.spacingXSmall
 
-                    Row {
-                        id: row
-                        y: Math.max(0, (parent.height - height) / 2)
-                        spacing: Theme.spacingXSmall
-
-                        Button {
-                            text: qsTr("全部")
-                            flat: true
-                            height: 30
-                            highlighted: notifyVM.currentType === ""
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeCaption
-                            leftPadding: 12; rightPadding: 12
-                            topPadding: 0; bottomPadding: 0
-                            background: Rectangle {
-                                radius: 6
-                                color: parent.highlighted ? Theme.primaryColor
-                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
-                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
-                                     : Theme.searchBarBackground
-                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                            }
-                            onClicked: notifyVM.currentType = ""
+                    Button {
+                        text: qsTr("全部")
+                        flat: true
+                        Layout.preferredHeight: 30
+                        highlighted: notifyVM.currentType === ""
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeCaption
+                        leftPadding: 12; rightPadding: 12
+                        topPadding: 0; bottomPadding: 0
+                        background: Rectangle {
+                            radius: 6
+                            color: parent.highlighted ? Theme.primaryColor
+                                 : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                 : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                 : Theme.searchBarBackground
+                            Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                         }
+                        onClicked: notifyVM.currentType = ""
+                    }
 
-                        Button {
-                            text: qsTr("系统公告")
-                            flat: true
-                            height: 30
-                            highlighted: notifyVM.currentType === "system"
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeCaption
-                            leftPadding: 12; rightPadding: 12
-                            topPadding: 0; bottomPadding: 0
-                            background: Rectangle {
-                                radius: 6
-                                color: parent.highlighted ? Theme.primaryColor
-                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
-                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
-                                     : Theme.searchBarBackground
-                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                            }
-                            onClicked: notifyVM.currentType = "system"
+                    Button {
+                        text: qsTr("系统公告")
+                        flat: true
+                        Layout.preferredHeight: 30
+                        highlighted: notifyVM.currentType === "system"
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeCaption
+                        leftPadding: 12; rightPadding: 12
+                        topPadding: 0; bottomPadding: 0
+                        background: Rectangle {
+                            radius: 6
+                            color: parent.highlighted ? Theme.primaryColor
+                                 : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                 : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                 : Theme.searchBarBackground
+                            Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                         }
+                        onClicked: notifyVM.currentType = "system"
+                    }
 
-                        Button {
-                            text: qsTr("审核结果")
-                            flat: true
-                            height: 30
-                            highlighted: notifyVM.currentType === "review"
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeCaption
-                            leftPadding: 12; rightPadding: 12
-                            topPadding: 0; bottomPadding: 0
-                            background: Rectangle {
-                                radius: 6
-                                color: parent.highlighted ? Theme.primaryColor
-                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
-                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
-                                     : Theme.searchBarBackground
-                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                            }
-                            onClicked: notifyVM.currentType = "review"
+                    Button {
+                        text: qsTr("审核结果")
+                        flat: true
+                        Layout.preferredHeight: 30
+                        highlighted: notifyVM.currentType === "review"
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeCaption
+                        leftPadding: 12; rightPadding: 12
+                        topPadding: 0; bottomPadding: 0
+                        background: Rectangle {
+                            radius: 6
+                            color: parent.highlighted ? Theme.primaryColor
+                                 : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                 : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                 : Theme.searchBarBackground
+                            Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                         }
+                        onClicked: notifyVM.currentType = "review"
+                    }
 
-                        Button {
-                            text: qsTr("互动提醒")
-                            flat: true
-                            height: 30
-                            highlighted: notifyVM.currentType === "interaction"
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSizeCaption
-                            leftPadding: 12; rightPadding: 12
-                            topPadding: 0; bottomPadding: 0
-                            background: Rectangle {
-                                radius: 6
-                                color: parent.highlighted ? Theme.primaryColor
-                                     : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
-                                     : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
-                                     : Theme.searchBarBackground
-                                Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
-                            }
-                            onClicked: notifyVM.currentType = "interaction"
+                    Button {
+                        text: qsTr("互动提醒")
+                        flat: true
+                        Layout.preferredHeight: 30
+                        highlighted: notifyVM.currentType === "interaction"
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeCaption
+                        leftPadding: 12; rightPadding: 12
+                        topPadding: 0; bottomPadding: 0
+                        background: Rectangle {
+                            radius: 6
+                            color: parent.highlighted ? Theme.primaryColor
+                                 : parent.down ? Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.25)
+                                 : parent.hovered ? Qt.rgba(0, 0, 0, 0.06)
+                                 : Theme.searchBarBackground
+                            Behavior on color { ColorAnimation { duration: Theme.durationShort; easing.type: Easing.OutCubic } }
                         }
+                        onClicked: notifyVM.currentType = "interaction"
                     }
                 }
             }

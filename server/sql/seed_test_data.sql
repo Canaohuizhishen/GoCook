@@ -88,7 +88,6 @@ FROM (VALUES
      '[{"order":1,"description":"土豆去皮切细丝，放入冷水中浸泡去除淀粉后沥干。","duration":180},{"order":2,"description":"青椒切丝备用。","duration":60},{"order":3,"description":"热锅放油，小火炸香干辣椒和花椒，转大火放入土豆丝翻炒至断生，加白醋、盐、青椒丝翻炒均匀出锅。","duration":180}]',
      8, 5, 2, '{"酸辣","快手","家常"}', '炒', '酸辣', '素', 'approved',
      '{"calories":160,"protein":4,"fat":3,"carbs":30,"per_serving":{"calories":160,"protein_g":4,"fat_g":3,"carbs_g":30,"fiber_g":3,"sodium_mg":350,"vitamin_c_mg":30},"ingredients_breakdown":[{"name":"土豆","calories":140,"protein_g":3,"fat_g":0.2,"carbs_g":30},{"name":"干辣椒","calories":3,"protein_g":0.2,"fat_g":0.2,"carbs_g":0.5}],"health_notes":"醋溜做法低脂爽口，但淀粉含量较高。"}'::jsonb),
-
     ('红烧肉', 1, '肥而不腻，入口即化',
      '[{"name":"五花肉","quantity":500,"unit":"克"},{"name":"冰糖","quantity":20,"unit":"克"},{"name":"姜","quantity":4,"unit":"片"},{"name":"葱","quantity":2,"unit":"根"},{"name":"八角","quantity":2,"unit":"个"},{"name":"酱油","quantity":30,"unit":"毫升"},{"name":"老抽","quantity":10,"unit":"毫升"},{"name":"料酒","quantity":15,"unit":"毫升"}]',
      '1. 五花肉焯水切块；2. 炒糖色；3. 加料炖煮40分钟；4. 收汁出锅。',
@@ -400,6 +399,10 @@ JOIN recipes r ON r.name = d.recipe_name AND r.author_id = 1
 WHERE NOT EXISTS (
     SELECT 1 FROM recipe_videos rv WHERE rv.title = d.title
 );
+
+-- 给所有菜谱填充默认封面图（占位图 URL）
+UPDATE recipes SET image_url = 'https://placehold.co/800x600/e0e0e0/666?text=' || replace(name, ' ', '+')
+WHERE image_url IS NULL OR image_url = '';
 
 -- 完成提示
 \echo 'Test data seeded successfully!'

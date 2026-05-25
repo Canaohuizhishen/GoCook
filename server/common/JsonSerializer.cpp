@@ -18,6 +18,7 @@ json toJson(const Ingredient& ing) {
 json toJson(const CookingStep& step) {
     json j = {{"order", step.order}, {"description", step.description}};
     if (step.duration.has_value()) j["duration"] = step.duration.value();
+    if (!step.image_url.empty()) j["image_url"] = step.image_url;
     return j;
 }
 
@@ -97,6 +98,8 @@ json toJson(const RecipeDetail& detail) {
     item["author_id"] = detail.author_id;
     item["author_name"] = detail.author_name;
     item["created_at"] = detail.created_at;
+    if (!detail.updated_at.empty())
+        item["updated_at"] = detail.updated_at;
     return item;
 }
 
@@ -130,6 +133,8 @@ json toJson(const MyRecipeStatus& status) {
     if (status.reject_reason.has_value())
         item["reject_reason"] = status.reject_reason.value();
     item["submitted_at"] = status.submitted_at;
+    if (!status.updated_at.empty())
+        item["updated_at"] = status.updated_at;
     return item;
 }
 

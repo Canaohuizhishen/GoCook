@@ -2,6 +2,8 @@
 #include <pqxx/pqxx>
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
+#include <filesystem>
+#include <fstream>
 
 using json = nlohmann::json;
 using namespace gocook::models;
@@ -494,7 +496,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             " r.ingredients, r.steps, r.nutrition_info,"
             " array_to_json(r.tags) AS tags_json,"
             " r.author_id, u.username AS author_name,"
-            " r.created_at"
+            " r.created_at, r.updated_at"
             + favSelect
             + " FROM recipes r"
             + " LEFT JOIN users u ON r.author_id = u.id"
@@ -546,6 +548,8 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
                 step.description = s.value("description", "");
                 if (s.contains("duration"))
                     step.duration = s["duration"].get<int>();
+                if (s.contains("image_url"))
+                    step.image_url = s["image_url"].get<std::string>();
                 detail.steps.push_back(step);
             }
         }
@@ -567,6 +571,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             detail.author_name = "unknown";
 
         detail.created_at = row["created_at"].as<std::string>("");
+        detail.updated_at = row["updated_at"].as<std::string>("");
 
         txn.commit();
         return detail;
@@ -678,6 +683,8 @@ SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRe
             step["description"] = s.description;
             if (s.duration.has_value())
                 step["duration"] = s.duration.value();
+            if (!s.image_url.empty())
+                step["image_url"] = s.image_url;
             stepsJson.push_back(step);
         }
 
@@ -747,12 +754,12 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
         int total = txn.exec_params(countSql, pqxx::prepare::make_dynamic_params(pb.values))
                         [0][0].as<int>();
 
-        where += " ORDER BY submitted_at DESC LIMIT " + pb.next();
+        where += " ORDER BY updated_at DESC LIMIT " + pb.next();
         pb.addInt(size);
         where += " OFFSET " + pb.next();
         pb.addInt(offset);
 
-        std::string dataSql = "SELECT id, name, status, reject_reason, submitted_at"
+        std::string dataSql = "SELECT id, name, status, reject_reason, submitted_at, updated_at"
                               " FROM recipes " + where;
 
         LOG_DEBUG("[SQL] findMySubmittedRecipes data | userId=%d", userId);
@@ -766,6 +773,7 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
             if (!row["reject_reason"].is_null())
                 item.reject_reason = row["reject_reason"].c_str();
             item.submitted_at = row["submitted_at"].c_str();
+            item.updated_at = row["updated_at"].c_str();
             result.data.push_back(std::move(item));
         }
 
@@ -817,6 +825,8 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
             step["description"] = s.description;
             if (s.duration.has_value())
                 step["duration"] = s.duration.value();
+            if (!s.image_url.empty())
+                step["image_url"] = s.image_url;
             stepsJson.push_back(step);
         }
 
@@ -1161,5 +1171,200 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
     } catch (const std::exception& e) {
         LOG_ERROR("Database error in findNutrition: %s", e.what());
         throw ServiceException("数据库操作失败");
+    }
+}
+
+std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::string& filePath) {
+    try {
+        std::string ext = ".jpg";
+        auto dotPos = filePath.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            std::string lower;
+            for (char c : filePath.substr(dotPos)) lower += std::tolower(static_cast<unsigned char>(c));
+            if (lower == ".png")      ext = ".png";
+            else if (lower == ".gif") ext = ".gif";
+            else if (lower == ".bmp") ext = ".bmp";
+            else if (lower == ".svg")  ext = ".svg";
+        }
+
+        auto now = std::chrono::system_clock::now();
+        auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+                      now.time_since_epoch()).count();
+        std::string filename = "recipe_" + std::to_string(recipeId)
+                             + "_" + std::to_string(ts) + ext;
+
+        const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
+        std::string baseDir = envDir ? envDir : "uploads";
+        std::string uploadDir = std::filesystem::absolute(baseDir + "/recipes/").string();
+        std::filesystem::create_directories(uploadDir);
+        std::string destPath = uploadDir + "/" + filename;
+
+        std::filesystem::copy(filePath, destPath,
+                              std::filesystem::copy_options::overwrite_existing);
+
+        std::string imageUrl = "/uploads/recipes/" + filename;
+
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+        txn.exec_params("UPDATE recipes SET image_url = $1 WHERE id = $2",
+                        imageUrl, recipeId);
+        txn.commit();
+
+        std::filesystem::remove(filePath);
+        return imageUrl;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updateRecipeImage: %s", e.what());
+        throw ServiceException("菜谱图片保存失败");
+    }
+}
+
+std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, const std::string& filePath) {
+    try {
+        std::string ext = ".jpg";
+        auto dotPos = filePath.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            std::string lower;
+            for (char c : filePath.substr(dotPos)) lower += std::tolower(static_cast<unsigned char>(c));
+            if (lower == ".png")      ext = ".png";
+            else if (lower == ".gif") ext = ".gif";
+            else if (lower == ".bmp") ext = ".bmp";
+            else if (lower == ".svg")  ext = ".svg";
+        }
+
+        auto now = std::chrono::system_clock::now();
+        auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+                      now.time_since_epoch()).count();
+        std::string filename = "recipe_" + std::to_string(recipeId)
+                             + "_step_" + std::to_string(stepIndex)
+                             + "_" + std::to_string(ts) + ext;
+
+        const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
+        std::string baseDir = envDir ? envDir : "uploads";
+        std::string uploadDir = std::filesystem::absolute(baseDir + "/recipes/").string();
+        std::filesystem::create_directories(uploadDir);
+        std::string destPath = uploadDir + "/" + filename;
+
+        std::filesystem::copy(filePath, destPath,
+                              std::filesystem::copy_options::overwrite_existing);
+
+        std::string imageUrl = "/uploads/recipes/" + filename;
+
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        pqxx::result rows = txn.exec_params(
+            "SELECT steps FROM recipes WHERE id = $1", recipeId);
+        if (rows.empty()) {
+            throw ServiceException("菜谱不存在", 404);
+        }
+
+        json steps = json::parse(rows[0]["steps"].as<std::string>("[]"));
+        if (stepIndex < 0 || stepIndex >= (int)steps.size()) {
+            throw ServiceException("步骤索引超出范围", 400);
+        }
+
+        steps[stepIndex]["image_url"] = imageUrl;
+
+        txn.exec_params("UPDATE recipes SET steps = $1::jsonb WHERE id = $2",
+                        steps.dump(), recipeId);
+        txn.commit();
+
+        std::filesystem::remove(filePath);
+        return imageUrl;
+
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in updateStepImage: %s", e.what());
+        throw ServiceException("步骤图片保存失败");
+    }
+}
+
+void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        // 读当前菜谱信息（检查权限 + 获取图片路径用于清理）
+        pqxx::result rows = txn.exec_params(
+            "SELECT author_id, status, image_url, steps FROM recipes WHERE id = $1",
+            recipeId);
+        if (rows.empty()) {
+            throw ServiceException("菜谱不存在", 404);
+        }
+
+        int authorId = rows[0]["author_id"].as<int>();
+        if (authorId != userId) {
+            throw ServiceException("无权删除他人的菜谱", 403);
+        }
+
+        std::string status = rows[0]["status"].as<std::string>("");
+        if (status == "approved") {
+            throw ServiceException("已通过审核的菜谱不能删除", 403);
+        }
+
+        // 收集所有图片路径用于清理
+        std::vector<std::string> filesToRemove;
+
+        std::string imageUrl = rows[0]["image_url"].as<std::string>("");
+        if (!imageUrl.empty()) {
+            // 从 /uploads/recipes/filename 提取文件名
+            auto pos = imageUrl.find_last_of('/');
+            if (pos != std::string::npos) {
+                std::string filename = imageUrl.substr(pos + 1);
+                const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
+                std::string baseDir = envDir ? envDir : "uploads";
+                filesToRemove.push_back(
+                    std::filesystem::absolute(baseDir + "/recipes/" + filename).string());
+            }
+        }
+
+        // 步骤图
+        std::string stepsStr = rows[0]["steps"].as<std::string>("[]");
+        if (!stepsStr.empty() && stepsStr != "[]") {
+            try {
+                json steps = json::parse(stepsStr);
+                for (const auto& step : steps) {
+                    if (step.contains("image_url") && !step["image_url"].is_null()) {
+                        std::string imgUrl = step["image_url"].get<std::string>();
+                        if (!imgUrl.empty()) {
+                            auto pos = imgUrl.find_last_of('/');
+                            if (pos != std::string::npos) {
+                                std::string filename = imgUrl.substr(pos + 1);
+                                const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
+                                std::string baseDir = envDir ? envDir : "uploads";
+                                filesToRemove.push_back(
+                                    std::filesystem::absolute(baseDir + "/recipes/" + filename).string());
+                            }
+                        }
+                    }
+                }
+            } catch (...) {}
+        }
+
+        txn.commit(); // commit before file deletion
+
+        // 清理图片文件（失败不影响数据库删除）
+        for (const auto& f : filesToRemove) {
+            std::error_code ec;
+            std::filesystem::remove(f, ec);
+            if (ec) {
+                LOG_WARN("删除图片文件失败: %s - %s", f.c_str(), ec.message().c_str());
+            }
+        }
+
+        // 执行删除
+        auto conn2 = db_.getConnection();
+        pqxx::work txn2(*conn2);
+        txn2.exec_params("DELETE FROM recipes WHERE id = $1 AND author_id = $2",
+                         recipeId, userId);
+        txn2.commit();
+
+    } catch (const ServiceException&) {
+        throw;
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in deleteRecipe: %s", e.what());
+        throw ServiceException("删除菜谱失败");
     }
 }

@@ -48,6 +48,8 @@ void Router::setupRoutes(httplib::Server& svr) {
 
     // 注册头像文件服务路由（替代 set_mount_point，更可靠且可控）
     registerAvatarFileRoutes(svr);
+    // 注册菜谱图片文件服务路由
+    registerRecipeFileRoutes(svr);
 }
 
 // ============================================================
@@ -177,6 +179,68 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
     });
 }
 
+void Router::registerRecipeFileRoutes(httplib::Server& svr) {
+    const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
+    std::string baseDir = envDir ? envDir : "uploads";
+    std::string recipeDir = std::filesystem::absolute(baseDir + "/recipes/").string();
+    try {
+        std::filesystem::create_directories(recipeDir);
+    } catch (const std::exception& e) {
+        LOG_WARN("无法创建菜谱图片目录 %s: %s", recipeDir.c_str(), e.what());
+    }
+    LOG_INFO("Recipe image directory: %s", recipeDir.c_str());
+
+    svr.Get(R"(/uploads/recipes/(.+))", [recipeDir](const httplib::Request& req, httplib::Response& res) {
+        try {
+            std::string filename = req.matches[1];
+            if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
+                res.status = 400;
+                res.set_content("Bad request", "text/plain");
+                return;
+            }
+            std::string filePath = recipeDir + "/" + filename;
+            std::filesystem::path normPath = std::filesystem::weakly_canonical(
+                std::filesystem::path(filePath));
+            std::filesystem::path allowedDir = std::filesystem::weakly_canonical(
+                std::filesystem::path(recipeDir));
+            auto normStr = normPath.string();
+            auto allowStr = allowedDir.string();
+            if (normStr.rfind(allowStr, 0) != 0) {
+                res.status = 400;
+                res.set_content("Bad request", "text/plain");
+                return;
+            }
+
+            std::ifstream ifs(normStr, std::ios::binary);
+            if (!ifs) {
+                res.status = 404;
+                res.set_content("Not found", "text/plain");
+                return;
+            }
+            std::string content((std::istreambuf_iterator<char>(ifs)),
+                                std::istreambuf_iterator<char>());
+
+            auto dotPos = filename.find_last_of('.');
+            std::string ext;
+            if (dotPos != std::string::npos) {
+                for (char c : filename.substr(dotPos)) ext += std::tolower(static_cast<unsigned char>(c));
+            }
+            std::string mime = "image/jpeg";
+            if (ext == ".png")       mime = "image/png";
+            else if (ext == ".gif")  mime = "image/gif";
+            else if (ext == ".bmp")  mime = "image/bmp";
+            else if (ext == ".webp") mime = "image/webp";
+            else if (ext == ".svg")  mime = "image/svg+xml";
+
+            res.set_content(content, mime);
+        } catch (const std::exception& e) {
+            LOG_ERROR("Error serving recipe image file: %s", e.what());
+            res.status = 500;
+            res.set_content("Internal error", "text/plain");
+        }
+    });
+}
+
 // ============================================================
 // 用户认证（公开）
 // ============================================================
@@ -245,6 +309,15 @@ void Router::registerRecipeRoutes(httplib::Server& svr) {
     });
     svr.Post(R"(/api/recipes/(\d+)/rate)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.rateRecipe(req, res);
+    });
+    svr.Post(R"(/api/recipes/(\d+)/image)", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.uploadRecipeImage(req, res);
+    });
+    svr.Post(R"(/api/recipes/(\d+)/steps/(\d+)/image)", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.uploadStepImage(req, res);
+    });
+    svr.Delete(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        recipeHandler_.deleteRecipe(req, res);
     });
 }
 

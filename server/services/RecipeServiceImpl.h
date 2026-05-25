@@ -60,6 +60,12 @@ public:
 
     gocook::models::NutritionReport getRecipeNutrition(int recipeId) override;
 
+    std::string uploadRecipeImage(int recipeId, const std::string& filePath) override;
+
+    std::string uploadStepImage(int recipeId, int stepIndex, const std::string& filePath) override;
+
+    void deleteRecipe(int userId, int recipeId) override;
+
 private:
     std::unique_ptr<gocook::repository::IRecipeRepository> recipeRepo_;
     std::unique_ptr<gocook::repository::IUserRepository> userRepo_;

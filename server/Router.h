@@ -38,6 +38,7 @@ private:
     void registerRateLimiter(httplib::Server& svr);
     void registerRootRoute(httplib::Server& svr);
     void registerAvatarFileRoutes(httplib::Server& svr);
+    void registerRecipeFileRoutes(httplib::Server& svr);
     void registerAuthRoutes(httplib::Server& svr);
     void registerRecipeRoutes(httplib::Server& svr);
     void registerUserRoutes(httplib::Server& svr);

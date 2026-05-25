@@ -3,9 +3,16 @@
 #include <QDebug>
 #include <QPointer>
 #include <QStringList>
+#include "../api/HttpGoCookApi.h"
 
 RecipeViewModel::RecipeViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
+
+QString RecipeViewModel::apiBaseUrl() const {
+    auto* httpApi = dynamic_cast<const HttpGoCookApi*>(m_api);
+    if (httpApi) return httpApi->baseUrl();
+    return QStringLiteral("http://127.0.0.1:8080");
+}
 
 QVariantList RecipeViewModel::recipes() const { return m_recipes; }
 bool RecipeViewModel::isLoading() const { return m_isLoading; }
@@ -209,6 +216,8 @@ void RecipeViewModel::editRecipe(int recipeId, const QString& name, const QStrin
         step.description = m["description"].toString().toStdString();
         if (m.contains("duration"))
             step.duration = m["duration"].toInt();
+        if (m.contains("image_url"))
+            step.image_url = m["image_url"].toString().toStdString();
         req.steps.push_back(step);
     }
 
@@ -523,6 +532,53 @@ void RecipeViewModel::deleteRating(int recipeId, int ratingId)
         });
 }
 
+void RecipeViewModel::deleteRecipe(int recipeId)
+{
+    QVariantList oldList = m_myRecipes;
+
+    // 记录到"待删除"集合，后续任何 refresh 回调都会自动过滤
+    m_pendingDeleteIds.insert(recipeId);
+
+    // 构建新列表（不含目标条目），强制 QML 模型视为完全重建
+    QVariantList newList;
+    bool found = false;
+    for (const auto& item : m_myRecipes) {
+        if (item.toMap().value("id").toInt() == recipeId) {
+            found = true;
+            continue; // 跳过被删除项
+        }
+        newList.append(item);
+    }
+
+    if (found) {
+        // 乐观删除：用全新 QVariantList 替换原列表
+        m_myRecipes = newList;
+        emit myRecipesChanged();
+        emit recipeDeleted();
+    } else {
+        // 列表里没有该菜谱（分页未加载到）→ 直接 emit 信号
+        emit recipeDeleted();
+    }
+
+    // 发 API 请求
+    m_api->deleteRecipe(recipeId,
+        [self = QPointer<RecipeViewModel>(this), oldList, found, recipeId](bool success, const std::string& error) {
+            if (!self) return;
+            self->m_pendingDeleteIds.remove(recipeId); // 无论成功失败都清理
+            if (success) {
+                // DELETE 成功后从服务端同步
+                self->loadMyRecipes(1, 20, self->m_myRecipesStatus);
+            } else if (found) {
+                // 失败 → 回滚
+                self->m_myRecipes = oldList;
+                emit self->myRecipesChanged();
+                emit self->deleteFailed(QString::fromStdString(error));
+            } else {
+                emit self->deleteFailed(QString::fromStdString(error));
+            }
+        });
+}
+
 void RecipeViewModel::loadMyRecipes(int page, int size, const QString& status)
 {
     if (m_myRecipesLoading) return;
@@ -553,6 +609,9 @@ void RecipeViewModel::loadMyRecipes(int page, int size, const QString& status)
 
             for (const auto& item : data.data) {
                 auto map = DataMapper::toMap(item);
+                // 跳过仍在乐观删除中的条目（防止 GET 比 DELETE 快带来的竞态）
+                if (self->m_pendingDeleteIds.contains(map.value("id").toInt()))
+                    continue;
                 self->m_myRecipes.append(map);
             }
 
@@ -874,4 +933,32 @@ void RecipeViewModel::updateFavoriteGroupName(int groupId, const QString &name)
                 error.empty() ? "更新失败" : error));
         }
     });
+}
+
+void RecipeViewModel::uploadRecipeImage(int recipeId, const QString& filePath)
+{
+    m_api->uploadRecipeImage(recipeId, filePath.toStdString(),
+        [self = QPointer<RecipeViewModel>(this)](bool success,
+              const std::string& imageUrl, const std::string& error) {
+            if (!self) return;
+            if (success) {
+                emit self->recipeImageUploaded(QString::fromStdString(imageUrl));
+            } else {
+                emit self->recipeImageUploadFailed(QString::fromStdString(error));
+            }
+        });
+}
+
+void RecipeViewModel::uploadStepImage(int recipeId, int stepIndex, const QString& filePath)
+{
+    m_api->uploadStepImage(recipeId, stepIndex, filePath.toStdString(),
+        [self = QPointer<RecipeViewModel>(this), stepIndex](bool success,
+              const std::string& imageUrl, const std::string& error) {
+            if (!self) return;
+            if (success) {
+                emit self->stepImageUploaded(stepIndex, QString::fromStdString(imageUrl));
+            } else {
+                emit self->stepImageUploadFailed(stepIndex, QString::fromStdString(error));
+            }
+        });
 }

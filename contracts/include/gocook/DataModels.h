@@ -180,6 +180,7 @@ namespace gocook::models {
         int order = 0;
         std::string description;
         std::optional<int> duration;   // 步骤计时（秒），对应 JSON 字段 "duration"
+        std::string image_url;         // 步骤图 URL（相对路径）
     };
 
     /// 营养信息
@@ -229,6 +230,7 @@ namespace gocook::models {
         int author_id = 0;
         std::string author_name;
         std::string created_at;
+        std::string updated_at;
     };
 
     /// 关联视频
@@ -284,6 +286,7 @@ namespace gocook::models {
         std::string status;               // "pending", "approved", "rejected"
         std::optional<std::string> reject_reason;
         std::string submitted_at;
+        std::string updated_at;
     };
 
     /// 菜谱编辑请求（需认证）

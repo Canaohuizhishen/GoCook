@@ -11,6 +11,18 @@ Page {
     property int recipeId: 0
     property var _stackView
     property bool submitting: false
+    property bool uploadingImages: false
+    property int uploadTotal: 0
+    property int uploadDone: 0
+    property string coverImagePath: ""  // 新建菜谱时预选的封面图本地路径
+    // 步骤图统一由 stepListModel 的字段管理：
+    //   imageDisplayUrl → 展示用完整 URL（file:/// 或 http://）
+    //   localImagePath  → 本地路径（上传时用）
+    property string uploadedCoverUrl: ""  // 展示用（含 baseUrl 前缀）
+    property string _relCoverUrl: ""      // API 用（相对路径）
+    property string recipeStatus: ""      // 编辑模式：pending / approved
+    property int uploadQueueIndex: -1   // -1=空闲, -2=上传封面, >=0=上传步骤图
+    property int _submittedRecipeId: 0  // 新建菜谱返回的 id，供后续上传使用
 
     Component.onCompleted: {
         if (recipeId > 0) {
@@ -24,7 +36,15 @@ Page {
 
         nameField.text = detail.name || ""
         descField.text = detail.description || ""
-        imageUrlField.text = detail.imageUrl || ""
+        if (detail.imageUrl) {
+            _relCoverUrl = detail.imageUrl
+            coverPreview.source = authViewModel.apiBaseUrl + detail.imageUrl
+            uploadedCoverUrl = authViewModel.apiBaseUrl + detail.imageUrl
+        } else {
+            _relCoverUrl = ""
+            coverPreview.source = ""
+            uploadedCoverUrl = ""
+        }
 
         // 预填充食材
         ingredientListModel.clear()
@@ -40,7 +60,10 @@ Page {
         var steps = detail.steps
         if (steps && steps.length) {
             for (var j = 0; j < steps.length; j++) {
-                stepListModel.append(steps[j])
+                var step = steps[j]
+                step.imageDisplayUrl = step.image_url ? authViewModel.apiBaseUrl + step.image_url : ""
+                step.localImagePath = ""  // 确保步骤有 localImagePath 属性，与发布模式一致
+                stepListModel.append(step)
             }
         }
     }
@@ -114,11 +137,43 @@ Page {
                 font.pointSize: Theme.fontSizeBody
             }
 
-            TextField {
-                id: imageUrlField
+            // 封面图片预览 + 更换按钮
+            Rectangle {
                 width: parent.width
-                placeholderText: qsTr("封面图片 URL")
-                font.pointSize: Theme.fontSizeBody
+                height: 160
+                radius: Theme.radiusMedium
+                color: Theme.cardBackground
+                border.color: Theme.dividerColor
+                border.width: 1
+
+                Image {
+                    id: coverPreview
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    source: coverImagePath ? "file:///" + coverImagePath : ""
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("点击选择封面图片")
+                    color: Theme.textHint
+                    font.pointSize: Theme.fontSizeBody
+                    visible: coverPreview.source === ""
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: coverImagePicker.open()
+                }
+
+                NativeFileDialog {
+                    id: coverImagePicker
+                    onFileSelected: function(path) {
+                        coverImagePath = path
+                        coverPreview.source = "file:///" + path
+                    }
+                }
             }
 
             TextArea {
@@ -205,6 +260,8 @@ Page {
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: Theme.spacingSmall
+                        spacing: Theme.spacingSmall
+
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("步骤%1: %2").arg(order).arg(description)
@@ -212,11 +269,34 @@ Page {
                             color: Theme.textPrimary
                             elide: Text.ElideRight
                         }
+
+                        // 步骤图缩略图
+                        Image {
+                            Layout.preferredWidth: 36
+                            Layout.preferredHeight: 36
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            visible: model.imageDisplayUrl ? model.imageDisplayUrl !== "" : false
+                            source: model.imageDisplayUrl || ""
+                        }
+
+                        Button {
+                            text: model.imageDisplayUrl ? qsTr("换图") : qsTr("步骤图")
+                            flat: true
+                            font.pointSize: Theme.fontSizeSmall
+                            onClicked: {
+                                stepImagePicker.pendingStepIndex = index
+                                stepImagePicker.open()
+                            }
+                        }
+
                         Button {
                             text: qsTr("删除")
                             flat: true
                             font.pointSize: Theme.fontSizeSmall
-                            onClicked: stepListModel.remove(index)
+                            onClicked: {
+                                stepListModel.remove(index)
+                            }
                         }
                     }
                 }
@@ -232,45 +312,78 @@ Page {
 
             CustomButton {
                 width: parent.width
-                buttonText: submitting ? qsTr("提交中...") : (recipeId > 0 ? qsTr("保存修改") : qsTr("提交菜谱"))
-                enabled: nameField.text.trim() !== "" && !submitting
+                buttonText: uploadingImages ? qsTr("正在上传图片 %1/%2...").arg(uploadDone).arg(uploadTotal)
+                            : submitting ? qsTr("保存中...")
+                            : (recipeId > 0 ? qsTr("保存修改") : qsTr("提交菜谱"))
+                enabled: nameField.text.trim() !== "" && !submitting && !uploadingImages
                         && ingredientListModel.count > 0 && stepListModel.count > 0
                 onClicked: {
                     submitting = true
-                    var ingredients = []
-                    var steps = []
-                    for (var i = 0; i < ingredientListModel.count; i++) {
-                        var ing = ingredientListModel.get(i)
-                        ingredients.push({name: ing.name, quantity: ing.quantity, unit: ing.unit})
-                    }
-                    for (var j = 0; j < stepListModel.count; j++) {
-                        var s = stepListModel.get(j)
-                        steps.push({order: s.order, description: s.description})
-                    }
-                    if (recipeId > 0) {
-                        recipeVM.editRecipe(
-                            recipeId,
-                            nameField.text.trim(),
-                            descField.text.trim(),
-                            imageUrlField.text.trim(),
-                            ingredients,
-                            steps,
-                            []
-                        )
-                    } else {
-                        recipeVM.submitRecipe(
-                            nameField.text.trim(),
-                            descField.text.trim(),
-                            imageUrlField.text.trim(),
-                            ingredients,
-                            steps,
-                            []
-                        )
-                    }
+                    doSaveMetadata()
                 }
             }
 
+            // 删除按钮（仅待审核菜谱可见）
+            CustomButton {
+                width: parent.width
+                buttonText: qsTr("删除菜谱")
+                buttonColor: Theme.errorColor
+                visible: recipeId > 0 && recipeStatus === "pending"
+                enabled: !submitting
+                onClicked: confirmDeleteDialog.open()
+            }
+
             Item { height: Theme.spacingLarge }
+        }
+    }
+
+    // 删除确认弹窗
+    Dialog {
+        id: confirmDeleteDialog
+        title: qsTr("确认删除")
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent.width * 0.85, 340)
+        standardButtons: Dialog.NoButton
+
+        background: Rectangle {
+            color: Theme.cardBackground
+            radius: Theme.radiusMedium
+            border.color: Theme.dividerColor
+            border.width: 1
+        }
+
+        ColumnLayout {
+            spacing: Theme.spacingMedium
+            width: parent.width
+
+            Text {
+                text: qsTr("确定要删除这个菜谱吗？此操作不可撤销。")
+                color: Theme.textSecondary
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+
+            RowLayout {
+                spacing: Theme.spacingSmall
+                Layout.fillWidth: true
+
+                CustomButton {
+                    Layout.fillWidth: true
+                    buttonText: qsTr("取消")
+                    buttonType: CustomButton.ButtonType.Secondary
+                    onClicked: confirmDeleteDialog.close()
+                }
+                CustomButton {
+                    Layout.fillWidth: true
+                    buttonText: qsTr("确认删除")
+                    buttonColor: Theme.errorColor
+                    onClicked: {
+                        confirmDeleteDialog.close()
+                        recipeVM.deleteRecipe(recipeId)
+                    }
+                }
+            }
         }
     }
 
@@ -342,7 +455,10 @@ Page {
                 onClicked: {
                     stepListModel.append({
                         order: stepListModel.count + 1,
-                        description: stepDescField.text.trim()
+                        description: stepDescField.text.trim(),
+                        image_url: "",
+                        imageDisplayUrl: "",
+                        localImagePath: ""
                     })
                     stepDescField.clear()
                     stepDialog.close()
@@ -351,23 +467,162 @@ Page {
         }
     }
 
+    // 步骤图选择器（复用，通过 pendingStepIndex 指定目标步骤）
+    NativeFileDialog {
+        id: stepImagePicker
+        property int pendingStepIndex: -1
+        onFileSelected: function(path) {
+            if (pendingStepIndex >= 0) {
+                var entry = stepListModel.get(pendingStepIndex)
+                if (!entry) entry = {}
+                entry.imageDisplayUrl = "file:///" + path   // 立即显示本地预览
+                entry.localImagePath = path                  // 标记待上传，保存时统一上传
+                stepListModel.set(pendingStepIndex, entry)
+                pendingStepIndex = -1
+            }
+        }
+        onRejected: { pendingStepIndex = -1 }
+    }
+
+    // 执行保存元数据
+    function doSaveMetadata() {
+        submitting = true
+        var ingredients = []
+        var steps = []
+        for (var i = 0; i < ingredientListModel.count; i++) {
+            var ing = ingredientListModel.get(i)
+            ingredients.push({name: ing.name, quantity: ing.quantity, unit: ing.unit})
+        }
+        for (var j = 0; j < stepListModel.count; j++) {
+            var stepData = stepListModel.get(j)
+            var stepObj = {
+                order: stepData.order,
+                description: stepData.description,
+                image_url: (stepData.image_url && stepData.image_url !== "") ? stepData.image_url : ""
+            }
+            steps.push(stepObj)
+        }
+
+        if (recipeId > 0) {
+            // 编辑模式：图片已上传完成，此时 model 中有正确 image_url
+            recipeVM.editRecipe(
+                recipeId,
+                nameField.text.trim(),
+                descField.text.trim(),
+                _relCoverUrl,
+                ingredients,
+                steps,
+                []
+            )
+        } else {
+            // 新建模式：先创建菜谱（无图），再逐个上传图片
+            recipeVM.submitRecipe(
+                nameField.text.trim(),
+                descField.text.trim(),
+                "",
+                ingredients,
+                steps,
+                []
+            )
+        }
+    }
+
     Connections {
         target: recipeVM
         function onRecipeSubmitted(id, status) {
-            submitting = false
-            var name = nameField.text.trim() || qsTr("菜谱")
-            snackBar.show(qsTr("提交成功，等待审核"), "success")
-            popTimer.start()
+            _submittedRecipeId = id
+            // 统计待上传图片数
+            var toUpload = 0
+            for (var i = 0; i < stepListModel.count; i++) {
+                var e = stepListModel.get(i)
+                if (e && e.localImagePath) toUpload++
+            }
+            uploadTotal = coverImagePath !== "" ? toUpload + 1 : toUpload
+            uploadDone = 0
+            uploadingImages = (uploadTotal > 0)
+
+            if (coverImagePath !== "") {
+                recipeVM.uploadRecipeImage(id, coverImagePath)
+            } else if (uploadTotal > 0) {
+                page.uploadQueueIndex = -2
+                page.startNextStepUpload()
+            } else {
+                submitting = false
+                snackBar.show(qsTr("提交成功，等待审核"), "success")
+                popTimer.start()
+            }
         }
         function onSubmitFailed(error) {
             submitting = false
             snackBar.show(qsTr("提交失败，请稍后重试"), "error")
         }
-        function onRecipeEdited() {
+        function onRecipeDeleted() {
             submitting = false
-            var name = nameField.text.trim() || qsTr("菜谱")
-            snackBar.show(qsTr("更新成功，等待重新审核"), "success")
+            snackBar.show(qsTr("菜谱已删除"), "success")
+            popTimer.interval = 400
             popTimer.start()
+        }
+        function onDeleteFailed(error) {
+            submitting = false
+            snackBar.show(qsTr("删除失败: ") + error, "error")
+        }
+        function onRecipeImageUploaded(imageUrl) {
+            _relCoverUrl = imageUrl
+            uploadedCoverUrl = authViewModel.apiBaseUrl + imageUrl
+            coverPreview.source = uploadedCoverUrl
+            uploadDone++
+            // 上传步骤图
+            page.uploadQueueIndex = -2  // 封面完成
+            page.startNextStepUpload()
+        }
+        function onRecipeImageUploadFailed(error) {
+            uploadingImages = false
+            submitting = false
+            snackBar.show(qsTr("封面上传失败: ") + error, "error")
+        }
+        function onStepImageUploaded(stepIndex, imageUrl) {
+            // 将服务端返回的步骤图 URL 回填到模型
+            if (imageUrl && imageUrl !== "") {
+                var item = stepListModel.get(stepIndex)
+                if (item) {
+                    item.imageDisplayUrl = authViewModel.apiBaseUrl + imageUrl
+                    item.image_url = imageUrl
+                    item.localImagePath = ""  // 上传完成，清本地路径
+                    stepListModel.set(stepIndex, item)
+                }
+            }
+            // 推进上传队列
+            if (uploadingImages) {
+                uploadDone++
+                page.startNextStepUpload()
+            }
+        }
+        function onStepImageUploadFailed(stepIndex, error) {
+            uploadingImages = false
+            submitting = false
+            snackBar.show(qsTr("步骤") + (stepIndex+1) + qsTr("图片上传失败: ") + error, "error")
+        }
+        function onRecipeEdited() {
+            // 编辑模式：先保存元数据，再上传步骤图（与新建模式逻辑一致）
+            var toUpload = 0
+            for (var i = 0; i < stepListModel.count; i++) {
+                var e = stepListModel.get(i)
+                if (e && e.localImagePath) toUpload++
+            }
+            uploadTotal = coverImagePath !== "" ? toUpload + 1 : toUpload
+            uploadDone = 0
+            uploadingImages = (uploadTotal > 0)
+
+            if (coverImagePath !== "") {
+                recipeVM.uploadRecipeImage(recipeId, coverImagePath)
+            } else if (uploadTotal > 0) {
+                uploadQueueIndex = -2
+                startNextStepUpload()
+            } else {
+                submitting = false
+                snackBar.show(qsTr("更新成功，等待重新审核"), "success")
+                popTimer.start()
+            }
         }
         function onEditFailed(error) {
             submitting = false
@@ -376,6 +631,30 @@ Page {
         function onEditFormDataReady() {
             page.prePopulateForm()
         }
+    }
+
+    // 顺序上传步骤图
+    function startNextStepUpload() {
+        uploadQueueIndex++
+        while (uploadQueueIndex < stepListModel.count) {
+            var entry = stepListModel.get(uploadQueueIndex)
+            if (entry && entry.localImagePath) {
+                var rid = recipeId > 0 ? recipeId : (page._submittedRecipeId || 0)
+                if (rid === 0) {
+                    rid = (recipeVM.recipeDetail && recipeVM.recipeDetail.id || 0)
+                }
+                if (rid > 0) {
+                    recipeVM.uploadStepImage(rid, uploadQueueIndex, entry.localImagePath)
+                    return
+                }
+            }
+            uploadQueueIndex++
+        }
+        // 所有图片上传完毕
+        submitting = false
+        uploadingImages = false
+        snackBar.show(qsTr("保存成功"), "success")
+        popTimer.start()
     }
 
     Timer {
