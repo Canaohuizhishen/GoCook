@@ -277,3 +277,68 @@ void ShoppingListViewModel::createShoppingList(const QString& name)
             }
         });
 }
+
+void ShoppingListViewModel::createListFromRecipe(const QString& name,
+                                                  const QVariantList& missingIngredients)
+{
+    beginLoad();
+    m_creating = true;
+    emit creatingChanged();
+
+    gocook::models::CreateShoppingListRequest req;
+    req.name = name.toStdString();
+
+    m_api->createShoppingList(req,
+        [self = QPointer<ShoppingListViewModel>(this), name, missingIngredients]
+        (bool success, const gocook::models::ShoppingList& data, const std::string& error) {
+            if (!self) return;
+            self->m_creating = false;
+            emit self->creatingChanged();
+
+            if (!success) {
+                self->endLoad();
+                emit self->shoppingListCreateFailed(QString::fromStdString(error));
+                return;
+            }
+
+            int listId = data.id;
+
+            std::vector<gocook::models::BatchShoppingItem> batchItems;
+            for (const auto& val : missingIngredients) {
+                QVariantMap map = val.toMap();
+                gocook::models::BatchShoppingItem item;
+                item.ingredient_name = map["name"].toString().toStdString();
+                item.quantity = map["quantity"].toDouble();
+                item.unit = map["unit"].toString().toStdString();
+                batchItems.push_back(std::move(item));
+            }
+
+            if (batchItems.empty()) {
+                self->endLoad();
+                self->m_currentList = DataMapper::toMap(data);
+                emit self->currentListChanged();
+                emit self->shoppingListCreated(name);
+                self->refresh();
+                return;
+            }
+
+            self->m_api->batchAddShoppingItems(listId, batchItems,
+                [self = QPointer<ShoppingListViewModel>(self), listId, name, data]
+                (bool ok, const gocook::models::BatchShoppingResponse& resp,
+                 const std::string& batchError) {
+                    if (!self) return;
+                    self->endLoad();
+                    if (ok) {
+                        self->loadShoppingListDetail(listId);
+                        emit self->batchAddComplete(QString::fromStdString(resp.message));
+                        // 成功后标记列表已创建
+                        self->m_currentList = DataMapper::toMap(data);
+                        emit self->currentListChanged();
+                        emit self->shoppingListCreated(name);
+                    } else {
+                        emit self->batchAddFailed(QString::fromStdString(batchError));
+                    }
+                    self->refresh();
+                });
+        });
+}

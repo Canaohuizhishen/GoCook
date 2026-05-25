@@ -367,7 +367,7 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
 
         // Create uploads directory if needed (absolute path, 与 Router 文件服务路径一致)
         const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-        std::string baseDir = envDir ? envDir : "uploads";
+        std::string baseDir = envDir ? envDir : "server/uploads";
         std::string uploadDir = std::filesystem::absolute(baseDir + "/avatars/").string();
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;

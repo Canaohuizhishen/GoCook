@@ -31,6 +31,7 @@ public:
     Q_INVOKABLE void deleteShoppingList(int listId);
     Q_INVOKABLE void deleteShoppingListOptimistic(int listId, QVariantMap listData);
     Q_INVOKABLE void createShoppingList(const QString& name);
+    Q_INVOKABLE void createListFromRecipe(const QString& name, const QVariantList& missingIngredients);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void exportShoppingList(int listId);
 

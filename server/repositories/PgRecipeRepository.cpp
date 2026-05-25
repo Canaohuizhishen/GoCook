@@ -1201,7 +1201,7 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
                              + "_" + std::to_string(ts) + ext;
 
         const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-        std::string baseDir = envDir ? envDir : "uploads";
+        std::string baseDir = envDir ? envDir : "server/uploads";
         std::string uploadDir = std::filesystem::absolute(baseDir + "/recipes/").string();
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
@@ -1247,7 +1247,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
                              + "_" + std::to_string(ts) + ext;
 
         const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-        std::string baseDir = envDir ? envDir : "uploads";
+        std::string baseDir = envDir ? envDir : "server/uploads";
         std::string uploadDir = std::filesystem::absolute(baseDir + "/recipes/").string();
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
@@ -1321,7 +1321,7 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
             if (pos != std::string::npos) {
                 std::string filename = imageUrl.substr(pos + 1);
                 const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-                std::string baseDir = envDir ? envDir : "uploads";
+                std::string baseDir = envDir ? envDir : "server/uploads";
                 filesToRemove.push_back(
                     std::filesystem::absolute(baseDir + "/recipes/" + filename).string());
             }
@@ -1340,7 +1340,7 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
                             if (pos != std::string::npos) {
                                 std::string filename = imgUrl.substr(pos + 1);
                                 const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-                                std::string baseDir = envDir ? envDir : "uploads";
+                                std::string baseDir = envDir ? envDir : "server/uploads";
                                 filesToRemove.push_back(
                                     std::filesystem::absolute(baseDir + "/recipes/" + filename).string());
                             }

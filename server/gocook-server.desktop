@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GoCook 服务端
+Comment=GoCook 菜谱应用服务端（HTTP + PostgreSQL）
+Exec=sh -c '"$(dirname "$(readlink -f "%k")")/start_server.sh"'
+Icon=gocook-server
+Terminal=true
+Categories=Network;Utility;
+StartupNotify=true
