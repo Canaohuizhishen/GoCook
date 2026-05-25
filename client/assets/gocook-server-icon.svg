@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2C7BE5"/>
+      <stop offset="100%" stop-color="#1A5FBF"/>
+    </linearGradient>
+  </defs>
+  <!-- 圆形背景 -->
+  <circle cx="128" cy="128" r="120" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="120" fill="none" stroke="#1450A8" stroke-width="4"/>
+  <!-- 服务器机箱 -->
+  <rect x="68" y="50" width="120" height="156" rx="12" fill="#1E293B" stroke="#334155" stroke-width="3"/>
+  <!-- 散热孔 -->
+  <rect x="80" y="60" width="96" height="8" rx="3" fill="#334155"/>
+  <rect x="80" y="74" width="96" height="8" rx="3" fill="#334155"/>
+  <!-- 指示灯 -->
+  <circle cx="90" cy="98" r="5" fill="#22C55E"/>
+  <circle cx="106" cy="98" r="5" fill="#22C55E"/>
+  <circle cx="122" cy="98" r="5" fill="#22C55E"/>
+  <rect x="136" y="93" width="28" height="10" rx="4" fill="#2C7BE5"/>
+  <!-- 驱动器槽位 -->
+  <rect x="80" y="116" width="96" height="18" rx="3" fill="#0F172A" stroke="#334155" stroke-width="2"/>
+  <rect x="80" y="142" width="96" height="18" rx="3" fill="#0F172A" stroke="#334155" stroke-width="2"/>
+  <rect x="80" y="168" width="96" height="18" rx="3" fill="#0F172A" stroke="#334155" stroke-width="2"/>
+  <!-- 数据线 -->
+  <rect x="114" y="184" width="28" height="12" rx="2" fill="#22C55E"/>
+</svg>

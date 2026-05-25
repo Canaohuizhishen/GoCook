@@ -12,6 +12,7 @@ Page {
 
     property string recError: ""
     property bool _dataLoaded: false
+    property var _pendingCard: null
 
     Component.onCompleted: {
         recipeVM.loadRecommendedRecipes(1, 20)
@@ -134,7 +135,13 @@ Page {
                         recResultsPage.recipeClicked(modelData.id)
                     }
                     onAddMissingToCart: {
-                        console.warn("batchAddShoppingItems: not yet implemented")
+                        var name = modelData.name || ""
+                        var missingIngredients = modelData.matchStatus
+                            ? (modelData.matchStatus["missing_ingredients"] || [])
+                            : []
+                        if (name === "" || missingIngredients.length === 0) return
+                        shoppingListVM.createListFromRecipe(name, missingIngredients)
+                        recResultsPage._pendingCard = this
                     }
                 }
             }
@@ -175,6 +182,22 @@ Page {
         function onIsLoadingChanged() {
             if (!recipeVM.isLoading && !_dataLoaded && recResultsPage.recError === "") {
                 recResultsPage.recError = qsTr("暂无推荐结果")
+            }
+        }
+    }
+
+    Connections {
+        target: shoppingListVM
+        function onBatchAddComplete(message) {
+            if (recResultsPage._pendingCard) {
+                recResultsPage._pendingCard.showCartFeedback(true)
+                recResultsPage._pendingCard = null
+            }
+        }
+        function onBatchAddFailed(error) {
+            if (recResultsPage._pendingCard) {
+                recResultsPage._pendingCard.showCartFeedback(false)
+                recResultsPage._pendingCard = null
             }
         }
     }

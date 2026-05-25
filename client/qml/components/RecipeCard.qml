@@ -20,9 +20,21 @@ Rectangle {
     property real matchScore: 0.0
     property int availableCount: 0
     property int missingCount: 0
+    property string cartFeedback: ""
 
     signal clicked()
     signal addMissingToCart()
+
+    function showCartFeedback(ok) {
+        cartFeedback = ok ? "done" : "fail"
+        cartFeedbackTimer.restart()
+    }
+
+    Timer {
+        id: cartFeedbackTimer
+        interval: 1000
+        onTriggered: cartFeedback = ""
+    }
 
     width: parent ? parent.width : 300
     height: showMatch ? 140 : 105
@@ -271,19 +283,39 @@ Rectangle {
                 // 加购按钮
                 Rectangle {
                     visible: card.missingCount > 0
-                    width: cartBtnText.implicitWidth + 14
+                    width: Math.max(cartBtnIdle.implicitWidth, cartBtnDone.implicitWidth) + 14
                     height: 22
                     radius: 4
-                    color: Theme.primaryColor
+                    color: card.cartFeedback === "done" ? "#4caf50"
+                         : card.cartFeedback === "fail" ? "#f44336"
+                         : Theme.primaryColor
                     MouseArea {
                         anchors.fill: parent
+                        enabled: card.cartFeedback === ""
                         onClicked: card.addMissingToCart()
                     }
                     Text {
-                        id: cartBtnText
-                        anchors.centerIn: parent
+                        id: cartBtnDone
+                        visible: false
+                        text: "✓"
+                        font.pointSize: Theme.fontSizeSmall
+                        font.weight: Font.Bold
+                        font.family: Theme.fontFamily
+                    }
+                    Text {
+                        id: cartBtnIdle
+                        visible: false
                         text: qsTr("+购物车")
                         font.pointSize: Theme.fontSizeSmall - 2
+                        font.weight: Font.Bold
+                        font.family: Theme.fontFamily
+                    }
+                    Text {
+                        anchors.centerIn: parent
+                        text: card.cartFeedback === "done" ? "✓"
+                            : card.cartFeedback === "fail" ? "✕"
+                            : qsTr("+购物车")
+                        font.pointSize: card.cartFeedback === "" ? Theme.fontSizeSmall - 2 : Theme.fontSizeSmall
                         font.weight: Font.Bold
                         font.family: Theme.fontFamily
                         color: "#fff"

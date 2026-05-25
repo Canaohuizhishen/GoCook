@@ -110,9 +110,9 @@ void Router::registerRootRoute(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerAvatarFileRoutes(httplib::Server& svr) {
-    // 上传目录：可从 GOCOOK_UPLOADS_DIR 环境变量覆盖，默认 "uploads"
+    // 上传目录：可从 GOCOOK_UPLOADS_DIR 环境变量覆盖，默认 "server/uploads"
     const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-    std::string baseDir = envDir ? envDir : "uploads";
+    std::string baseDir = envDir ? envDir : "server/uploads";
     std::string avatarDir = std::filesystem::absolute(baseDir + "/avatars/").string();
     try {
         std::filesystem::create_directories(avatarDir);
@@ -181,7 +181,7 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
 
 void Router::registerRecipeFileRoutes(httplib::Server& svr) {
     const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-    std::string baseDir = envDir ? envDir : "uploads";
+    std::string baseDir = envDir ? envDir : "server/uploads";
     std::string recipeDir = std::filesystem::absolute(baseDir + "/recipes/").string();
     try {
         std::filesystem::create_directories(recipeDir);
