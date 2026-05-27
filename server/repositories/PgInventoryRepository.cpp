@@ -14,18 +14,18 @@ PagedInventory PgInventoryRepository::findInventory(int userId, int page, int si
         pqxx::work txn(*conn);
 
         LOG_DEBUG("[SQL] findInventory count | userId=%d", userId);
-        pqxx::result countRes = txn.exec_params(
-            "SELECT COUNT(*) FROM inventory WHERE user_id = $1", userId);
+        pqxx::result countRes = txn.exec(
+            "SELECT COUNT(*) FROM inventory WHERE user_id = $1", pqxx::params{userId});
         int total = countRes[0][0].as<int>();
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
         LOG_DEBUG("[SQL] findInventory data | userId=%d page=%d size=%d", userId, page, size);
-        pqxx::result rows = txn.exec_params(
+        pqxx::result rows = txn.exec(
             "SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
             "FROM inventory WHERE user_id = $1 "
             "ORDER BY added_at DESC LIMIT $2 OFFSET $3",
-            userId, size, offset);
+            pqxx::params{userId, size, offset});
 
         for (const auto& row : rows) {
             InventoryItem item;
@@ -60,40 +60,40 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
         pqxx::work txn(*conn);
 
         LOG_DEBUG("[SQL] upsertInventory check existing | userId=%d ing=%s", userId, item.ingredient_name.c_str());
-        pqxx::result existing = txn.exec_params(
+        pqxx::result existing = txn.exec(
             "SELECT id FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
-            userId, item.ingredient_name);
+            pqxx::params{userId, item.ingredient_name});
 
         if (!existing.empty()) {
             int existingId = existing[0]["id"].as<int>();
             if (item.expiry_date.has_value()) {
                 LOG_DEBUG("[SQL] upsertInventory UPDATE (with expiry) | id=%d", existingId);
-                txn.exec_params(
+                txn.exec(
                     "UPDATE inventory SET quantity = $1, unit = $2, expiry_date = $3, added_at = NOW() WHERE id = $4",
-                    item.quantity, item.unit, item.expiry_date.value(), existingId);
+                    pqxx::params{item.quantity, item.unit, item.expiry_date.value(), existingId});
             } else {
                 LOG_DEBUG("[SQL] upsertInventory UPDATE (no expiry) | id=%d", existingId);
-                txn.exec_params(
+                txn.exec(
                     "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
-                    item.quantity, item.unit, existingId);
+                    pqxx::params{item.quantity, item.unit, existingId});
             }
             txn.commit();
             return existingId;
         } else {
             if (item.expiry_date.has_value()) {
                 LOG_DEBUG("[SQL] upsertInventory INSERT (with expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
-                pqxx::result res = txn.exec_params(
+                pqxx::result res = txn.exec(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit, expiry_date) "
                     "VALUES ($1, $2, $3, $4, $5) RETURNING id",
-                    userId, item.ingredient_name, item.quantity, item.unit, item.expiry_date.value());
+                    pqxx::params{userId, item.ingredient_name, item.quantity, item.unit, item.expiry_date.value()});
                 txn.commit();
                 return res[0][0].as<int>();
             } else {
                 LOG_DEBUG("[SQL] upsertInventory INSERT (no expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
-                pqxx::result res = txn.exec_params(
+                pqxx::result res = txn.exec(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
                     "VALUES ($1, $2, $3, $4) RETURNING id",
-                    userId, item.ingredient_name, item.quantity, item.unit);
+                    pqxx::params{userId, item.ingredient_name, item.quantity, item.unit});
                 txn.commit();
                 return res[0][0].as<int>();
             }
@@ -111,9 +111,9 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] deleteInventoryItem | id=%d userId=%d", itemId, userId);
-        auto res = txn.exec_params(
+        auto res = txn.exec(
             "DELETE FROM inventory WHERE id = $1 AND user_id = $2",
-            itemId, userId);
+            pqxx::params{itemId, userId});
         if (res.affected_rows() == 0) {
             throw ServiceException("Item not found or not owned by user", 404);
         }
@@ -131,13 +131,13 @@ std::vector<ShoppingListSummary> PgInventoryRepository::findShoppingLists(int us
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        pqxx::result rows = txn.exec_params(
+        pqxx::result rows = txn.exec(
             "SELECT sl.id, sl.name, COUNT(sli.id) AS item_count, sl.created_at "
             "FROM shopping_lists sl "
             "LEFT JOIN shopping_list_items sli ON sli.list_id = sl.id "
             "WHERE sl.user_id = $1 "
             "GROUP BY sl.id ORDER BY sl.created_at DESC",
-            userId);
+            pqxx::params{userId});
 
         std::vector<ShoppingListSummary> result;
         for (const auto& row : rows) {
@@ -165,13 +165,13 @@ int PgInventoryRepository::createShoppingList(int userId, const CreateShoppingLi
         pqxx::work txn(*conn);
         pqxx::result res;
         if (req.plan_id.has_value()) {
-            res = txn.exec_params(
+            res = txn.exec(
                 "INSERT INTO shopping_lists (user_id, name, plan_id) VALUES ($1, $2, $3) RETURNING id",
-                userId, req.name, req.plan_id.value());
+                pqxx::params{userId, req.name, req.plan_id.value()});
         } else {
-            res = txn.exec_params(
+            res = txn.exec(
                 "INSERT INTO shopping_lists (user_id, name) VALUES ($1, $2) RETURNING id",
-                userId, req.name);
+                pqxx::params{userId, req.name});
         }
         int id = res[0]["id"].as<int>();
         txn.commit();
@@ -189,9 +189,9 @@ ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listI
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        pqxx::result listRes = txn.exec_params(
+        pqxx::result listRes = txn.exec(
             "SELECT id, name FROM shopping_lists WHERE id = $1 AND user_id = $2",
-            listId, userId);
+            pqxx::params{listId, userId});
         if (listRes.empty()) {
             throw ServiceException("购物清单不存在", 404);
         }
@@ -200,11 +200,11 @@ ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listI
         result.id = listRes[0]["id"].as<int>();
         result.name = listRes[0]["name"].c_str();
 
-        pqxx::result itemsRes = txn.exec_params(
+        pqxx::result itemsRes = txn.exec(
             "SELECT id, ingredient_name, required_quantity, inventory_quantity, "
             "to_buy_quantity, unit, checked "
             "FROM shopping_list_items WHERE list_id = $1 ORDER BY id",
-            listId);
+            pqxx::params{listId});
 
         for (const auto& row : itemsRes) {
             ShoppingListItem item;
@@ -233,9 +233,9 @@ void PgInventoryRepository::deleteShoppingList(int userId, int listId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        pqxx::result res = txn.exec_params(
+        pqxx::result res = txn.exec(
             "DELETE FROM shopping_lists WHERE id = $1 AND user_id = $2",
-            listId, userId);
+            pqxx::params{listId, userId});
 
         if (res.affected_rows() == 0) {
             throw ServiceException("购物清单不存在", 404);
@@ -257,12 +257,12 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
         pqxx::work txn(*conn);
 
         // 查询当前清单项 + 验证归属
-        pqxx::result itemRes = txn.exec_params(
+        pqxx::result itemRes = txn.exec(
             "SELECT sli.checked, sli.ingredient_name, sli.to_buy_quantity, sli.unit "
             "FROM shopping_list_items sli "
             "JOIN shopping_lists sl ON sl.id = sli.list_id "
             "WHERE sli.id = $1 AND sl.id = $2 AND sl.user_id = $3",
-            itemId, listId, userId);
+            pqxx::params{itemId, listId, userId});
 
         if (itemRes.empty()) {
             throw ServiceException("清单项不存在", 404);
@@ -274,31 +274,31 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
         std::string unit = itemRes[0]["unit"].c_str();
 
         // 更新 checked 状态
-        txn.exec_params(
+        txn.exec(
             "UPDATE shopping_list_items SET checked = $1 WHERE id = $2",
-            req.checked, itemId);
+            pqxx::params{req.checked, itemId});
 
         // 库存回流：checked 从 false → true 时触发
         if (!oldChecked && req.checked && toBuyQty > 0) {
             // 按 user_id + ingredient_name 查找（与 upsertInventory 一致，
             // inventory 表的 UNIQUE 约束为 (user_id, ingredient_name)）
-            pqxx::result existing = txn.exec_params(
+            pqxx::result existing = txn.exec(
                 "SELECT id, quantity FROM inventory "
                 "WHERE user_id = $1 AND ingredient_name = $2",
-                userId, ingredientName);
+                pqxx::params{userId, ingredientName});
 
             if (!existing.empty()) {
                 int invId = existing[0]["id"].as<int>();
                 double currentQty = existing[0]["quantity"].as<double>();
-                txn.exec_params(
+                txn.exec(
                     "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
-                    currentQty + toBuyQty, unit, invId);
+                    pqxx::params{currentQty + toBuyQty, unit, invId});
             } else {
                 // 全新食材，INSERT
-                txn.exec_params(
+                txn.exec(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
                     "VALUES ($1, $2, $3, $4)",
-                    userId, ingredientName, toBuyQty, unit);
+                    pqxx::params{userId, ingredientName, toBuyQty, unit});
             }
         }
 
@@ -317,9 +317,9 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
         pqxx::work txn(*conn);
 
         // 验证购物清单归属
-        pqxx::result listRes = txn.exec_params(
+        pqxx::result listRes = txn.exec(
             "SELECT id FROM shopping_lists WHERE id = $1 AND user_id = $2",
-            listId, userId);
+            pqxx::params{listId, userId});
         if (listRes.empty()) {
             throw ServiceException("购物清单不存在", 404);
         }
@@ -330,9 +330,9 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
         for (const auto& reqItem : items) {
             // 查询当前库存量
             double invQty = 0.0;
-            pqxx::result invRes = txn.exec_params(
+            pqxx::result invRes = txn.exec(
                 "SELECT quantity FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
-                userId, reqItem.ingredient_name);
+                pqxx::params{userId, reqItem.ingredient_name});
             if (!invRes.empty()) {
                 invQty = invRes[0]["quantity"].as<double>();
             }
@@ -340,11 +340,11 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
             double requiredQty = reqItem.quantity;
             double toBuyQty = std::max(requiredQty - invQty, 0.0);
 
-            pqxx::result insertRes = txn.exec_params(
+            pqxx::result insertRes = txn.exec(
                 "INSERT INTO shopping_list_items "
                 "(list_id, ingredient_name, required_quantity, inventory_quantity, to_buy_quantity, unit, checked) "
                 "VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
-                listId, reqItem.ingredient_name, requiredQty, invQty, toBuyQty, reqItem.unit);
+                pqxx::params{listId, reqItem.ingredient_name, requiredQty, invQty, toBuyQty, reqItem.unit});
 
             ShoppingListItem listItem;
             listItem.id = insertRes[0]["id"].as<int>();
@@ -378,18 +378,18 @@ std::string PgInventoryRepository::exportShoppingList(int userId, int listId, co
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        pqxx::result listRes = txn.exec_params(
+        pqxx::result listRes = txn.exec(
             "SELECT name FROM shopping_lists WHERE id = $1 AND user_id = $2",
-            listId, userId);
+            pqxx::params{listId, userId});
         if (listRes.empty()) {
             throw ServiceException("购物清单不存在", 404);
         }
         std::string listName = listRes[0]["name"].c_str();
 
-        pqxx::result itemsRes = txn.exec_params(
+        pqxx::result itemsRes = txn.exec(
             "SELECT ingredient_name, to_buy_quantity, unit, checked "
             "FROM shopping_list_items WHERE list_id = $1 ORDER BY id",
-            listId);
+            pqxx::params{listId});
 
         std::string result;
         result += "GoCook 购物清单：" + listName + "\n\n";

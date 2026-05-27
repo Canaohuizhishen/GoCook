@@ -12,16 +12,16 @@ PagedAnnouncements PgAnnouncementRepository::findAll(int page, int size) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        pqxx::result countRes = txn.exec_params(
+        pqxx::result countRes = txn.exec(
             "SELECT COUNT(*) FROM announcements");
         int total = countRes[0][0].as<int>();
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
-        pqxx::result rows = txn.exec_params(
+        pqxx::result rows = txn.exec(
             "SELECT id, title, content, created_at "
             "FROM announcements ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-            size, offset);
+            pqxx::params{size, offset});
 
         PagedAnnouncements result;
         for (const auto& row : rows) {

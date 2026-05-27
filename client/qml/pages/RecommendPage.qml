@@ -69,7 +69,7 @@ Page {
                 anchors.margins: Theme.spacingXSmall
                 recipeName: modelData.name
                 imageSource: modelData.imageUrl ? authViewModel.apiBaseUrl + modelData.imageUrl : ""
-                prepTime: modelData.prepTime + qsTr("分钟")
+                prepTime: qsTr("约%1分钟").arg(modelData.prepTime + modelData.cookTime)
 
                 onClicked: recommendPage.recipeClicked(modelData.id)
             }

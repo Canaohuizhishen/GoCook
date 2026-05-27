@@ -23,9 +23,9 @@ std::optional<UserAuthInfo> PgUserRepository::findByUsername(const std::string& 
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT id, username, password_hash, role FROM users WHERE username = $1 | $1=%s", username.c_str());
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT id, username, password_hash, role FROM users WHERE username = $1",
-            username);
+            pqxx::params{username});
         if (r.empty()) return std::nullopt;
         UserAuthInfo info;
         info.id = r[0]["id"].as<int>();
@@ -45,8 +45,8 @@ bool PgUserRepository::existsByEmail(const std::string& email) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT id FROM users WHERE email = $1 (existsByEmail) | $1=%s", email.c_str());
-        pqxx::result r = txn.exec_params(
-            "SELECT id FROM users WHERE email = $1", email);
+        pqxx::result r = txn.exec(
+            "SELECT id FROM users WHERE email = $1", pqxx::params{email});
         txn.commit();
         return !r.empty();
     } catch (const std::exception& e) {
@@ -63,9 +63,9 @@ void PgUserRepository::createUser(const std::string& username,
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3) | $1=%s $3=%s",
                  username.c_str(), email.c_str());
-        txn.exec_params(
+        txn.exec(
             "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)",
-            username, passwordHash, email);
+            pqxx::params{username, passwordHash, email});
         txn.commit();
     } catch (const std::exception& e) {
         LOG_ERROR("Database error: %s", e.what());
@@ -78,9 +78,9 @@ std::optional<UserProfile> PgUserRepository::findById(int userId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT ... FROM users WHERE id = $1 (findById) | $1=%d", userId);
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT id, username, display_name, email, phone, avatar_url, "
-            "preferences_complete, created_at FROM users WHERE id = $1", userId);
+            "preferences_complete, created_at FROM users WHERE id = $1", pqxx::params{userId});
         if (r.empty()) return std::nullopt;
         UserProfile u;
         u.id = r[0]["id"].as<int>();
@@ -104,8 +104,8 @@ std::optional<int> PgUserRepository::findIdByEmail(const std::string& email) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT id FROM users WHERE email = $1 (findIdByEmail) | $1=%s", email.c_str());
-        pqxx::result r = txn.exec_params(
-            "SELECT id FROM users WHERE email = $1", email);
+        pqxx::result r = txn.exec(
+            "SELECT id FROM users WHERE email = $1", pqxx::params{email});
         txn.commit();
         if (r.empty()) return std::nullopt;
         return r[0]["id"].as<int>();
@@ -123,9 +123,9 @@ std::optional<int> PgUserRepository::findIdByUsernameAndEmail(
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT id FROM users WHERE username = $1 AND email = $2 | $1=%s $2=%s",
                  username.c_str(), email.c_str());
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT id FROM users WHERE username = $1 AND email = $2",
-            username, email);
+            pqxx::params{username, email});
         txn.commit();
         if (r.empty()) return std::nullopt;
         return r[0]["id"].as<int>();
@@ -142,10 +142,10 @@ void PgUserRepository::createPasswordResetToken(
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, ...) | $1=%d", userId);
-        txn.exec_params(
+        txn.exec(
             "INSERT INTO password_reset_tokens (user_id, token, expires_at) "
             "VALUES ($1, $2, NOW() + INTERVAL '" + std::to_string(TOKEN_EXPIRY_MINUTES) + " minutes')",
-            userId, token);
+            pqxx::params{userId, token});
         txn.commit();
     } catch (const std::exception& e) {
         LOG_ERROR("Database error in createPasswordResetToken: %s", e.what());
@@ -158,10 +158,10 @@ std::optional<int> PgUserRepository::findUserIdByResetToken(const std::string& t
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT user_id FROM password_reset_tokens WHERE token = $1 ...");
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT user_id FROM password_reset_tokens "
             "WHERE token = $1 AND used = false AND expires_at > NOW()",
-            token);
+            pqxx::params{token});
         txn.commit();
         if (r.empty()) return std::nullopt;
         return r[0]["user_id"].as<int>();
@@ -176,9 +176,9 @@ void PgUserRepository::markResetTokenUsed(const std::string& token) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE password_reset_tokens SET used = true WHERE token = $1");
-        txn.exec_params(
+        txn.exec(
             "UPDATE password_reset_tokens SET used = true WHERE token = $1",
-            token);
+            pqxx::params{token});
         txn.commit();
     } catch (const std::exception& e) {
         LOG_ERROR("Database error in markResetTokenUsed: %s", e.what());
@@ -193,16 +193,16 @@ void PgUserRepository::resetPasswordAndMarkTokenUsed(
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE users SET password_hash = $1 WHERE id = $2 | $2=%d", userId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "UPDATE users SET password_hash = $1 WHERE id = $2",
-            newPasswordHash, userId);
+            pqxx::params{newPasswordHash, userId});
         if (r.affected_rows() == 0) {
             throw ServiceException("用户不存在", 404);
         }
         LOG_DEBUG("[SQL] UPDATE password_reset_tokens SET used = true WHERE token = $1");
-        txn.exec_params(
+        txn.exec(
             "UPDATE password_reset_tokens SET used = true WHERE token = $1",
-            token);
+            pqxx::params{token});
         txn.commit();
         LOG_INFO("Password reset and token marked used for user %d", userId);
     } catch (const gocook::services::ServiceException&) {
@@ -218,14 +218,14 @@ void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& pro
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE users SET display_name=COALESCE($1,...), ... WHERE id=$5 | $5=%d", userId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "UPDATE users SET "
             "display_name = COALESCE($1, display_name), "
             "email = COALESCE($2, email), "
             "phone = COALESCE($3, phone), "
             "avatar_url = COALESCE($4, avatar_url) "
             "WHERE id = $5",
-            profile.display_name.has_value()
+            pqxx::params{profile.display_name.has_value()
                 ? profile.display_name.value().c_str()
                 : nullptr,
             profile.email.has_value()
@@ -237,8 +237,7 @@ void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& pro
             profile.avatar_url.has_value()
                 ? profile.avatar_url.value().c_str()
                 : nullptr,
-            userId
-        );
+            userId});
         if (r.affected_rows() == 0) {
             throw ServiceException("用户不存在", 404);
         }
@@ -256,9 +255,9 @@ std::vector<std::string> PgUserRepository::getHealthConditions(int userId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT conditions FROM health_profiles WHERE user_id = $1 | $1=%d", userId);
-        auto row = txn.exec_params(
+        auto row = txn.exec(
             "SELECT conditions FROM health_profiles WHERE user_id = $1",
-            userId);
+            pqxx::params{userId});
         if (row.empty() || row[0][0].is_null()) return {};
         auto j = nlohmann::json::parse(row[0][0].c_str());
         std::vector<std::string> conditions;
@@ -276,8 +275,8 @@ std::string PgUserRepository::getPasswordHash(int userId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT password_hash FROM users WHERE id = $1 | $1=%d", userId);
-        pqxx::result r = txn.exec_params(
-            "SELECT password_hash FROM users WHERE id = $1", userId);
+        pqxx::result r = txn.exec(
+            "SELECT password_hash FROM users WHERE id = $1", pqxx::params{userId});
         if (r.empty()) {
             throw ServiceException("用户不存在", 404);
         }
@@ -297,9 +296,9 @@ void PgUserRepository::changePassword(int userId, const std::string& newPassword
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE users SET password_hash = $1 WHERE id = $2 | $2=%d", userId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "UPDATE users SET password_hash = $1 WHERE id = $2",
-            newPasswordHash, userId);
+            pqxx::params{newPasswordHash, userId});
         if (r.affected_rows() == 0) {
             throw ServiceException("用户不存在", 404);
         }
@@ -319,16 +318,15 @@ void PgUserRepository::deleteAccount(int userId) {
 
         // 1. Anonymize public content: recipes (author_id has no CASCADE)
         LOG_DEBUG("[SQL] UPDATE recipes SET author_id = NULL WHERE author_id = $1 | $1=%d", userId);
-        txn.exec_params("UPDATE recipes SET author_id = NULL WHERE author_id = $1", userId);
+        txn.exec("UPDATE recipes SET author_id = NULL WHERE author_id = $1", pqxx::params{userId});
         //    ratings: ON DELETE CASCADE + NOT NULL → gets deleted with user, fine
 
         // 2. Delete user — CASCADE on FK constraints auto-clears:
         //    user_preferences, health_profiles, inventory, shopping_lists,
         //    shopping_list_items, notifications, meal_plans, favorites, favorite_groups
         LOG_DEBUG("[SQL] DELETE FROM users WHERE id = $1 | $1=%d", userId);
-        auto delResult = txn.exec_params(
-            "DELETE FROM users WHERE id = $1", userId
-        );
+        auto delResult = txn.exec(
+            "DELETE FROM users WHERE id = $1", pqxx::params{userId});
         if (delResult.affected_rows() == 0) {
             throw ServiceException("用户不存在", 404);
         }
@@ -395,9 +393,9 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE users SET avatar_url = $1 WHERE id = $2 | $1=%s $2=%d", avatarUrl.c_str(), userId);
-        txn.exec_params(
+        txn.exec(
             "UPDATE users SET avatar_url = $1 WHERE id = $2",
-            avatarUrl, userId);
+            pqxx::params{avatarUrl, userId});
         txn.commit();
 
         // Clean up temp file
@@ -419,11 +417,10 @@ UserPreferences PgUserRepository::getPreferences(int userId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT preference_type, value FROM user_preferences WHERE user_id = $1 | $1=%d", userId);
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT preference_type, value FROM user_preferences "
             "WHERE user_id = $1 ORDER BY preference_type, value",
-            userId
-        );
+            pqxx::params{userId});
         txn.commit();
 
         UserPreferences prefs;
@@ -453,42 +450,38 @@ void PgUserRepository::updatePreferences(int userId, const UserPreferences& pref
 
         // Delete all existing preferences for this user
         LOG_DEBUG("[SQL] DELETE FROM user_preferences WHERE user_id = $1 | $1=%d", userId);
-        txn.exec_params("DELETE FROM user_preferences WHERE user_id = $1", userId);
+        txn.exec("DELETE FROM user_preferences WHERE user_id = $1", pqxx::params{userId});
 
         // Insert likes
         for (const auto& v : prefs.likes) {
             LOG_DEBUG("[SQL] INSERT user_preferences (likes) | $1=%d", userId);
-            txn.exec_params(
+            txn.exec(
                 "INSERT INTO user_preferences (user_id, preference_type, value) VALUES ($1, 'likes', $2)",
-                userId, v
-            );
+                pqxx::params{userId, v});
         }
 
         // Insert dislikes
         for (const auto& v : prefs.dislikes) {
             LOG_DEBUG("[SQL] INSERT user_preferences (dislikes) | $1=%d", userId);
-            txn.exec_params(
+            txn.exec(
                 "INSERT INTO user_preferences (user_id, preference_type, value) VALUES ($1, 'dislikes', $2)",
-                userId, v
-            );
+                pqxx::params{userId, v});
         }
 
         // Insert health goal (if non-empty)
         if (!prefs.health_goal.empty()) {
             LOG_DEBUG("[SQL] INSERT user_preferences (health_goal) | $1=%d $2=%s", userId, prefs.health_goal.c_str());
-            txn.exec_params(
+            txn.exec(
                 "INSERT INTO user_preferences (user_id, preference_type, value) VALUES ($1, 'health_goal', $2)",
-                userId, prefs.health_goal
-            );
+                pqxx::params{userId, prefs.health_goal});
         }
 
         // Update preferences_complete flag on users table
         bool hasPrefs = !prefs.likes.empty() || !prefs.dislikes.empty() || !prefs.health_goal.empty();
         LOG_DEBUG("[SQL] UPDATE users SET preferences_complete = $1 WHERE id = $2 | $1=%d $2=%d", hasPrefs, userId);
-        txn.exec_params(
+        txn.exec(
             "UPDATE users SET preferences_complete = $1 WHERE id = $2",
-            hasPrefs, userId
-        );
+            pqxx::params{hasPrefs, userId});
 
         txn.commit();
     } catch (const std::exception& e) {
@@ -513,27 +506,24 @@ HealthProfileResponse PgUserRepository::updateHealthProfile(int userId, const He
 
         // Two-step approach: ensure a row exists, then update fields
         LOG_DEBUG("[SQL] INSERT/UPDATE health_profiles (user_id=$1, conditions=...) | $1=%d", userId);
-        txn.exec_params(
+        txn.exec(
             "INSERT INTO health_profiles (user_id, conditions, created_at, updated_at) "
             "VALUES ($1, $2::jsonb, NOW(), NOW()) "
             "ON CONFLICT (user_id) DO UPDATE SET conditions = $2::jsonb, updated_at = NOW()",
-            userId, conditionsJson
-        );
+            pqxx::params{userId, conditionsJson});
 
         // Then update individual fields if provided
         if (req.height_cm.has_value()) {
             LOG_DEBUG("[SQL] UPDATE health_profiles SET height_cm = $1 WHERE user_id = $2 | $2=%d", userId);
-            txn.exec_params(
+            txn.exec(
                 "UPDATE health_profiles SET height_cm = $1, updated_at = NOW() WHERE user_id = $2",
-                req.height_cm.value(), userId
-            );
+                pqxx::params{req.height_cm.value(), userId});
         }
         if (req.weight_kg.has_value()) {
             LOG_DEBUG("[SQL] UPDATE health_profiles SET weight_kg = $1 WHERE user_id = $2 | $2=%d", userId);
-            txn.exec_params(
+            txn.exec(
                 "UPDATE health_profiles SET weight_kg = $1, updated_at = NOW() WHERE user_id = $2",
-                req.weight_kg.value(), userId
-            );
+                pqxx::params{req.weight_kg.value(), userId});
         }
 
         txn.commit();
@@ -549,10 +539,9 @@ HealthProfileResponse PgUserRepository::getHealthProfile(int userId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] SELECT height_cm, weight_kg, conditions FROM health_profiles WHERE user_id = $1 | $1=%d", userId);
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT height_cm, weight_kg, conditions FROM health_profiles WHERE user_id = $1",
-            userId
-        );
+            pqxx::params{userId});
         txn.commit();
 
         HealthProfileResponse resp;
@@ -591,13 +580,13 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
         if (filterByGroup) {
             // Group filter: $1=userId, $2=groupName, $3=limit, $4=offset
             LOG_DEBUG("[SQL] getFavorites(group filter) | $1=%d $2=%s", userId, group.c_str());
-            pqxx::result countR = txn.exec_params(
+            pqxx::result countR = txn.exec(
                 "SELECT COUNT(*) FROM favorites f "
                 "JOIN recipes r ON f.recipe_id = r.id "
                 "LEFT JOIN favorite_groups g ON f.group_id = g.id "
                 "WHERE f.user_id = $1 AND g.name = $2",
-                userId, group);
-            pqxx::result dataR = txn.exec_params(
+                pqxx::params{userId, group});
+            pqxx::result dataR = txn.exec(
                 "SELECT f.id, r.id AS recipe_id, r.name, COALESCE(r.description,'') AS description, "
                 "COALESCE(r.image_url,'') AS image_url, "
                 "COALESCE(g.name,'默认收藏夹') AS group_name, "
@@ -607,7 +596,7 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
                 "LEFT JOIN favorite_groups g ON f.group_id = g.id "
                 "WHERE f.user_id = $1 AND g.name = $2 "
                 "ORDER BY f.created_at DESC LIMIT $3 OFFSET $4",
-                userId, group, size, offset);
+                pqxx::params{userId, group, size, offset});
             result.pagination.total = countR[0][0].as<int>();
             for (const auto& row : dataR) {
                 FavoriteItem item;
@@ -624,13 +613,13 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
         } else if (filterByDefault) {
             // Default group (no group): $1=userId, $2=limit, $3=offset
             LOG_DEBUG("[SQL] getFavorites(default filter) | $1=%d", userId);
-            pqxx::result countR = txn.exec_params(
+            pqxx::result countR = txn.exec(
                 "SELECT COUNT(*) FROM favorites f "
                 "JOIN recipes r ON f.recipe_id = r.id "
                 "LEFT JOIN favorite_groups g ON f.group_id = g.id "
                 "WHERE f.user_id = $1 AND f.group_id IS NULL",
-                userId);
-            pqxx::result dataR = txn.exec_params(
+                pqxx::params{userId});
+            pqxx::result dataR = txn.exec(
                 "SELECT f.id, r.id AS recipe_id, r.name, COALESCE(r.description,'') AS description, "
                 "COALESCE(r.image_url,'') AS image_url, "
                 "COALESCE(g.name,'默认收藏夹') AS group_name, "
@@ -640,7 +629,7 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
                 "LEFT JOIN favorite_groups g ON f.group_id = g.id "
                 "WHERE f.user_id = $1 AND f.group_id IS NULL "
                 "ORDER BY f.created_at DESC LIMIT $2 OFFSET $3",
-                userId, size, offset);
+                pqxx::params{userId, size, offset});
             result.pagination.total = countR[0][0].as<int>();
             for (const auto& row : dataR) {
                 FavoriteItem item;
@@ -657,13 +646,13 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
         } else {
             // No group filter: $1=userId, $2=limit, $3=offset
             LOG_DEBUG("[SQL] getFavorites(no filter) | $1=%d", userId);
-            pqxx::result countR = txn.exec_params(
+            pqxx::result countR = txn.exec(
                 "SELECT COUNT(*) FROM favorites f "
                 "JOIN recipes r ON f.recipe_id = r.id "
                 "LEFT JOIN favorite_groups g ON f.group_id = g.id "
                 "WHERE f.user_id = $1",
-                userId);
-            pqxx::result dataR = txn.exec_params(
+                pqxx::params{userId});
+            pqxx::result dataR = txn.exec(
                 "SELECT f.id, r.id AS recipe_id, r.name, COALESCE(r.description,'') AS description, "
                 "COALESCE(r.image_url,'') AS image_url, "
                 "COALESCE(g.name,'默认收藏夹') AS group_name, "
@@ -673,7 +662,7 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
                 "LEFT JOIN favorite_groups g ON f.group_id = g.id "
                 "WHERE f.user_id = $1 "
                 "ORDER BY f.created_at DESC LIMIT $2 OFFSET $3",
-                userId, size, offset);
+                pqxx::params{userId, size, offset});
             result.pagination.total = countR[0][0].as<int>();
             for (const auto& row : dataR) {
                 FavoriteItem item;
@@ -707,21 +696,19 @@ std::vector<FavoriteGroup> PgUserRepository::getFavoriteGroups(int userId) {
 
         // Count favorites in the default group (group_id IS NULL)
         LOG_DEBUG("[SQL] SELECT COUNT(*) FROM favorites WHERE user_id = $1 AND group_id IS NULL | $1=%d", userId);
-        pqxx::result defaultCount = txn.exec_params(
+        pqxx::result defaultCount = txn.exec(
             "SELECT COUNT(*) FROM favorites WHERE user_id = $1 AND group_id IS NULL",
-            userId
-        );
+            pqxx::params{userId});
 
         LOG_DEBUG("[SQL] SELECT g.id, g.name, ... FROM favorite_groups g ... WHERE g.user_id = $1 | $1=%d", userId);
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "SELECT g.id, g.name, g.sort_order, COUNT(f.id) AS count "
             "FROM favorite_groups g "
             "LEFT JOIN favorites f ON f.group_id = g.id "
             "WHERE g.user_id = $1 "
             "GROUP BY g.id, g.name, g.sort_order "
             "ORDER BY g.sort_order",
-            userId
-        );
+            pqxx::params{userId});
         txn.commit();
 
         // Synthetic default group (always present)
@@ -755,32 +742,29 @@ FavoriteGroup PgUserRepository::createFavoriteGroup(int userId, const CreateGrou
 
         // Check for duplicate name
         LOG_DEBUG("[SQL] SELECT id FROM favorite_groups WHERE user_id = $1 AND name = $2 | $1=%d", userId);
-        pqxx::result dupCheck = txn.exec_params(
+        pqxx::result dupCheck = txn.exec(
             "SELECT id FROM favorite_groups WHERE user_id = $1 AND name = $2",
-            userId, req.name
-        );
+            pqxx::params{userId, req.name});
         if (!dupCheck.empty())
             throw ServiceException("分组名已存在", 409);
 
         // Get next sort_order
         LOG_DEBUG("[SQL] SELECT COALESCE(MAX(sort_order),... ) FROM favorite_groups WHERE user_id = $1 | $1=%d", userId);
-        pqxx::result maxR = txn.exec_params(
+        pqxx::result maxR = txn.exec(
             "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM favorite_groups WHERE user_id = $1",
-            userId
-        );
+            pqxx::params{userId});
         int nextOrder = maxR[0][0].as<int>();
 
         // Advance sequence to avoid PK conflict with seed data
         LOG_DEBUG("[SQL] SELECT setval('favorite_groups_id_seq', ...)");
-        txn.exec_params(
+        txn.exec(
             "SELECT setval('favorite_groups_id_seq', COALESCE((SELECT MAX(id) FROM favorite_groups), 0) + 1, false)"
         );
 
         LOG_DEBUG("[SQL] INSERT INTO favorite_groups ... RETURNING id, name, sort_order | $1=%d", userId);
-        pqxx::result r = txn.exec_params(
+        pqxx::result r = txn.exec(
             "INSERT INTO favorite_groups (user_id, name, sort_order) VALUES ($1, $2, $3) RETURNING id, name, sort_order",
-            userId, req.name, nextOrder
-        );
+            pqxx::params{userId, req.name, nextOrder});
         txn.commit();
 
         FavoriteGroup group;
@@ -800,10 +784,9 @@ void PgUserRepository::updateFavoriteGroup(int userId, int groupId, const Update
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE favorite_groups SET name = $1 WHERE id = $2 AND user_id = $3 | $2=%d $3=%d", groupId, userId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "UPDATE favorite_groups SET name = $1 WHERE id = $2 AND user_id = $3",
-            req.name, groupId, userId
-        );
+            pqxx::params{req.name, groupId, userId});
         if (r.affected_rows() == 0)
             throw ServiceException("分组不存在", 404);
         txn.commit();
@@ -821,16 +804,14 @@ void PgUserRepository::deleteFavoriteGroup(int userId, int groupId) {
         pqxx::work txn(*conn);
         // Delete all favorites in the group (not move to default)
         LOG_DEBUG("[SQL] DELETE FROM favorites WHERE group_id = $1 AND user_id = $2 | $1=%d $2=%d", groupId, userId);
-        txn.exec_params(
+        txn.exec(
             "DELETE FROM favorites WHERE group_id = $1 AND user_id = $2",
-            groupId, userId
-        );
+            pqxx::params{groupId, userId});
         // Delete the group
         LOG_DEBUG("[SQL] DELETE FROM favorite_groups WHERE id = $1 AND user_id = $2 | $1=%d $2=%d", groupId, userId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "DELETE FROM favorite_groups WHERE id = $1 AND user_id = $2",
-            groupId, userId
-        );
+            pqxx::params{groupId, userId});
         if (r.affected_rows() == 0)
             throw ServiceException("分组不存在", 404);
         txn.commit();
@@ -850,32 +831,28 @@ void PgUserRepository::updateFavoriteItem(int userId, int favoriteId, const Upda
             if (gid > 0) {
                 // Verify the group belongs to the user
                 LOG_DEBUG("[SQL] SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2 | $1=%d", gid);
-                auto g = txn.exec_params(
+                auto g = txn.exec(
                     "SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2",
-                    gid, userId
-                );
+                    pqxx::params{gid, userId});
                 if (g.empty())
                     throw ServiceException("分组不存在", 404);
                 LOG_DEBUG("[SQL] UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3 | $1=%d $2=%d", gid, favoriteId);
-                txn.exec_params(
+                txn.exec(
                     "UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3",
-                    gid, favoriteId, userId
-                );
+                    pqxx::params{gid, favoriteId, userId});
             } else {
                 // group_id = 0 表示移到默认收藏夹（设置 NULL）
                 LOG_DEBUG("[SQL] UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2 | $1=%d", favoriteId);
-                txn.exec_params(
+                txn.exec(
                     "UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2",
-                    favoriteId, userId
-                );
+                    pqxx::params{favoriteId, userId});
             }
         }
         if (req.is_public.has_value()) {
             LOG_DEBUG("[SQL] UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3 | $2=%d", favoriteId);
-            txn.exec_params(
+            txn.exec(
                 "UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3",
-                req.is_public.value(), favoriteId, userId
-            );
+                pqxx::params{req.is_public.value(), favoriteId, userId});
         }
         txn.commit();
     } catch (const std::exception& e) {
@@ -891,10 +868,9 @@ void PgUserRepository::batchDeleteFavorites(int userId, const BatchDeleteFavorit
 
         for (const auto& fid : req.favorite_ids) {
             LOG_DEBUG("[SQL] DELETE FROM favorites WHERE id = $1 AND user_id = $2 | $1=%d", fid);
-            txn.exec_params(
+            txn.exec(
                 "DELETE FROM favorites WHERE id = $1 AND user_id = $2",
-                fid, userId
-            );
+                pqxx::params{fid, userId});
         }
         txn.commit();
     } catch (const std::exception& e) {
@@ -916,15 +892,15 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
         if (filterByType) {
             // Type filter: $1=userId, $2=type, $3=limit, $4=offset
             LOG_DEBUG("[SQL] getNotifications(type filter) | $1=%d $2=%s", userId, type.c_str());
-            pqxx::result countR = txn.exec_params(
+            pqxx::result countR = txn.exec(
                 "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND type = $2",
-                userId, type);
-            pqxx::result dataR = txn.exec_params(
+                pqxx::params{userId, type});
+            pqxx::result dataR = txn.exec(
                 "SELECT id, title, content, type, sub_type, is_read, "
                 "related_id, trigger_user_name, created_at::text "
                 "FROM notifications WHERE user_id = $1 AND type = $2 "
                 "ORDER BY created_at DESC LIMIT $3 OFFSET $4",
-                userId, type, size, offset);
+                pqxx::params{userId, type, size, offset});
             result.pagination.total = countR[0][0].as<int>();
             for (const auto& row : dataR) {
                 NotificationItem item;
@@ -945,15 +921,15 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
         } else {
             // No type filter: $1=userId, $2=limit, $3=offset
             LOG_DEBUG("[SQL] getNotifications(no filter) | $1=%d", userId);
-            pqxx::result countR = txn.exec_params(
+            pqxx::result countR = txn.exec(
                 "SELECT COUNT(*) FROM notifications WHERE user_id = $1",
-                userId);
-            pqxx::result dataR = txn.exec_params(
+                pqxx::params{userId});
+            pqxx::result dataR = txn.exec(
                 "SELECT id, title, content, type, sub_type, is_read, "
                 "related_id, trigger_user_name, created_at::text "
                 "FROM notifications WHERE user_id = $1 "
                 "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-                userId, size, offset);
+                pqxx::params{userId, size, offset});
             result.pagination.total = countR[0][0].as<int>();
             for (const auto& row : dataR) {
                 NotificationItem item;
@@ -986,9 +962,9 @@ void PgUserRepository::markNotificationRead(int userId, int notificationId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 | $1=%d", notificationId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2",
-            notificationId, userId);
+            pqxx::params{notificationId, userId});
         if (r.affected_rows() == 0) {
             txn.commit();
             throw ServiceException("通知不存在", 404);
@@ -1007,9 +983,9 @@ void PgUserRepository::markAllNotificationsRead(int userId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false | $1=%d", userId);
-        txn.exec_params(
+        txn.exec(
             "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
-            userId);
+            pqxx::params{userId});
         txn.commit();
     } catch (const std::exception& e) {
         LOG_ERROR("Database error in markAllNotificationsRead: %s", e.what());
@@ -1022,9 +998,9 @@ void PgUserRepository::deleteNotification(int userId, int notificationId) {
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         LOG_DEBUG("[SQL] DELETE FROM notifications WHERE id = $1 AND user_id = $2 | $1=%d", notificationId);
-        auto r = txn.exec_params(
+        auto r = txn.exec(
             "DELETE FROM notifications WHERE id = $1 AND user_id = $2",
-            notificationId, userId);
+            pqxx::params{notificationId, userId});
         if (r.affected_rows() == 0) {
             txn.commit();
             throw ServiceException("通知不存在", 404);
