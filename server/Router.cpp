@@ -540,8 +540,8 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
         try {
             auto conn = db_.getConnection();
             pqxx::work txn(*conn);
-            pqxx::result userRes = txn.exec_params(
-                "SELECT id FROM users WHERE username = $1", "testuser");
+            pqxx::result userRes = txn.exec(
+                "SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
             if (userRes.empty()) {
                 res.status = 404;
                 res.body = json{{"error", "Test user 'testuser' not found. Please run seed_test_data.sql"}}.dump();
@@ -549,10 +549,10 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             }
             int testUserId = userRes[0]["id"].as<int>();
 
-            auto rows = txn.exec_params(
+            auto rows = txn.exec(
                 "SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
                 "FROM inventory WHERE user_id = $1 ORDER BY added_at DESC",
-                testUserId);
+                pqxx::params{testUserId});
 
             json result = json::array();
             for (const auto& row : rows) {
@@ -606,8 +606,8 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             auto conn = db_.getConnection();
             pqxx::work txn(*conn);
 
-            pqxx::result userRes = txn.exec_params(
-                "SELECT id FROM users WHERE username = $1", "testuser");
+            pqxx::result userRes = txn.exec(
+                "SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
             if (userRes.empty()) {
                 res.status = 404;
                 res.body = json{{"error", "Test user 'testuser' not found"}}.dump();
@@ -616,25 +616,25 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             int uid = userRes[0]["id"].as<int>();
 
             // 清空该用户的所有通知
-            txn.exec_params("DELETE FROM notifications WHERE user_id = $1", uid);
+            txn.exec("DELETE FROM notifications WHERE user_id = $1", pqxx::params{uid});
 
             // 重新插入 4 条测试通知
-            txn.exec_params(
+            txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
                 "VALUES ($1, '系统维护通知', '今晚 22:00-24:00 进行系统升级，届时服务不可用。', 'system', NULL, NULL, NULL, FALSE)",
-                uid);
-            txn.exec_params(
+                pqxx::params{uid});
+            txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
                 "VALUES ($1, '审核结果', '您的菜谱「红烧肉」已通过审核，现在可以在首页看到啦！', 'review', NULL, 1, NULL, TRUE)",
-                uid);
-            txn.exec_params(
+                pqxx::params{uid});
+            txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
                 "VALUES ($1, '审核结果', '您的菜谱「清蒸鲈鱼」审核未通过，原因：图片不清晰。', 'review', NULL, 2, 'admin_cook', FALSE)",
-                uid);
-            txn.exec_params(
+                pqxx::params{uid});
+            txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
                 "VALUES ($1, '新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', 567, 'foodie_lily', FALSE)",
-                uid);
+                pqxx::params{uid});
 
             txn.commit();
 
