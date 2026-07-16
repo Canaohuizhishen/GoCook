@@ -110,8 +110,10 @@ bool PgRecipeRepository::existsByContent(const nlohmann::json& ingredients,
 
         auto rows = txn.exec(sql, pqxx::params{ingredients.dump(), steps.dump()});
         return !rows.empty();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in existsByContent: %s", e.what());
+        LOG_WARN("Database error in existsByContent: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -209,7 +211,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findPublicRecipes: %s", e.what());
+        LOG_WARN("Database error in findPublicRecipes: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;
@@ -318,7 +320,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in searchRecipes: %s", e.what());
+        LOG_WARN("Database error in searchRecipes: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;
@@ -503,7 +505,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findRecommendedRecipes: %s", e.what());
+        LOG_WARN("Database error in findRecommendedRecipes: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;
@@ -610,7 +612,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findById: %s", e.what());
+        LOG_WARN("Database error in findById: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -645,7 +647,7 @@ std::vector<RecipeVideo> PgRecipeRepository::findVideos(int recipeId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findVideos: %s", e.what());
+        LOG_WARN("Database error in findVideos: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -694,7 +696,7 @@ PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findRatings: %s", e.what());
+        LOG_WARN("Database error in findRatings: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -759,7 +761,7 @@ SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRe
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in create recipe: %s", e.what());
+        LOG_WARN("Database error in create recipe: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -818,7 +820,7 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findMySubmittedRecipes: %s", e.what());
+        LOG_WARN("Database error in findMySubmittedRecipes: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;
@@ -900,7 +902,7 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in update recipe: %s", e.what());
+        LOG_WARN("Database error in update recipe: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -940,8 +942,10 @@ void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<
                 pqxx::params{userId, recipeId});
         }
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in toggleFavorite: %s", e.what());
+        LOG_WARN("Database error in toggleFavorite: %s", e.what());
         throw ServiceException("操作失败");
     }
 }
@@ -980,7 +984,7 @@ void PgRecipeRepository::rateRecipe(int userId, int recipeId,
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in rateRecipe: %s", e.what());
+        LOG_WARN("Database error in rateRecipe: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -1015,7 +1019,7 @@ void PgRecipeRepository::updateRating(int userId, int recipeId, int ratingId,
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updateRating: %s", e.what());
+        LOG_WARN("Database error in updateRating: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -1048,7 +1052,7 @@ void PgRecipeRepository::deleteRating(int userId, int recipeId, int ratingId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in deleteRating: %s", e.what());
+        LOG_WARN("Database error in deleteRating: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -1085,7 +1089,7 @@ std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int rec
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findMyRating: %s", e.what());
+        LOG_WARN("Database error in findMyRating: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -1136,7 +1140,7 @@ PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int siz
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findMyRatings: %s", e.what());
+        LOG_WARN("Database error in findMyRatings: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -1197,7 +1201,7 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findNutrition: %s", e.what());
+        LOG_WARN("Database error in findNutrition: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -1241,8 +1245,10 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
         std::filesystem::remove(filePath);
         return imageUrl;
 
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updateRecipeImage: %s", e.what());
+        LOG_WARN("Database error in updateRecipeImage: %s", e.what());
         throw ServiceException("菜谱图片保存失败");
     }
 }
@@ -1304,7 +1310,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updateStepImage: %s", e.what());
+        LOG_WARN("Database error in updateStepImage: %s", e.what());
         throw ServiceException("步骤图片保存失败");
     }
 }
@@ -1392,7 +1398,7 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in deleteRecipe: %s", e.what());
+        LOG_WARN("Database error in deleteRecipe: %s", e.what());
         throw ServiceException("删除菜谱失败");
     }
 }

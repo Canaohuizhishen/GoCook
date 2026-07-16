@@ -34,8 +34,10 @@ std::optional<UserAuthInfo> PgUserRepository::findByUsername(const std::string& 
         info.role = r[0]["role"].c_str();
         txn.commit();
         return info;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -49,8 +51,10 @@ bool PgUserRepository::existsByEmail(const std::string& email) {
             "SELECT id FROM users WHERE email = $1", pqxx::params{email});
         txn.commit();
         return !r.empty();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -67,8 +71,10 @@ void PgUserRepository::createUser(const std::string& username,
             "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)",
             pqxx::params{username, passwordHash, email});
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -93,8 +99,10 @@ std::optional<UserProfile> PgUserRepository::findById(int userId) {
         u.created_at = r[0]["created_at"].as<std::string>("");
         txn.commit();
         return u;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -109,8 +117,10 @@ std::optional<int> PgUserRepository::findIdByEmail(const std::string& email) {
         txn.commit();
         if (r.empty()) return std::nullopt;
         return r[0]["id"].as<int>();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findIdByEmail: %s", e.what());
+        LOG_WARN("Database error in findIdByEmail: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -129,8 +139,10 @@ std::optional<int> PgUserRepository::findIdByUsernameAndEmail(
         txn.commit();
         if (r.empty()) return std::nullopt;
         return r[0]["id"].as<int>();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findIdByUsernameAndEmail: %s", e.what());
+        LOG_WARN("Database error in findIdByUsernameAndEmail: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -147,8 +159,10 @@ void PgUserRepository::createPasswordResetToken(
             "VALUES ($1, $2, NOW() + INTERVAL '" + std::to_string(TOKEN_EXPIRY_MINUTES) + " minutes')",
             pqxx::params{userId, token});
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in createPasswordResetToken: %s", e.what());
+        LOG_WARN("Database error in createPasswordResetToken: %s", e.what());
         throw ServiceException("创建重置令牌失败");
     }
 }
@@ -165,8 +179,10 @@ std::optional<int> PgUserRepository::findUserIdByResetToken(const std::string& t
         txn.commit();
         if (r.empty()) return std::nullopt;
         return r[0]["user_id"].as<int>();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in findUserIdByResetToken: %s", e.what());
+        LOG_WARN("Database error in findUserIdByResetToken: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -180,8 +196,10 @@ void PgUserRepository::markResetTokenUsed(const std::string& token) {
             "UPDATE password_reset_tokens SET used = true WHERE token = $1",
             pqxx::params{token});
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in markResetTokenUsed: %s", e.what());
+        LOG_WARN("Database error in markResetTokenUsed: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -208,7 +226,7 @@ void PgUserRepository::resetPasswordAndMarkTokenUsed(
     } catch (const gocook::services::ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in resetPasswordAndMarkTokenUsed: %s", e.what());
+        LOG_WARN("Database error in resetPasswordAndMarkTokenUsed: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -245,7 +263,7 @@ void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& pro
     } catch (const gocook::services::ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -264,6 +282,8 @@ std::vector<std::string> PgUserRepository::getHealthConditions(int userId) {
         for (const auto& c : j)
             conditions.push_back(c.get<std::string>());
         return conditions;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
         LOG_ERROR("getHealthConditions failed: %s", e.what());
         return {};
@@ -286,7 +306,7 @@ std::string PgUserRepository::getPasswordHash(int userId) {
     } catch (const gocook::services::ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in getPasswordHash: %s", e.what());
+        LOG_WARN("Database error in getPasswordHash: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -306,7 +326,7 @@ void PgUserRepository::changePassword(int userId, const std::string& newPassword
     } catch (const gocook::services::ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in changePassword: %s", e.what());
+        LOG_WARN("Database error in changePassword: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -335,7 +355,7 @@ void PgUserRepository::deleteAccount(int userId) {
     } catch (const gocook::services::ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in deleteAccount: %s", e.what());
+        LOG_WARN("Database error in deleteAccount: %s", e.what());
         throw ServiceException("账户注销失败");
     }
 }
@@ -406,8 +426,10 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
         resp.avatar_url = avatarUrl;
         return resp;
 
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in uploadAvatar: %s", e.what());
+        LOG_WARN("Database error in uploadAvatar: %s", e.what());
         throw ServiceException("头像上传失败");
     }
 }
@@ -437,8 +459,10 @@ UserPreferences PgUserRepository::getPreferences(int userId) {
             }
         }
         return prefs;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in getPreferences: %s", e.what());
+        LOG_WARN("Database error in getPreferences: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -484,8 +508,10 @@ void PgUserRepository::updatePreferences(int userId, const UserPreferences& pref
             pqxx::params{hasPrefs, userId});
 
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updatePreferences: %s", e.what());
+        LOG_WARN("Database error in updatePreferences: %s", e.what());
         throw ServiceException("偏好保存失败");
     }
 }
@@ -528,8 +554,10 @@ HealthProfileResponse PgUserRepository::updateHealthProfile(int userId, const He
 
         txn.commit();
         return HealthProfileResponse{};
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updateHealthProfile: %s", e.what());
+        LOG_WARN("Database error in updateHealthProfile: %s", e.what());
         throw ServiceException("健康指标保存失败");
     }
 }
@@ -560,8 +588,10 @@ HealthProfileResponse PgUserRepository::getHealthProfile(int userId) {
             }
         }
         return resp;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in getHealthProfile: %s", e.what());
+        LOG_WARN("Database error in getHealthProfile: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -683,8 +713,10 @@ PagedFavorites PgUserRepository::getFavorites(int userId, int page, int size, co
         result.pagination.size = size;
         result.pagination.total_pages = (result.pagination.total + size - 1) / size;
         return result;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in getFavorites: %s", e.what());
+        LOG_WARN("Database error in getFavorites: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -729,8 +761,10 @@ std::vector<FavoriteGroup> PgUserRepository::getFavoriteGroups(int userId) {
             groups.push_back(g);
         }
         return groups;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in getFavoriteGroups: %s", e.what());
+        LOG_WARN("Database error in getFavoriteGroups: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -773,8 +807,10 @@ FavoriteGroup PgUserRepository::createFavoriteGroup(int userId, const CreateGrou
         group.sort_order = r[0]["sort_order"].as<int>();
         group.count = 0;
         return group;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in createFavoriteGroup: %s", e.what());
+        LOG_WARN("Database error in createFavoriteGroup: %s", e.what());
         throw ServiceException("创建分组失败");
     }
 }
@@ -790,8 +826,10 @@ void PgUserRepository::updateFavoriteGroup(int userId, int groupId, const Update
         if (r.affected_rows() == 0)
             throw ServiceException("分组不存在", 404);
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updateFavoriteGroup: %s", e.what());
+        LOG_WARN("Database error in updateFavoriteGroup: %s", e.what());
         throw ServiceException("更新分组失败");
     }
 }
@@ -815,8 +853,10 @@ void PgUserRepository::deleteFavoriteGroup(int userId, int groupId) {
         if (r.affected_rows() == 0)
             throw ServiceException("分组不存在", 404);
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in deleteFavoriteGroup: %s", e.what());
+        LOG_WARN("Database error in deleteFavoriteGroup: %s", e.what());
         throw ServiceException("删除分组失败");
     }
 }
@@ -855,8 +895,10 @@ void PgUserRepository::updateFavoriteItem(int userId, int favoriteId, const Upda
                 pqxx::params{req.is_public.value(), favoriteId, userId});
         }
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in updateFavoriteItem: %s", e.what());
+        LOG_WARN("Database error in updateFavoriteItem: %s", e.what());
         throw ServiceException("更新收藏项失败");
     }
 }
@@ -873,8 +915,10 @@ void PgUserRepository::batchDeleteFavorites(int userId, const BatchDeleteFavorit
                 pqxx::params{fid, userId});
         }
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in batchDeleteFavorites: %s", e.what());
+        LOG_WARN("Database error in batchDeleteFavorites: %s", e.what());
         throw ServiceException("批量删除失败");
     }
 }
@@ -951,8 +995,10 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
 
         txn.commit();
         return result;
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in getNotifications: %s", e.what());
+        LOG_WARN("Database error in getNotifications: %s", e.what());
         throw ServiceException("获取通知列表失败");
     }
 }
@@ -973,7 +1019,7 @@ void PgUserRepository::markNotificationRead(int userId, int notificationId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in markNotificationRead: %s", e.what());
+        LOG_WARN("Database error in markNotificationRead: %s", e.what());
         throw ServiceException("标记已读失败");
     }
 }
@@ -987,8 +1033,10 @@ void PgUserRepository::markAllNotificationsRead(int userId) {
             "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
             pqxx::params{userId});
         txn.commit();
+    } catch (const ServiceException&) {
+        throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in markAllNotificationsRead: %s", e.what());
+        LOG_WARN("Database error in markAllNotificationsRead: %s", e.what());
         throw ServiceException("全部标记已读失败");
     }
 }
@@ -1009,7 +1057,7 @@ void PgUserRepository::deleteNotification(int userId, int notificationId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error in deleteNotification: %s", e.what());
+        LOG_WARN("Database error in deleteNotification: %s", e.what());
         throw ServiceException("删除通知失败");
     }
 }

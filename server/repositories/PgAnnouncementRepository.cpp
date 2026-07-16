@@ -44,7 +44,7 @@ PagedAnnouncements PgAnnouncementRepository::findAll(int page, int size) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }

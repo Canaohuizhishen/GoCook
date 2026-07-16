@@ -1,5 +1,6 @@
 #include "Router.h"
 #include "common/Logger.h"
+#include "common/ErrorHelper.h"
 #include <filesystem>
 #include <fstream>
 
@@ -64,8 +65,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
         }
         LOG_DEBUG("%s %s from %s", req.method.c_str(), req.path.c_str(), ip.c_str());
         if (!rateLimiter_.isAllowed(ip, req.path)) {
-            res.status = 429;
-            res.set_content(R"({"error":"Too many requests. Please try again later."})", "application/json");
+            setErrorResponse(res, 429, "请求过于频繁，请稍后重试");
             return httplib::Server::HandlerResponse::Handled;
         }
         return httplib::Server::HandlerResponse::Unhandled;
@@ -571,9 +571,8 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             res.set_header("Content-Type", "application/json");
             res.status = 200;
             res.body = result.dump();
-        } catch (const std::exception& e) {
-            res.status = 500;
-            res.body = json{{"error", e.what()}}.dump();
+        } catch (const std::exception&) {
+            setErrorResponse(res, 500, "服务器内部错误，请稍后重试");
         }
     });
 
@@ -594,9 +593,8 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             res.set_header("Content-Type", "application/json");
             res.status = 200;
             res.body = users.dump();
-        } catch (const std::exception& e) {
-            res.status = 500;
-            res.body = json{{"error", e.what()}}.dump();
+        } catch (const std::exception&) {
+            setErrorResponse(res, 500, "服务器内部错误，请稍后重试");
         }
     });
 
@@ -641,9 +639,8 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             res.set_header("Content-Type", "application/json");
             res.status = 200;
             res.body = json{{"message", "4 test notifications reset"}}.dump();
-        } catch (const std::exception& e) {
-            res.status = 500;
-            res.body = json{{"error", e.what()}}.dump();
+        } catch (const std::exception&) {
+            setErrorResponse(res, 500, "服务器内部错误，请稍后重试");
         }
     });
 }
