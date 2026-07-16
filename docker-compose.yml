@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: gocook-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gocook
+      POSTGRES_PASSWORD: gocook123
+      POSTGRES_DB: gocookdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gocook -d gocookdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gocook-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gocook-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # 容器内连接 postgres 服务名，不走 localhost
+      GOCOOK_DB_CONN_STRING: "dbname=gocookdb user=gocook password=gocook123 host=postgres port=5432"
+      GOCOOK_JWT_SECRET: "${GOCOOK_JWT_SECRET:-GoCook-Project-Secret-Key-Change-Me-In-Production}"
+      GOCOOK_HOST: "0.0.0.0"
+      GOCOOK_PORT: "8080"
+      GOCOOK_LOG_LEVEL: "info"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server/uploads:/app/server/uploads
+
+volumes:
+  postgres_data:

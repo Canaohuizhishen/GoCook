@@ -1,0 +1,12 @@
+build/
+.git/
+.qtcreator/
+.reasonix/
+server/build/
+client/build/
+docs/
+test_data/
+/uploads/
+*.md
+.env
+.env.example
