@@ -5,6 +5,8 @@
 
 class MockRecipeRepository : public gocook::repository::IRecipeRepository {
 public:
+    MOCK_METHOD(bool, existsByContent,
+                (const nlohmann::json&, const nlohmann::json&), (override));
     MOCK_METHOD(gocook::models::PagedRecipes, findPublicRecipes,
                 (int, int, const nlohmann::json&), (override));
     MOCK_METHOD(gocook::models::PagedRecipes, searchRecipes,

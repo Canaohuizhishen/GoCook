@@ -9,6 +9,8 @@ Page {
 
     // 当前正在编辑的库存项ID
     property int currentEditItemId: -1
+    property bool addPending: false
+    property bool editPending: false
 
     signal showShoppingListRequest()
 
@@ -61,6 +63,16 @@ Page {
             color: Theme.textHint
             horizontalAlignment: Text.AlignHCenter
             visible: !inventoryVM.isLoading && inventoryVM.items.length === 0
+        }
+
+        // ========== 页面级状态提示（兜底，对话框未打开时显示） ==========
+        Text {
+            id: statusText; Layout.fillWidth: true; height: 20
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
+            font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
+            color: Theme.accentColor; horizontalAlignment: Text.AlignHCenter
+            visible: text.length > 0
         }
 
         ListView {
@@ -193,7 +205,27 @@ Page {
     Connections {
         target: inventoryVM
         function onErrorOccurred(error) {
-            console.log("Inventory error:", error)
+            if (addDialog.opened) {
+                addError.text = error
+            } else if (editDialog.opened) {
+                editError.text = error
+            } else {
+                statusText.text = error
+            }
+        }
+        function onItemsChanged() {
+            if (addPending) {
+                addPending = false
+                itemNameField.clear()
+                itemQtyField.clear()
+                itemUnitField.clear()
+                expiryField.clear()
+                addDialog.close()
+            }
+            if (editPending) {
+                editPending = false
+                editDialog.close()
+            }
         }
     }
 
@@ -254,6 +286,7 @@ Page {
         standardButtons: Dialog.NoButton
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         width: Math.min(parent.width * 0.85, 340)
+        onOpened: editError.text = ""
 
         background: Rectangle {
             color: Theme.cardBackground
@@ -310,6 +343,15 @@ Page {
                 font.pointSize: Theme.fontSizeBody
             }
 
+            // ========== 表单校验提示 ==========
+            Text {
+                id: editError
+                Layout.fillWidth: true; height: 16
+                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
+                color: Theme.errorColor; horizontalAlignment: Text.AlignHCenter
+                visible: text.length > 0
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingSmall
@@ -327,16 +369,28 @@ Page {
                     buttonType: CustomButton.ButtonType.Primary
                     enabled: editNameField.text.trim() !== ""
                     onClicked: {
-                        if (currentEditItemId !== -1) {
-                            inventoryVM.updateItem(
-                                currentEditItemId,
-                                editNameField.text.trim(),
-                                parseFloat(editQuantityField.text) || 0,
-                                editUnitField.text.trim() || qsTr("个"),
-                                editExpiryField.text.trim()
-                            )
+                        if (currentEditItemId === -1) return
+
+                        var qty = parseFloat(editQuantityField.text)
+                        if (!qty || qty <= 0) {
+                            editError.text = qsTr("数量必须大于 0")
+                            return
                         }
-                        editDialog.close()
+                        var unit = editUnitField.text.trim()
+                        if (unit.length === 0) {
+                            editError.text = qsTr("请输入单位")
+                            return
+                        }
+                        editError.text = ""
+                        editPending = true
+                        inventoryVM.updateItem(
+                            currentEditItemId,
+                            editNameField.text.trim(),
+                            qty,
+                            unit,
+                            editExpiryField.text.trim()
+                        )
+                        editQuantityField.forceActiveFocus()
                     }
                 }
             }
@@ -350,6 +404,7 @@ Page {
         anchors.centerIn: parent
         modal: true
         width: Math.min(parent.width * 0.85, 340)
+        onOpened: addError.text = ""
 
         ColumnLayout {
             spacing: Theme.spacingSmall
@@ -388,22 +443,39 @@ Page {
                 font.pointSize: Theme.fontSizeBody
             }
 
+            // ========== 表单校验提示（红色，按钮上方） ==========
+            Text {
+                id: addError
+                Layout.fillWidth: true; height: 16
+                font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
+                color: Theme.errorColor; horizontalAlignment: Text.AlignHCenter
+                visible: text.length > 0
+            }
+
             CustomButton {
                 Layout.fillWidth: true
                 buttonText: qsTr("确定添加")
                 enabled: itemNameField.text.trim() !== ""
                 onClicked: {
+                    // 客户端预校验
+                    var qty = parseFloat(itemQtyField.text)
+                    if (!qty || qty <= 0) {
+                        addError.text = qsTr("数量必须大于 0")
+                        return
+                    }
+                    var unit = itemUnitField.text.trim()
+                    if (unit.length === 0) {
+                        addError.text = qsTr("请输入单位")
+                        return
+                    }
+                    addError.text = ""
+                    addPending = true
                     inventoryVM.addItem(
                         itemNameField.text.trim(),
-                        parseFloat(itemQtyField.text) || 1,
-                        itemUnitField.text.trim() || qsTr("个"),
+                        qty,
+                        unit,
                         expiryField.text.trim()
                     )
-                    itemNameField.clear()
-                    itemQtyField.clear()
-                    itemUnitField.clear()
-                    expiryField.clear()
-                    addDialog.close()
                 }
             }
         }

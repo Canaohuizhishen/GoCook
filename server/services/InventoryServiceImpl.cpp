@@ -1,13 +1,33 @@
 #include "InventoryServiceImpl.h"
+#include <unordered_set>
 
 using namespace gocook::models;
 using namespace gocook::services;
+
+namespace {
+    const std::unordered_set<std::string>& validUnits() {
+        static const std::unordered_set<std::string> units = {
+            "个", "克", "千克", "毫升", "升", "只", "条", "把", "根",
+            "片", "块", "袋", "包", "盒", "瓶", "碗", "勺",
+            "茶匙", "汤匙", "斤", "两", "磅", "份"
+        };
+        return units;
+    }
+}
 
 PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size) {
     return inventoryRepo_->findInventory(userId, page, size);
 }
 
 int InventoryServiceImpl::upsertInventory(int userId, const UpsertInventoryRequest& item) {
+    // 库存数量校验
+    if (item.quantity <= 0.0) {
+        throw ServiceException("库存数量必须大于0", 400);
+    }
+    // 食材单位校验
+    if (!validUnits().count(item.unit)) {
+        throw ServiceException("食材单位不合法", 400);
+    }
     return inventoryRepo_->upsertInventory(userId, item);
 }
 

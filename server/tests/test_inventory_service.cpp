@@ -74,6 +74,62 @@ TEST(InventoryServiceTest, 删除库存正确委派) {
     EXPECT_NO_THROW(service.deleteInventoryItem(1, 5));
 }
 
+// ==================== 库存校验边界 ====================
+
+TEST(InventoryServiceTest, 库存数量为零拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 0.0;
+    req.unit = "个";
+
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("必须大于0"));
+    }
+}
+
+TEST(InventoryServiceTest, 库存数量为负拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = -1.0;
+    req.unit = "个";
+
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("必须大于0"));
+    }
+}
+
+TEST(InventoryServiceTest, 食材单位不合法拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 1.0;
+    req.unit = "xyz";
+
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("单位不合法"));
+    }
+}
+
 // ==================== 未实现的方法 ====================
 
 TEST(InventoryServiceTest, 购物清单列表正确委派) {

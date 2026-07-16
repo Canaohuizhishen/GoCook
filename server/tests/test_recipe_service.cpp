@@ -117,6 +117,7 @@ TEST(RecipeServiceTest, 投稿菜谱正确委派) {
     auto expectedResp = SubmitRecipeResponse{99, "pending"};
     auto req = makeSubmitReq();
 
+    EXPECT_CALL(*repo, existsByContent(_, _)).WillOnce(Return(false));
     EXPECT_CALL(*repo, create(42, Truly([](const auto& r) {
         return r.name == "New Recipe";
     }))).WillOnce(Return(expectedResp));
@@ -124,6 +125,25 @@ TEST(RecipeServiceTest, 投稿菜谱正确委派) {
     auto result = service.submitRecipe(42, req);
     EXPECT_EQ(result.id, 99);
     EXPECT_EQ(result.status, "pending");
+}
+
+TEST(RecipeServiceTest, 投稿内容完全一致驳回) {
+    auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto* repo = mock.get();
+    RecipeServiceImpl service(std::move(mock));
+
+    auto req = makeSubmitReq();
+
+    EXPECT_CALL(*repo, existsByContent(_, _)).WillOnce(Return(true));
+    EXPECT_CALL(*repo, create(_, _)).Times(0);
+
+    try {
+        service.submitRecipe(42, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 409);
+        EXPECT_THAT(e.what(), testing::HasSubstr("完全一致"));
+    }
 }
 
 // ==================== 未实现的方法 ====================
