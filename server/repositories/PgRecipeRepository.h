@@ -7,6 +7,9 @@ class PgRecipeRepository : public gocook::repository::IRecipeRepository {
 public:
     explicit PgRecipeRepository(ConnectionPool& db) : db_(db) {}
 
+    bool existsByContent(const nlohmann::json& ingredients,
+                          const nlohmann::json& steps) override;
+
     gocook::models::PagedRecipes findPublicRecipes(int page, int size,
                                                    const nlohmann::json& filters) override;
 

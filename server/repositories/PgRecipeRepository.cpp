@@ -91,6 +91,31 @@ void applyRecipeFilters(const nlohmann::json& filters,
 
 } // anonymous namespace
 
+bool PgRecipeRepository::existsByContent(const nlohmann::json& ingredients,
+                                          const nlohmann::json& steps) {
+    try {
+        auto conn = db_.getConnection();
+        pqxx::work txn(*conn);
+
+        std::string sql = R"(
+            SELECT 1 FROM recipes
+            WHERE ingredients = $1::jsonb
+              AND COALESCE((
+                SELECT jsonb_agg(elem - 'image_url' ORDER BY (elem->>'order')::int)
+                FROM jsonb_array_elements(steps) AS elem
+              ), '[]'::jsonb) = $2::jsonb
+              AND status = 'approved'
+            LIMIT 1
+        )";
+
+        auto rows = txn.exec(sql, pqxx::params{ingredients.dump(), steps.dump()});
+        return !rows.empty();
+    } catch (const std::exception& e) {
+        LOG_ERROR("Database error in existsByContent: %s", e.what());
+        throw ServiceException("数据库操作失败");
+    }
+}
+
 PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
                                                    const nlohmann::json& filters) {
     PagedRecipes result;

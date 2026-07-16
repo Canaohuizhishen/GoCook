@@ -29,6 +29,10 @@ public:
     virtual models::PagedRatings findRatings(int recipeId, int page,
                                              int size) = 0;
 
+    /// 检查是否存在食材和步骤完全一致的已审核菜谱（内容查重）
+    virtual bool existsByContent(const nlohmann::json& ingredients,
+                                  const nlohmann::json& steps) = 0;
+
     virtual models::SubmitRecipeResponse create(
         int userId, const models::SubmitRecipeRequest& data) = 0;
 

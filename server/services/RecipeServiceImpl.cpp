@@ -357,6 +357,27 @@ RecipeDetail RecipeServiceImpl::getRecipeDetail(int recipeId, int userId) {
 }
 
 SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int userId, const SubmitRecipeRequest& data) {
+    // 内容查重：食材清单和步骤完全一致则拒稿
+    nlohmann::json ingredients = nlohmann::json::array();
+    for (const auto& ing : data.ingredients) {
+        ingredients.push_back({{"name", ing.name},
+                               {"quantity", ing.quantity},
+                               {"unit", ing.unit}});
+    }
+    nlohmann::json steps = nlohmann::json::array();
+    for (const auto& step : data.steps) {
+        nlohmann::json j;
+        j["order"] = step.order;
+        j["description"] = step.description;
+        if (step.duration.has_value())
+            j["duration"] = step.duration.value();
+        steps.push_back(std::move(j));
+    }
+
+    if (recipeRepo_->existsByContent(ingredients, steps)) {
+        throw ServiceException("食材与步骤与现有菜谱完全一致，疑似侵权", 409);
+    }
+
     return recipeRepo_->create(userId, data);
 }
 std::vector<RecipeVideo> RecipeServiceImpl::getRecipeVideos(int recipeId) {
