@@ -201,7 +201,6 @@ void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response&
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
-        LOG_ERROR("submitRecipe failed: %s", e.what());
         handleStandardException(e, res);
     }
 }

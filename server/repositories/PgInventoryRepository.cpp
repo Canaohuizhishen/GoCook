@@ -48,7 +48,7 @@ PagedInventory PgInventoryRepository::findInventory(int userId, int page, int si
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
     return result;
@@ -101,7 +101,7 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -121,7 +121,7 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -154,7 +154,7 @@ std::vector<ShoppingListSummary> PgInventoryRepository::findShoppingLists(int us
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -179,7 +179,7 @@ int PgInventoryRepository::createShoppingList(int userId, const CreateShoppingLi
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -223,7 +223,7 @@ ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listI
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -245,7 +245,7 @@ void PgInventoryRepository::deleteShoppingList(int userId, int listId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -306,7 +306,7 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -365,7 +365,7 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }
@@ -419,7 +419,7 @@ std::string PgInventoryRepository::exportShoppingList(int userId, int listId, co
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("Database error: %s", e.what());
+        LOG_WARN("Database error: %s", e.what());
         throw ServiceException("数据库操作失败");
     }
 }

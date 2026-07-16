@@ -44,7 +44,7 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
 
     } catch (const std::exception& e) {
         // 验证失败（签名错误、过期、格式不对等）
-        LOG_ERROR("JWT authentication failed: %s", e.what());
+        LOG_WARN("JWT authentication failed: %s", e.what());
         info.valid = false;
     }
 
