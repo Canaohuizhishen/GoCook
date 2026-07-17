@@ -18,11 +18,11 @@ echo ""
     -e 's/\[----------\] Global test environment set-up/---------- 全局测试环境初始化/' \
     -e 's/\[----------\] Global test environment tear-down/---------- 全局测试环境清理/' \
     -e 's/\[----------\] [0-9]* test[s]* from/-------- 测试来自/' \
-    -e 's/\[ RUN      \]/[ 运行中   ]/' \
-    -e 's/\[       OK \]/[    通过 ]/' \
+    -e '/\[ RUN      \]/d' \
+    -e 's/\[       OK \]/✅ /' \
     -e 's/\[  FAILED  \]/[   失败   ]/' \
     -e 's/\[  PASSED  \]/[    通过 ]/' \
     -e 's/Global test environment set-up/全局测试环境初始化/' \
     -e 's/Global test environment tear-down/全局测试环境清理/' \
     -e 's/\[==========\] [0-9]* tests from [0-9]* test suites ran\.$/========================================================/' \
-    -e 's/\[    通过 \] [0-9]* tests\./[    通过 ] 全部测试通过！/'
+    -e 's/\[    通过 \] \([0-9]*\) tests\./🎉 全部通过！\1 个测试/'
