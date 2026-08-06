@@ -65,10 +65,12 @@ void HttpGoCookApi::get(const QString &endpoint, const QJSValue &callback)
 }
 
 // GET 请求封装（C++ 版本，std::function 回调）
+// suppressNetworkError=true：失败时不发全局 networkError（页面自行呈现离线状态）
 void HttpGoCookApi::get(const QString &endpoint,
-                        std::function<void(bool, const QString&, const QJsonDocument&)> callback)
+                        std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+                        bool suppressNetworkError)
 {
-    sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), std::move(callback), 0);
+    sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), std::move(callback), 0, "", suppressNetworkError);
 }
 
 // POST 请求封装（QML 版本）
@@ -79,9 +81,10 @@ void HttpGoCookApi::post(const QString &endpoint, const QVariantMap &data, const
 
 // POST 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::post(const QString &endpoint, const QVariantMap &data,
-                         std::function<void(bool, const QString&, const QJsonDocument&)> callback)
+                         std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+                         bool suppressNetworkError)
 {
-    sendRequest(QNetworkAccessManager::PostOperation, endpoint, data, std::move(callback), 0);
+    sendRequest(QNetworkAccessManager::PostOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError);
 }
 
 // DELETE 请求封装（QML 版本）
@@ -92,9 +95,10 @@ void HttpGoCookApi::deleteResource(const QString &endpoint, const QVariantMap &d
 
 // DELETE 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::deleteResource(const QString &endpoint, const QVariantMap &data,
-                                   std::function<void(bool, const QString&, const QJsonDocument&)> callback)
+                                   std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+                                   bool suppressNetworkError)
 {
-    sendRequest(QNetworkAccessManager::DeleteOperation, endpoint, data, std::move(callback), 0);
+    sendRequest(QNetworkAccessManager::DeleteOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError);
 }
 
 // PUT 请求封装（QML 版本）
@@ -105,9 +109,10 @@ void HttpGoCookApi::put(const QString &endpoint, const QVariantMap &data, const 
 
 // PUT 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::put(const QString &endpoint, const QVariantMap &data,
-                        std::function<void(bool, const QString&, const QJsonDocument&)> callback)
+                        std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+                        bool suppressNetworkError)
 {
-    sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, std::move(callback), 0);
+    sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError);
 }
 
 // PATCH 请求封装（QML 版本）
@@ -118,9 +123,10 @@ void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data, cons
 
 // PATCH 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data,
-                          std::function<void(bool, const QString&, const QJsonDocument&)> callback)
+                          std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+                          bool suppressNetworkError)
 {
-    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, std::move(callback), 0, "PATCH");
+    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, std::move(callback), 0, "PATCH", suppressNetworkError);
 }
 
 // 内部通用请求发送（构造请求、发送，返回 QNetworkReply*）
@@ -178,7 +184,8 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 const QVariantMap &data,
                                 const QJSValue &callback,
                                 int retryCount,
-                                const QString &methodOverride)
+                                const QString &methodOverride,
+                                bool suppressNetworkError)
 {
     auto wrapped = [this, callback](bool success, const QString&, const QJsonDocument& doc) {
         if (!callback.isCallable()) return;
@@ -212,7 +219,7 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
         args << jsResponse;
         QJSValue(callback).call(args);
     };
-    sendRequest(op, endpoint, data, wrapped, retryCount, methodOverride);
+    sendRequest(op, endpoint, data, wrapped, retryCount, methodOverride, suppressNetworkError);
 }
 
 // 统一发送 HTTP 请求的实现（std::function 回调版本），retryCount 用于重试控制
@@ -221,19 +228,24 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 const QVariantMap &data,
                                 std::function<void(bool, const QString&, const QJsonDocument&)> callback,
                                 int retryCount,
-                                const QString &methodOverride)
+                                const QString &methodOverride,
+                                bool suppressNetworkError)
 {
     QNetworkReply *reply = sendRequestInternal(op, endpoint, data, methodOverride);
     if (!reply) {
-        // 若请求未能发出，直接回调失败
+        // 若请求未能发出，直接回调失败（未抑制时同步补发全局网络错误信号）
+        const QString failMsg = QStringLiteral("网络连接失败，请检查网络");
+        if (!suppressNetworkError) {
+            emit networkError(failMsg);
+        }
         if (callback) {
-            callback(false, "Failed to create network request", QJsonDocument());
+            callback(false, failMsg, QJsonDocument());
         }
         return;
     }
 
     // 连接请求完成信号，QPointer 守卫防止对象销毁后 λ 访问已释放内存
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, op, endpoint, data, retryCount, self = QPointer<HttpGoCookApi>(this)]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, op, endpoint, data, retryCount, suppressNetworkError, self = QPointer<HttpGoCookApi>(this)]() {
         if (!self) return;
 
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -254,27 +266,31 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
             // 先读取响应体——服务端可能在错误响应中返回 JSON 错误信息
             QByteArray responseData = reply->readAll();
             QJsonDocument doc = QJsonDocument::fromJson(responseData);
-            QString errorMsg = doc.isObject() && doc.object().contains("error")
-                ? doc.object()["error"].toString()
-                : reply->errorString();
 
             if (op == QNetworkAccessManager::GetOperation && retryCount < m_maxRetries) {
-                QTimer::singleShot(m_retryDelay, this, [self, op, endpoint, data, callback, retryCount]() {
+                QTimer::singleShot(m_retryDelay, this, [self, op, endpoint, data, callback, retryCount, suppressNetworkError]() {
                     if (!self) return;
-                    self->sendRequest(op, endpoint, data, callback, retryCount + 1);
+                    self->sendRequest(op, endpoint, data, callback, retryCount + 1, "", suppressNetworkError);
                 });
                 reply->deleteLater();
                 return;
             }
 
             // 即使 reply->error() 有值，也尝试读取响应体（某些 Qt 版本对 HTTP 5xx 同时设置 error）
-            QString errMsg = reply->errorString();
-            if (doc.isObject() && doc.object().contains("error"))
+            QString errMsg;
+            if (doc.isObject() && doc.object().contains("error")) {
                 errMsg = doc.object()["error"].toString();
-            else if (!responseData.isEmpty())
-                errMsg = QString::fromUtf8(responseData);
+            } else if (statusCode > 0) {
+                // 收到了 HTTP 响应但格式不符（非业务错误 JSON，如 5xx 返回 HTML/空体）——
+                // 是服务器问题不是网络问题，不能误导用户去查网络
+                errMsg = QStringLiteral("服务器有点问题，请稍候再试");
+            } else {
+                // 网络层错误（断网/拒绝连接/超时等，无服务端响应）统一中文文案，
+                // 避免把 Qt 英文错误串（Connection refused）直接展示给用户
+                errMsg = QStringLiteral("网络连接失败，请检查网络");
+            }
 
-            emit networkError(errMsg);
+            if (!suppressNetworkError) emit networkError(errMsg);
             if (callback) {
                 callback(false, errMsg, doc);
             }
@@ -317,7 +333,7 @@ void HttpGoCookApi::registerUser(const gocook::models::RegisterRequest& request,
             }
             callback(false, err.isEmpty() ? "Unknown error" : err.toStdString());
         }
-    });
+    }, true);
 }
 
 void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
@@ -343,7 +359,7 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
         } else {
             callback(false, gocook::models::LoginResponse{}, "Invalid response format");
         }
-    });
+    }, true);
 }
 
 void HttpGoCookApi::forgotPassword(const std::string& username,
@@ -366,7 +382,7 @@ void HttpGoCookApi::forgotPassword(const std::string& username,
             }
             callback(false, err.isEmpty() ? "请求失败" : err.toStdString());
         }
-    });
+    }, true);
 }
 
 void HttpGoCookApi::resetPassword(const std::string& token,
@@ -389,7 +405,7 @@ void HttpGoCookApi::resetPassword(const std::string& token,
             }
             callback(false, err.isEmpty() ? "重置失败" : err.toStdString());
         }
-    });
+    }, true);
 }
 
 // ======================= 用户相关 =======================
@@ -410,7 +426,7 @@ void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
         profile.preferences_complete = obj["preferences_complete"].toBool();
         profile.created_at = obj["created_at"].toString().toStdString();
         callback(true, profile, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& profile,
@@ -449,7 +465,7 @@ void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& pr
         profile.preferences_complete = obj["preferences_complete"].toBool();
         profile.created_at = obj["created_at"].toString().toStdString();
         if (callback) callback(true, profile, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getPreferences(PreferencesCallback callback) {
@@ -471,7 +487,7 @@ void HttpGoCookApi::getPreferences(PreferencesCallback callback) {
         if (obj.contains("health_goal"))
             prefs.health_goal = obj["health_goal"].toString().toStdString();
         if (callback) callback(true, prefs, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& prefs,
@@ -501,7 +517,7 @@ void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& pre
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
@@ -543,7 +559,7 @@ void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileReque
             }
         }
         if (callback) callback(true, resp, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getHealthProfile(HealthProfileCallback callback) {
@@ -574,7 +590,7 @@ void HttpGoCookApi::getHealthProfile(HealthProfileCallback callback) {
             }
         }
         if (callback) callback(true, resp, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::uploadAvatar(const std::string& filePath,
@@ -862,7 +878,7 @@ void HttpGoCookApi::deleteRecipe(int recipeId, SuccessCallback callback)
                 return;
             }
             if (callback) callback(true, "");
-        });
+        }, true);
 }
 
 void HttpGoCookApi::changePassword(const std::string& currentPassword,
@@ -885,7 +901,7 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::deleteAccount(SuccessCallback callback)
@@ -902,7 +918,7 @@ void HttpGoCookApi::deleteAccount(SuccessCallback callback)
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getFavorites(int page, int size,
@@ -941,7 +957,7 @@ void HttpGoCookApi::getFavorites(int page, int size,
             }
         }
         if (callback) callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback) {
@@ -962,7 +978,7 @@ void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback) {
             groups.push_back(g);
         }
         if (callback) callback(true, groups, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::createFavoriteGroup(const gocook::models::CreateGroupRequest& request,
@@ -981,7 +997,7 @@ void HttpGoCookApi::createFavoriteGroup(const gocook::models::CreateGroupRequest
         group.sort_order = obj["sort_order"].toInt();
         group.count = obj["count"].toInt();
         if (callback) callback(true, group, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::updateFavoriteGroup(int groupId,
@@ -997,7 +1013,7 @@ void HttpGoCookApi::updateFavoriteGroup(int groupId,
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::deleteFavoriteGroup(int groupId,
@@ -1009,7 +1025,7 @@ void HttpGoCookApi::deleteFavoriteGroup(int groupId,
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::updateFavoriteItem(int favoriteId,
@@ -1059,7 +1075,7 @@ void HttpGoCookApi::batchDeleteFavorites(const gocook::models::BatchDeleteFavori
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getNotifications(int page, int size,
@@ -1103,7 +1119,7 @@ void HttpGoCookApi::getNotifications(int page, int size,
             }
         }
         if (callback) callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::markNotificationRead(int notificationId,
@@ -1122,7 +1138,7 @@ void HttpGoCookApi::markNotificationRead(int notificationId,
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
@@ -1140,7 +1156,7 @@ void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::deleteNotification(int notificationId,
@@ -1159,7 +1175,7 @@ void HttpGoCookApi::deleteNotification(int notificationId,
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 // ======================= 菜谱相关 =======================
@@ -1240,7 +1256,7 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
                 result.data.push_back(parseRecipeSummary(val.toObject()));
         }
         callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getRecommendedRecipes(int page, int size,
@@ -1332,7 +1348,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
         }
 
         callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::searchRecipes(const std::string& keyword,
@@ -1404,7 +1420,7 @@ void HttpGoCookApi::searchRecipes(const std::string& keyword,
                 result.data.push_back(parseRecipeSummary(val.toObject()));
         }
         callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getRecipeDetail(int recipeId,
@@ -1467,7 +1483,7 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
         detail.created_at = obj["created_at"].toString().toStdString();
         detail.updated_at = obj["updated_at"].toString().toStdString();
         callback(true, detail, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getRecipeVideos(int recipeId,
@@ -1492,7 +1508,7 @@ void HttpGoCookApi::getRecipeVideos(int recipeId,
             videos.push_back(std::move(v));
         }
         callback(true, videos, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,
@@ -1526,7 +1542,7 @@ void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,
         result.pagination.total_pages = pag["total_pages"].toInt();
 
         callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getMyRecipeRating(int recipeId,
@@ -1550,7 +1566,7 @@ void HttpGoCookApi::getMyRecipeRating(int recipeId,
         r.comment = obj["comment"].toString().toStdString();
         r.created_at = obj["created_at"].toString().toStdString();
         callback(true, std::move(r), "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
@@ -1616,7 +1632,7 @@ void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& reci
         resp.id = obj["id"].toInt();
         resp.status = obj["status"].toString().toStdString();
         callback(true, resp, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
@@ -1732,7 +1748,7 @@ void HttpGoCookApi::editRecipe(int recipeId,
         }
         if (callback)
             callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::toggleFavorite(int recipeId,
@@ -1751,7 +1767,7 @@ void HttpGoCookApi::toggleFavorite(int recipeId,
             return;
         }
         if (callback) callback(true, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::rateRecipe(int recipeId,
@@ -1875,7 +1891,7 @@ void HttpGoCookApi::getRecipeNutrition(int recipeId,
         report.health_notes = obj["health_notes"].toString().toStdString();
 
         callback(true, report, "");
-    });
+    }, true);
 }
 
 // ======================= 库存管理 =======================
@@ -1915,7 +1931,7 @@ void HttpGoCookApi::getInventory(int page, int size,
             }
         }
         callback(true, result, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest& item,
@@ -1934,7 +1950,7 @@ void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest
         }
         int id = doc.object()["id"].toInt();
         callback(true, id, "");
-    });
+    }, true);
 }
 
 void HttpGoCookApi::deleteInventoryItem(int itemId,
@@ -1942,7 +1958,7 @@ void HttpGoCookApi::deleteInventoryItem(int itemId,
     QString endpoint = QString("/api/inventory/%1").arg(itemId);
     deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         callback(success, success ? "" : errorMsg.toStdString());
-    });
+    }, true);
 }
 
 // ======================= 购物清单 / 膳食计划 =======================
@@ -2236,7 +2252,7 @@ void HttpGoCookApi::getAnnouncements(int page, int size,
             }
         }
         if (callback) callback(true, result, "");
-    });
+    }, true);
 }
 
 // ======================= 管理员功能 =======================

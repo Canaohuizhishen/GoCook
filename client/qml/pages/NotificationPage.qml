@@ -12,13 +12,6 @@ Page {
 
     property string errorMessage: ""
 
-    // 错误提示自动消失
-    Timer {
-        id: errorTimer
-        interval: 3000
-        onTriggered: errorMessage = ""
-    }
-
     // 页面可见时加载数据
     onVisibleChanged: {
         if (visible)
@@ -90,22 +83,12 @@ Page {
         }
     }
 
-    // 错误提示
-    Rectangle {
-        anchors.top: parent.top
-        anchors.topMargin: 48
-        width: parent.width
-        height: 32
-        color: "#E74C3C"
-        visible: errorMessage.length > 0
-
-        Text {
-            anchors.centerIn: parent
-            text: errorMessage
-            color: "white"
-            font.family: Theme.fontFamily
-            font.pointSize: Theme.fontSizeCaption
-        }
+    // 错误/成功提示（底部 toast 风格，1.5 秒自动消失；替代原顶部红条）
+    ErrorBanner {
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 48
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: errorMessage
     }
 
     Item {
@@ -316,15 +299,15 @@ Page {
     Connections {
         target: notifyVM
         function onErrorOccurred(error) {
+            errorMessage = ""
             errorMessage = error
-            errorTimer.restart()
         }
         function onMarkReadSuccess(id) {
             // 可选：显示短暂提示
         }
         function onMarkAllReadSuccess() {
+            errorMessage = ""
             errorMessage = qsTr("全部标记为已读")
-            errorTimer.restart()
         }
         function onDeleteSuccess(id) {
             // 删除成功，列表已自动更新

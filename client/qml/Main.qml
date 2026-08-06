@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtCore
 import client
+import "./components"
 import "./pages"
 
 ApplicationWindow {
@@ -28,6 +29,16 @@ ApplicationWindow {
         target: Theme
         function onThemeModeChanged() {
             settings.themeMode = Theme.themeMode
+        }
+    }
+
+    // 全局网络失败提示（底部黑色 toast；网络层错误统一中文文案，服务端业务错误显示具体信息）
+    Connections {
+        target: httpApi
+        function onNetworkError(message) {
+            // 先清空再赋值：同文案连续错误也能重启自动消失计时
+            networkErrorBanner.text = ""
+            networkErrorBanner.text = message
         }
     }
 
@@ -100,6 +111,14 @@ ApplicationWindow {
                 duration: 150
             }
         }
+    }
+
+    // 全局网络失败提示（底部黑色 toast，1.5 秒自动消失；PDD/微信等主流 App 形态，替代顶部红条）
+    ErrorBanner {
+        id: networkErrorBanner
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 100
+        anchors.horizontalCenter: parent.horizontalCenter
     }
 
     Component {

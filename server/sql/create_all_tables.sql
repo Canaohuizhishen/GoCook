@@ -1,6 +1,11 @@
 -- ==================== GoCook 数据库表结构初始化脚本 ====================
--- 说明：本脚本可安全重复执行，已存在的对象不会被重复创建或报错。
--- 执行方式：docker exec -i my_postgres psql -U gocook -d gocookdb < ./create_all_tables.sql
+-- ⛔⛔⛔ 警告：本脚本开头会对全部业务表执行 DROP TABLE IF EXISTS ... CASCADE，
+-- ⛔⛔⛔ 是【清空重建】脚本！只允许在全新初始化（空数据卷）时由容器自动执行。
+-- ⛔⛔⛔ 千万不要对已有数据的库手动执行——会清空菜谱/用户/库存等全部数据！
+-- ⛔⛔⛔ 旧库补表请用只增迁移脚本：./migrate_xxx.sql
+-- 执行方式：docker exec -i gocook-postgres psql -U gocook -d gocookdb < ./create_all_tables.sql
+-- ⚠️ 遇错即停：任何一条语句失败都会中止并返回非零退出码（避免静默产出残缺 schema）
+\set ON_ERROR_STOP on
 
 -- 先删除所有表（按依赖顺序，先删有外键的表）
 DROP TABLE IF EXISTS activity_logs          CASCADE;

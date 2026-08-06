@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMutexLocker>
+#include <QDebug>
 
 LocalDatabase* LocalDatabase::m_instance = nullptr;
 
@@ -23,20 +24,35 @@ LocalDatabase::LocalDatabase(QObject *parent) : QObject(parent)
     initialize();
 }
 
-bool LocalDatabase::initialize()
+LocalDatabase* LocalDatabase::createForTesting(const QString& dbPath, const QString& connectionName)
+{
+    return new LocalDatabase(dbPath, connectionName);
+}
+
+LocalDatabase::LocalDatabase(const QString& dbPath, const QString& connectionName, QObject *parent)
+    : QObject(parent)
+{
+    initialize(dbPath, connectionName);
+}
+
+bool LocalDatabase::initialize(const QString& dbPath, const QString& connectionName)
 {
     QMutexLocker locker(&m_mutex);
-    QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(dataPath);
-    QString dbPath = dataPath + "/gocook.db";
 
-    m_db = QSqlDatabase::addDatabase("QSQLITE");
+    m_db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
     m_db.setDatabaseName(dbPath);
     if (!m_db.open()) {
         emit databaseError("Failed to open database: " + m_db.lastError().text());
         return false;
     }
     return createTables();
+}
+
+bool LocalDatabase::initialize()
+{
+    QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dataPath);
+    return initialize(dataPath + "/gocook.db", QString());
 }
 
 bool LocalDatabase::isOpen() const
@@ -49,42 +65,48 @@ bool LocalDatabase::createTables()
 {
     QSqlQuery query(m_db);
 
-    query.exec("CREATE TABLE IF NOT EXISTS user ("
-               "id INTEGER PRIMARY KEY,"
-               "username TEXT,"
-               "token TEXT)");
+    if (!query.exec("CREATE TABLE IF NOT EXISTS user ("
+                    "id INTEGER PRIMARY KEY,"
+                    "username TEXT,"
+                    "token TEXT)") ||
+        !query.exec("CREATE TABLE IF NOT EXISTS inventory_cache ("
+                    "ingredient_name TEXT PRIMARY KEY,"
+                    "quantity REAL,"
+                    "unit TEXT,"
+                    "expiry_date TEXT,"
+                    "added_at TEXT)") ||
+        !query.exec("CREATE TABLE IF NOT EXISTS recipe_detail_cache ("
+                    "id INTEGER PRIMARY KEY,"
+                    "data TEXT NOT NULL,"
+                    "updated_at TEXT)") ||
+        // 离线写队列已整体拆除（v2 决策：断网写操作明确报错，不做自动重放）——
+        // 老库遗留的 pending_operations 表直接清理，避免死数据堆积
+        !query.exec("DROP TABLE IF EXISTS pending_operations")) {
+        qWarning() << "[LocalDatabase] createTables 基础表创建/清理失败:" << query.lastError().text();
+        return false;
+    }
 
-    query.exec("CREATE TABLE IF NOT EXISTS inventory_cache ("
-               "ingredient_name TEXT PRIMARY KEY,"
-               "quantity REAL,"
-               "unit TEXT,"
-               "expiry_date TEXT,"
-               "added_at TEXT)");
-
-    query.exec("CREATE TABLE IF NOT EXISTS recipe_detail_cache ("
-               "id INTEGER PRIMARY KEY,"
-               "name TEXT,"
-               "description TEXT,"
-               "image_url TEXT,"
-               "cooking_method TEXT,"
-               "flavor TEXT,"
-               "prep_time_minutes INTEGER,"
-               "cook_time_minutes INTEGER,"
-               "view_count INTEGER,"
-               "avg_rating REAL,"
-               "ingredients TEXT,"
-               "steps TEXT,"
-               "nutrition TEXT,"
-               "tags TEXT,"
-               "author_id INTEGER,"
-               "author_name TEXT,"
-               "created_at TEXT)");
-
-    query.exec("CREATE TABLE IF NOT EXISTS pending_operations ("
-               "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-               "operation TEXT,"
-               "data TEXT,"
-               "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+    // 迁移：老结构（明细列，字段名与页面读取的 DataMapper camelCase 键不匹配）从未被
+    // 使用（死代码），检测到无 data 列直接重建，避免写入空值缓存
+    QSqlQuery cachePragma(m_db);
+    if (!cachePragma.exec("PRAGMA table_info(recipe_detail_cache)")) {
+        qWarning() << "[LocalDatabase] PRAGMA table_info 失败:" << cachePragma.lastError().text();
+        return false;
+    }
+    bool hasData = false;
+    while (cachePragma.next()) {
+        if (cachePragma.value(1).toString() == QLatin1String("data")) hasData = true;
+    }
+    if (!hasData) {
+        if (!query.exec("DROP TABLE recipe_detail_cache") ||
+            !query.exec("CREATE TABLE recipe_detail_cache ("
+                        "id INTEGER PRIMARY KEY,"
+                        "data TEXT NOT NULL,"
+                        "updated_at TEXT)")) {
+            qWarning() << "[LocalDatabase] 迁移重建 recipe_detail_cache 失败:" << query.lastError().text();
+            return false;
+        }
+    }
     return true;
 }
 
@@ -157,102 +179,51 @@ QVariantList LocalDatabase::getInventoryCache() const
     return list;
 }
 
-bool LocalDatabase::saveRecipeDetailCache(const QVariantList &recipes)
+bool LocalDatabase::saveRecipeDetailCache(int recipeId, const QVariantMap &detail)
 {
     QMutexLocker locker(&m_mutex);
+    // 整份 detail map 以 JSON 存储：键名与页面读取的 DataMapper camelCase 字段天然一致
+    // 写入与上限裁剪放进同一事务：任一失败整体回滚，避免缓存与实际状态不一致
+    if (!m_db.transaction()) {
+        qWarning() << "[LocalDatabase] 开启事务失败:" << m_db.lastError().text();
+        return false;
+    }
+
     QSqlQuery query(m_db);
-    query.exec("DELETE FROM recipe_detail_cache");
-    query.prepare("INSERT INTO recipe_detail_cache "
-                  "(id, name, description, image_url, cooking_method, flavor, "
-                  "prep_time_minutes, cook_time_minutes, view_count, avg_rating, "
-                  "ingredients, steps, nutrition, tags, author_id, author_name, created_at) "
-                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    for (const QVariant &recVar : recipes) {
-        QVariantMap rec = recVar.toMap();
-        query.addBindValue(rec["id"]);
-        query.addBindValue(rec["name"]);
-        query.addBindValue(rec["description"]);
-        query.addBindValue(rec["image_url"]);
-        query.addBindValue(rec["cooking_method"]);
-        query.addBindValue(rec["flavor"]);
-        query.addBindValue(rec["prep_time_minutes"]);
-        query.addBindValue(rec["cook_time_minutes"]);
-        query.addBindValue(rec["view_count"]);
-        query.addBindValue(rec["avg_rating"]);
-        query.addBindValue(QJsonDocument(QJsonArray::fromVariantList(rec["ingredients"].toList())).toJson(QJsonDocument::Compact));
-        query.addBindValue(QJsonDocument(QJsonArray::fromVariantList(rec["steps"].toList())).toJson(QJsonDocument::Compact));
-        query.addBindValue(QJsonDocument(QJsonObject::fromVariantMap(rec["nutrition"].toMap())).toJson(QJsonDocument::Compact));
-        query.addBindValue(QJsonDocument(QJsonArray::fromVariantList(rec["tags"].toList())).toJson(QJsonDocument::Compact));
-        query.addBindValue(rec["author_id"]);
-        query.addBindValue(rec["author_name"]);
-        query.addBindValue(rec["created_at"]);
-        if (!query.exec()) {
-            return false;
-        }
+    // 毫秒级时间戳（%f）：同秒大量写入也能稳定排序，避免上限裁剪误删刚写入的行
+    query.prepare("INSERT INTO recipe_detail_cache (id, data, updated_at) "
+                  "VALUES (?, ?, strftime('%Y-%m-%d %H:%M:%f','now')) "
+                  "ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at");
+    query.addBindValue(recipeId);
+    query.addBindValue(QJsonDocument(QJsonObject::fromVariantMap(detail)).toJson(QJsonDocument::Compact));
+    if (!query.exec()) {
+        qWarning() << "[LocalDatabase] 写入详情缓存失败 (id=" << recipeId << "):" << query.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    // 上限清理：只保留最近 20 条（按更新时间倒序）
+    QSqlQuery prune(m_db);
+    if (!prune.exec("DELETE FROM recipe_detail_cache WHERE id NOT IN "
+                    "(SELECT id FROM recipe_detail_cache ORDER BY updated_at DESC LIMIT 20)")) {
+        qWarning() << "[LocalDatabase] 裁剪详情缓存失败:" << prune.lastError().text();
+        m_db.rollback();
+        return false;
+    }
+    if (!m_db.commit()) {
+        // commit 失败必须回滚关闭事务，否则事务悬挂导致后续所有缓存写入静默失败
+        m_db.rollback();
+        qWarning() << "[LocalDatabase] 提交缓存事务失败:" << m_db.lastError().text();
+        return false;
     }
     return true;
 }
 
-QVariantList LocalDatabase::getRecipeDetailCache() const
-{
-    QMutexLocker locker(&m_mutex);
-    QVariantList list;
-    QSqlQuery query("SELECT id, name, description, image_url, cooking_method, flavor, "
-                    "prep_time_minutes, cook_time_minutes, view_count, avg_rating, "
-                    "ingredients, steps, nutrition, tags, author_id, author_name, created_at "
-                    "FROM recipe_detail_cache", m_db);
-    while (query.next()) {
-        QVariantMap rec;
-        rec["id"] = query.value(0);
-        rec["name"] = query.value(1);
-        rec["description"] = query.value(2);
-        rec["image_url"] = query.value(3);
-        rec["cooking_method"] = query.value(4);
-        rec["flavor"] = query.value(5);
-        rec["prep_time_minutes"] = query.value(6);
-        rec["cook_time_minutes"] = query.value(7);
-        rec["view_count"] = query.value(8);
-        rec["avg_rating"] = query.value(9);
-        rec["ingredients"] = QJsonDocument::fromJson(query.value(10).toByteArray()).array().toVariantList();
-        rec["steps"] = QJsonDocument::fromJson(query.value(11).toByteArray()).array().toVariantList();
-        rec["nutrition"] = QJsonDocument::fromJson(query.value(12).toByteArray()).object().toVariantMap();
-        rec["tags"] = QJsonDocument::fromJson(query.value(13).toByteArray()).array().toVariantList();
-        rec["author_id"] = query.value(14);
-        rec["author_name"] = query.value(15);
-        rec["created_at"] = query.value(16);
-        list.append(rec);
-    }
-    return list;
-}
-
-bool LocalDatabase::addPendingOperation(const QString &operation, const QVariantMap &data)
+QVariantMap LocalDatabase::getRecipeDetailCache(int recipeId) const
 {
     QMutexLocker locker(&m_mutex);
     QSqlQuery query(m_db);
-    query.prepare("INSERT INTO pending_operations (operation, data) VALUES (?, ?)");
-    query.addBindValue(operation);
-    query.addBindValue(QJsonDocument(QJsonObject::fromVariantMap(data)).toJson(QJsonDocument::Compact));
-    return query.exec();
-}
-
-QVariantList LocalDatabase::getPendingOperations() const
-{
-    QMutexLocker locker(&m_mutex);
-    QVariantList list;
-    QSqlQuery query("SELECT id, operation, data FROM pending_operations ORDER BY created_at", m_db);
-    while (query.next()) {
-        QVariantMap op;
-        op["id"] = query.value(0);
-        op["operation"] = query.value(1);
-        op["data"] = QJsonDocument::fromJson(query.value(2).toByteArray()).object().toVariantMap();
-        list.append(op);
-    }
-    return list;
-}
-
-bool LocalDatabase::clearPendingOperations()
-{
-    QMutexLocker locker(&m_mutex);
-    QSqlQuery query("DELETE FROM pending_operations", m_db);
-    return query.exec();
+    query.prepare("SELECT data FROM recipe_detail_cache WHERE id = ?");
+    query.addBindValue(recipeId);
+    if (!query.exec() || !query.next()) return QVariantMap();
+    return QJsonDocument::fromJson(query.value(0).toByteArray()).object().toVariantMap();
 }

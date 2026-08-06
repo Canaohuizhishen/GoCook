@@ -13,10 +13,10 @@ Page {
     property string currentGroupFilter: ""
     property bool showCreateDialog: false
     property bool __dataLoaded: false
-    property string errorMessage: ""
     property bool editMode: false
     property var selectedIds: []
     property int moveFavId: 0
+    property string errorMessage: ""
 
     // QML 侧缓存的展示列表 — 从 recipeVM.favorites 按 currentGroupFilter 即时过滤
     property var displayFavorites: []
@@ -36,8 +36,6 @@ Page {
     }
 
     onCurrentGroupFilterChanged: updateDisplayFavorites()
-
-    // 错误提示（由 ErrorBanner 处理自动消失）
 
     // 每次页面可见时重新加载数据（用户从其他 tab 切回来时刷新）
     onVisibleChanged: {
@@ -101,10 +99,11 @@ Page {
         }
     }
 
+    // 收藏写操作失败提示（底部 toast；主请求失败由离线视图呈现，此处不重复提示）
     ErrorBanner {
-        id: errorBanner
-        anchors.top: parent.top
-        anchors.topMargin: 48
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 100
+        anchors.horizontalCenter: parent.horizontalCenter
         text: errorMessage
     }
 
@@ -254,6 +253,16 @@ Page {
                     fullscreen: true
                     message: qsTr("正在加载收藏...")
                     isLoading: recipeVM.favoritesLoading && displayFavorites.length === 0
+                }
+
+                // 加载失败且无旧数据 → 居中离线视图（PDD 式）；有旧数据则静默显示旧数据
+                NetworkOfflineView {
+                    anchors.fill: parent
+                    active: recipeVM.favoritesLoadFailed && !recipeVM.favoritesLoading && displayFavorites.length === 0
+                    onRetryRequested: {
+                        recipeVM.loadFavorites(1, 20, currentGroupFilter)
+                        recipeVM.loadFavoriteGroups()
+                    }
                 }
 
                 ListView {
@@ -446,7 +455,7 @@ Page {
                 Column {
                     anchors.centerIn: parent
                     spacing: Theme.spacingMedium
-                    visible: displayFavorites.length === 0 && !recipeVM.favoritesLoading
+                    visible: displayFavorites.length === 0 && !recipeVM.favoritesLoading && !recipeVM.favoritesLoadFailed
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -780,10 +789,6 @@ Page {
         function onFavoritesChanged() {
             updateDisplayFavorites()
         }
-        function onErrorOccurred(error) { console.log("Favorites error:", error) }
-        function onFavoriteOperationFailed(error) {
-            errorMessage = error
-        }
         function onFavoriteMoved() {
             recipeVM.loadFavorites(1, 20, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
@@ -795,6 +800,11 @@ Page {
         function onFavoriteGroupDeleted() {
             recipeVM.loadFavorites(1, 20, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
+        }
+        function onFavoriteOperationFailed(error) {
+            // 先清空再赋值：同文案连续错误也能重启自动消失计时（ErrorBanner 约定）
+            errorMessage = ""
+            errorMessage = error
         }
     }
 }

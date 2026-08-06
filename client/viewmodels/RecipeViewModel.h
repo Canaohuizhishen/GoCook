@@ -15,6 +15,8 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool healthFilterApplied READ healthFilterApplied NOTIFY healthFilterAppliedChanged)
     Q_PROPERTY(QVariantMap recipeDetail READ recipeDetail NOTIFY recipeDetailChanged)
     Q_PROPERTY(bool detailLoading READ detailLoading NOTIFY detailLoadingChanged)
+    Q_PROPERTY(bool detailLoadFailed READ detailLoadFailed NOTIFY detailLoadFailedChanged)
+    Q_PROPERTY(bool favoritesLoadFailed READ favoritesLoadFailed NOTIFY favoritesLoadFailedChanged)
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
     Q_PROPERTY(bool searchLoading READ searchLoading NOTIFY searchLoadingChanged)
     Q_PROPERTY(bool searchHasMore READ searchHasMore NOTIFY searchHasMoreChanged)
@@ -50,6 +52,8 @@ public:
     bool healthFilterApplied() const;
     QVariantMap recipeDetail() const;
     bool detailLoading() const;
+    bool detailLoadFailed() const;
+    bool favoritesLoadFailed() const;
     QVariantList searchResults() const;
     bool searchLoading() const;
     bool searchHasMore() const;
@@ -125,6 +129,8 @@ signals:
     void healthFilterAppliedChanged();
     void recipeDetailChanged();
     void detailLoadingChanged();
+    void detailLoadFailedChanged();
+    void favoritesLoadFailedChanged();
     void searchResultsChanged();
     void searchLoadingChanged();
     void searchHasMoreChanged();
@@ -183,6 +189,8 @@ private:
     bool m_hasMore = false;
     bool m_healthFilterApplied = false;
     bool m_detailLoading = false;
+    bool m_detailLoadFailed = false;   ///< 详情加载失败且无缓存（页面显示居中离线视图）
+    int m_detailRequestedId = -1;      ///< 当前详情页所属菜谱 id：A→B 快速切换时丢弃 A 的过期响应（竞态防护）
     int m_currentPage = 1;
     int m_pageSize = 30;
     int m_totalPages = 0;
@@ -237,4 +245,5 @@ private:
     int m_favoritesTotal = 0;
     bool m_favoritesHasMore = false;
     bool m_favoritesLoading = false;
+    bool m_favoritesLoadFailed = false; ///< 收藏加载失败（页面显示居中离线视图或静默保留旧数据）
 };

@@ -4,6 +4,7 @@
 #include <QPointer>
 #include <QStringList>
 #include "../api/HttpGoCookApi.h"
+#include "../database/LocalDatabase.h"
 
 RecipeViewModel::RecipeViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
@@ -20,6 +21,8 @@ bool RecipeViewModel::hasMore() const { return m_hasMore; }
 bool RecipeViewModel::healthFilterApplied() const { return m_healthFilterApplied; }
 QVariantMap RecipeViewModel::recipeDetail() const { return m_recipeDetail; }
 bool RecipeViewModel::detailLoading() const { return m_detailLoading; }
+bool RecipeViewModel::detailLoadFailed() const { return m_detailLoadFailed; }
+bool RecipeViewModel::favoritesLoadFailed() const { return m_favoritesLoadFailed; }
 QVariantList RecipeViewModel::searchResults() const { return m_searchResults; }
 bool RecipeViewModel::searchLoading() const { return m_searchLoading; }
 bool RecipeViewModel::searchHasMore() const { return m_searchHasMore; }
@@ -123,24 +126,47 @@ void RecipeViewModel::loadRecommendedRecipes(int page, int size)
 
 void RecipeViewModel::loadRecipeDetail(int recipeId)
 {
-    m_detailLoading = true;
+    // 记录当前请求的菜谱 id：A→B 快速切换时丢弃 A 的迟到响应，防止覆盖 B 的内容（竞态防护）
+    m_detailRequestedId = recipeId;
+    // 进入即清空：切换菜谱时不短暂显示上一个菜谱（断网场景尤为重要）
+    m_recipeDetail = QVariantMap();
     m_recipeVideos.clear();
     m_videosLoading = false;
+    m_detailLoadFailed = false;
+    emit recipeDetailChanged();
     emit recipeVideosChanged();
     emit videosLoadingChanged();
+    emit detailLoadFailedChanged();
+    m_detailLoading = true;
     emit detailLoadingChanged();
 
     m_api->getRecipeDetail(recipeId,
-                           [self = QPointer<RecipeViewModel>(this)](bool success, const gocook::models::RecipeDetail& data, const std::string& error) {
+                           [self = QPointer<RecipeViewModel>(this), recipeId](bool success, const gocook::models::RecipeDetail& data, const std::string& error) {
                                if (!self) return;
+                               // 过期响应丢弃：期间用户已切换到其他菜谱（loading 状态由新请求自己管理）
+                               if (recipeId != self->m_detailRequestedId) return;
                                if (!success) {
-                                   emit self->errorOccurred(QString::fromStdString(error));
+                                   // PDD 式兜底：缓存命中 → 静默显示缓存（页面与联网状态无异，零提示）；
+                                   // 无缓存 → 置 detailLoadFailed，页面居中显示「无网络连接」离线视图
+                                   const QVariantMap cached =
+                                       LocalDatabase::instance()->getRecipeDetailCache(recipeId);
+                                   if (!cached.isEmpty()) {
+                                       self->m_recipeDetail = cached;
+                                       emit self->recipeDetailChanged();
+                                   } else {
+                                       self->m_recipeDetail = QVariantMap();
+                                       self->m_detailLoadFailed = true;
+                                       emit self->recipeDetailChanged();
+                                       emit self->detailLoadFailedChanged();
+                                   }
                                    self->m_detailLoading = false;
                                    emit self->detailLoadingChanged();
                                    return;
                                }
 
                                self->m_recipeDetail = DataMapper::toMap(data);
+                               // 写入本地缓存，断网时详情页兜底显示
+                               LocalDatabase::instance()->saveRecipeDetailCache(recipeId, self->m_recipeDetail);
                                self->m_detailLoading = false;
                                emit self->detailLoadingChanged();
                                emit self->recipeDetailChanged();
@@ -340,14 +366,19 @@ QVariantMap RecipeViewModel::myRating() const { return m_myRating; }
 
 void RecipeViewModel::loadNutritionReport(int recipeId)
 {
+    m_detailRequestedId = recipeId;
     m_nutritionLoading = true;
     emit nutritionLoadingChanged();
 
     m_api->getRecipeNutrition(recipeId,
-        [self = QPointer<RecipeViewModel>(this)](bool success, const gocook::models::NutritionReport& data, const std::string& error) {
+        [self = QPointer<RecipeViewModel>(this), recipeId](bool success, const gocook::models::NutritionReport& data, const std::string& error) {
             if (!self) return;
+            if (recipeId != self->m_detailRequestedId) return;  // 过期响应丢弃
             if (!success) {
-                emit self->errorOccurred(QString::fromStdString(error));
+                // 详情页内子区块失败静默（详情页不监听 errorOccurred，无影响）；
+                // 独立营养报告页监听 errorOccurred 呈现加载失败，区分「暂无报告」空状态
+                emit self->errorOccurred(QString::fromStdString(
+                    error.empty() ? QStringLiteral("加载营养报告失败").toStdString() : error));
                 self->m_nutritionLoading = false;
                 emit self->nutritionLoadingChanged();
                 return;
@@ -361,14 +392,17 @@ void RecipeViewModel::loadNutritionReport(int recipeId)
 
 void RecipeViewModel::loadRecipeVideos(int recipeId)
 {
+    m_detailRequestedId = recipeId;
     m_videosLoading = true;
     emit videosLoadingChanged();
 
     m_api->getRecipeVideos(recipeId,
-        [self = QPointer<RecipeViewModel>(this)](bool success, const std::vector<gocook::models::RecipeVideo>& data, const std::string& error) {
+        [self = QPointer<RecipeViewModel>(this), recipeId](bool success, const std::vector<gocook::models::RecipeVideo>& data, const std::string& error) {
             if (!self) return;
+            if (recipeId != self->m_detailRequestedId) return;  // 过期响应丢弃
             if (!success) {
-                emit self->errorOccurred(QString::fromStdString(error));
+                // 详情页子区块失败静默：主内容失败已由缓存兜底/离线视图呈现，
+                // 子区块不再整页弹提示（避免与全局提示重复/遮挡；主流 App 为区内留空）
                 self->m_videosLoading = false;
                 emit self->videosLoadingChanged();
                 return;
@@ -390,15 +424,18 @@ void RecipeViewModel::loadRecipeRatings(int recipeId, int page, int size)
         m_recipeRatings.clear();
         emit recipeRatingsChanged();
     }
+    m_detailRequestedId = recipeId;
     m_ratingsLoading = true;
     m_ratingsRecipeId = recipeId;
     emit ratingsLoadingChanged();
 
     m_api->getRecipeRatings(recipeId, page, size,
-        [self = QPointer<RecipeViewModel>(this), page](bool success, const gocook::models::PagedRatings& data, const std::string& error) {
+        [self = QPointer<RecipeViewModel>(this), page, recipeId](bool success, const gocook::models::PagedRatings& data, const std::string& error) {
             if (!self) return;
+            if (recipeId != self->m_detailRequestedId) return;  // 过期响应丢弃
             if (!success) {
-                emit self->errorOccurred(QString::fromStdString(error));
+                // 详情页子区块失败静默：主内容失败已由缓存兜底/离线视图呈现，
+                // 子区块不再整页弹提示（避免与全局提示重复/遮挡；主流 App 为区内留空）
                 self->m_ratingsLoading = false;
                 emit self->ratingsLoadingChanged();
                 return;
@@ -433,11 +470,13 @@ void RecipeViewModel::loadMoreRatings()
 
 void RecipeViewModel::loadMyRecipeRating(int recipeId)
 {
+    m_detailRequestedId = recipeId;
     m_api->getMyRecipeRating(recipeId,
-        [self = QPointer<RecipeViewModel>(this)](bool success,
+        [self = QPointer<RecipeViewModel>(this), recipeId](bool success,
                  const std::optional<gocook::models::RecipeRating>& data,
                  const std::string& error) {
             if (!self) return;
+            if (recipeId != self->m_detailRequestedId) return;  // 过期响应丢弃
             if (!success) {
                 // 404 表示未评分，清空并静默处理
                 self->m_myRating = QVariantMap();
@@ -689,6 +728,8 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
 {
     if (m_favoritesLoading) return;
     m_favoritesLoading = true;
+    m_favoritesLoadFailed = false;
+    emit favoritesLoadFailedChanged();
     emit favoritesLoadingChanged();
 
     m_api->getFavorites(page, size, group.toStdString(),
@@ -697,7 +738,9 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
                          const std::string& error) {
         if (!self) return;
         if (!success) {
-            emit self->errorOccurred(QString::fromStdString(error));
+            // 页面自行呈现：有旧数据则静默显示旧数据，无数据则居中离线视图（PDD 行为）
+            self->m_favoritesLoadFailed = true;
+            emit self->favoritesLoadFailedChanged();
             self->m_favoritesLoading = false;
             emit self->favoritesLoadingChanged();
             return;
@@ -754,7 +797,11 @@ void RecipeViewModel::loadFavoriteGroups()
                               const std::string& error) {
         if (!self) return;
         if (!success) {
-            emit self->favoriteOperationFailed(QString::fromStdString(error));
+            // 主请求（loadFavorites）未完成或已失败时静默：并发失败顺序不定，
+            // 页面将由离线视图/旧数据呈现，避免与全局提示重复弹窗
+            if (!self->m_favoritesLoading && !self->m_favoritesLoadFailed) {
+                emit self->favoriteOperationFailed(QString::fromStdString(error));
+            }
             return;
         }
         QVariantList list;

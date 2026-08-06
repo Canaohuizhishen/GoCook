@@ -52,6 +52,7 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
+    engine.rootContext()->setContextProperty("httpApi", httpApi);
     engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
     engine.rootContext()->setContextProperty("inventoryVM", &inventoryVM);
     engine.rootContext()->setContextProperty("notifyVM", &notifyVM);

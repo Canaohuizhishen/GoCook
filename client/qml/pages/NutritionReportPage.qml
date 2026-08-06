@@ -10,6 +10,7 @@ Page {
     property int recipeId: 0
 
     // 安全属性：等 nutritionReport 加载完之前用空对象兜底，避免 per_serving.* 的 TypeError
+    property string loadError: ""
     property var _stackView: null
     readonly property var _report: recipeVM.nutritionReport || {}
     readonly property var _perServing: _report.per_serving || {}
@@ -258,16 +259,25 @@ Page {
                 }
             }
 
-            // 无数据提示
+            // 无数据提示（加载失败与真实无报告区分开：失败优先显示错误）
             Text {
                 width: parent.width
-                text: qsTr("该菜谱暂无营养报告")
+                text: loadError !== "" ? loadError : qsTr("该菜谱暂无营养报告")
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSizeBody
-                color: Theme.textHint
+                color: loadError !== "" ? Theme.errorColor : Theme.textHint
                 horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
                 visible: !recipeVM.nutritionLoading && Object.keys(_report).length === 0
             }
+        }
+    }
+
+    // 加载失败反馈（getRecipeNutrition 已抑制全局提示，此处页内呈现，区分「暂无报告」空状态）
+    Connections {
+        target: recipeVM
+        function onErrorOccurred(error) {
+            loadError = error
         }
     }
 }

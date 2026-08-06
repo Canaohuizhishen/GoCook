@@ -70,6 +70,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeIngredientItem.qml
     QML_FILES qml/components/RecipeStepItem.qml
     QML_FILES qml/components/ErrorBanner.qml
+    QML_FILES qml/components/NetworkOfflineView.qml
     QML_FILES qml/components/NutritionSummaryCard.qml
     QML_FILES qml/components/VideoCardDelegate.qml
     QML_FILES qml/components/GroupSelectionDialog.qml
@@ -131,6 +132,19 @@ install(TARGETS appclient
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+# ---- 单元测试 ----
+# GTest 缺失时跳过测试子目录（仅告警），避免无 GTest 的环境 configure 硬失败
+option(BUILD_TESTING "Build unit tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+    find_package(GTest QUIET)
+    if(GTest_FOUND)
+        add_subdirectory(tests)
+    else()
+        message(WARNING "未找到 GTest，跳过单元测试。安装 GTest 可启用，或 -DBUILD_TESTING=OFF 关闭。")
+    endif()
+endif()
 
 
 
