@@ -58,28 +58,34 @@ public:
     // 供 QML 调用的 GET 请求方法
     Q_INVOKABLE void get(const QString &endpoint, const QJSValue &callback);
     // 供 C++ 调用的 GET 请求方法
+    // suppressNetworkError=true：失败时不发全局 networkError（页面自行呈现离线状态，如详情缓存兜底）
     void get(const QString &endpoint,
-             std::function<void(bool, const QString&, const QJsonDocument&)> callback);
+             std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+             bool suppressNetworkError = false);
     // 供 QML 调用的 POST 请求方法
     Q_INVOKABLE void post(const QString &endpoint, const QVariantMap &data, const QJSValue &callback);
     // 供 C++ 调用的 POST 请求方法（使用 std::function 回调）
     void post(const QString &endpoint, const QVariantMap &data,
-              std::function<void(bool, const QString&, const QJsonDocument&)> callback);
+              std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+              bool suppressNetworkError = false);
     // 供 QML 调用的 DELETE 请求方法
     Q_INVOKABLE void deleteResource(const QString &endpoint, const QVariantMap &data, const QJSValue &callback);
     // 供 C++ 调用的 DELETE 请求方法
     void deleteResource(const QString &endpoint, const QVariantMap &data,
-                        std::function<void(bool, const QString&, const QJsonDocument&)> callback);
+                        std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+                        bool suppressNetworkError = false);
     // 供 QML 调用的 PUT 请求方法
     Q_INVOKABLE void put(const QString &endpoint, const QVariantMap &data, const QJSValue &callback);
     // 供 C++ 调用的 PUT 请求方法
     void put(const QString &endpoint, const QVariantMap &data,
-             std::function<void(bool, const QString&, const QJsonDocument&)> callback);
+             std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+             bool suppressNetworkError = false);
     // 供 QML 调用的 PATCH 请求方法
     Q_INVOKABLE void patch(const QString &endpoint, const QVariantMap &data, const QJSValue &callback);
     // 供 C++ 调用的 PATCH 请求方法
     void patch(const QString &endpoint, const QVariantMap &data,
-               std::function<void(bool, const QString&, const QJsonDocument&)> callback);
+               std::function<void(bool, const QString&, const QJsonDocument&)> callback,
+               bool suppressNetworkError = false);
 
     // ---------- 实现 GoCookApi 抽象接口 ----------
     // 认证
@@ -315,14 +321,16 @@ private:
                      const QVariantMap &data,
                      const QJSValue &callback,
                      int retryCount = 0,
-                     const QString &methodOverride = "");
+                     const QString &methodOverride = "",
+                     bool suppressNetworkError = false);
     // 统一发送 HTTP 请求的内部方法（用于 std::function 回调），增加重试计数参数
     void sendRequest(QNetworkAccessManager::Operation op,
                      const QString &endpoint,
                      const QVariantMap &data,
                      std::function<void(bool, const QString&, const QJsonDocument&)> callback,
                      int retryCount = 0,
-                     const QString &methodOverride = "");
+                     const QString &methodOverride = "",
+                     bool suppressNetworkError = false);
 
     // 网络访问管理器
     QNetworkAccessManager m_nam;

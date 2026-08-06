@@ -33,9 +33,25 @@ Page {
         isLoading: recipeVM.detailLoading
     }
 
+    // 无缓存 + 断网/加载失败 → 居中离线视图（PDD 式；有缓存时静默显示缓存，本视图不出现）
+    NetworkOfflineView {
+        id: offlineView
+        anchors.fill: parent
+        active: recipeVM.detailLoadFailed && !recipeVM.detailLoading
+        // 低于浮动导航栏（navBar z:10）：离线时返回按钮仍可点
+        z: 5
+        onRetryRequested: {
+            if (recipeId > 0)
+                recipeVM.loadRecipeDetail(recipeId)
+        }
+    }
+
     Flickable {
         id: flickable
         anchors.fill: parent
+        // 加载中/加载失败时隐藏内容：页面保持空白 + 居中转圈（LoadingIndicator），
+        // 失败后由 NetworkOfflineView 覆盖；缓存命中/加载成功后正常显示
+        visible: !recipeVM.detailLoading && !recipeVM.detailLoadFailed
         contentWidth: width
         contentHeight: detailColumn.implicitHeight + Theme.spacingLarge + navBar.height + bottomBar.height * 2 + Theme.spacingMedium
         clip: true
@@ -879,6 +895,8 @@ Page {
         height: 56
         z: 10
         color: Theme.cardBackground
+        // 加载中/失败时不显示操作栏（与内容区同步）
+        visible: !recipeVM.detailLoading && !recipeVM.detailLoadFailed
 
         Rectangle {
             anchors.top: parent.top
@@ -992,12 +1010,19 @@ Page {
             recipeVM.loadRecipeRatings(recipeId, 1)
             recipeVM.loadMyRecipeRating(recipeId)
         }
-        function onRatingError(error) {
-            console.log("Rating error:", error)
+        function onFavoriteOperationFailed(error) {
+            // 收藏写操作失败（toggleFavorite 已抑制全局提示，此处页内呈现，避免双弹）
+            favoriteErrorBanner.text = ""
+            favoriteErrorBanner.text = error
         }
-        function onErrorOccurred(error) {
-            console.log("RecipeDetail error:", error)
-        }
+    }
+
+    // 收藏写操作失败提示（底部 toast；主内容失败由缓存/离线视图呈现，不重复提示）
+    ErrorBanner {
+        id: favoriteErrorBanner
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 100
+        anchors.horizontalCenter: parent.horizontalCenter
     }
 
     GroupSelectionDialog {

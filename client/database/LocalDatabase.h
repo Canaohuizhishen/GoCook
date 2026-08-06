@@ -19,6 +19,11 @@ public:
     // 获取单例实例
     static LocalDatabase* instance();
 
+    // 测试专用：用指定数据库路径/连接名创建独立实例（不设置单例，不污染生产路径）。
+    // 默认使用内存库（:memory:），可用于单元测试（需要 QSqlDatabase::removeDatabase 释放连接）
+    static LocalDatabase* createForTesting(const QString& dbPath = QStringLiteral(":memory:"),
+                                           const QString& connectionName = QStringLiteral("gocook_test"));
+
     // 初始化数据库连接和表结构
     Q_INVOKABLE bool initialize();
     // 检查数据库是否已打开
@@ -36,17 +41,10 @@ public:
     // 获取库存缓存数据
     Q_INVOKABLE QVariantList getInventoryCache() const;
 
-    // 保存菜谱详情缓存数据
-    Q_INVOKABLE bool saveRecipeDetailCache(const QVariantList &recipes);
-    // 获取菜谱详情缓存数据
-    Q_INVOKABLE QVariantList getRecipeDetailCache() const;
-
-    // 添加一条待处理的离线操作
-    Q_INVOKABLE bool addPendingOperation(const QString &operation, const QVariantMap &data);
-    // 获取所有待处理的离线操作
-    Q_INVOKABLE QVariantList getPendingOperations() const;
-    // 清空待处理操作队列
-    Q_INVOKABLE bool clearPendingOperations();
+    // 保存菜谱详情缓存（按菜谱 id upsert，最多保留最近 20 条）——断网时详情页兜底显示
+    Q_INVOKABLE bool saveRecipeDetailCache(int recipeId, const QVariantMap &detail);
+    // 获取菜谱详情缓存（无缓存返回空 map）
+    Q_INVOKABLE QVariantMap getRecipeDetailCache(int recipeId) const;
 
 signals:
     // 数据库错误信号
@@ -55,8 +53,12 @@ signals:
 private:
     // 私有构造函数，单例模式
     explicit LocalDatabase(QObject *parent = nullptr);
+    // 私有构造函数（测试用）：指定数据库路径与连接名
+    explicit LocalDatabase(const QString& dbPath, const QString& connectionName, QObject *parent = nullptr);
     // 创建所有表结构
     bool createTables();
+    // 用指定路径/连接名初始化（生产路径走 QStandardPaths 默认位置）
+    bool initialize(const QString& dbPath, const QString& connectionName);
 
     // 数据库连接对象
     QSqlDatabase m_db;

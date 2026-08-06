@@ -552,6 +552,11 @@ Page {
         function onEditFormDataReady() {
             page.prePopulateForm()
         }
+        // 编辑模式加载菜谱数据失败（getRecipeDetail 已抑制全局提示，此处页内呈现）
+        function onErrorOccurred(error) {
+            submitting = false
+            snackBar.show(error, "error")
+        }
     }
 
     // 顺序上传步骤图

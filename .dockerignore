@@ -1,12 +1,17 @@
-build/
-.git/
-.qtcreator/
-.reasonix/
-server/build/
-client/build/
-docs/
-test_data/
-/uploads/
-*.md
+# GoCook Docker 构建上下文精简（docker compose build 的 context 为仓库根）
+# server/sql 不在镜像构建产物内（compose 以 bind mount 挂给 postgres 初始化），
+# 排除后改种子/建表脚本不再使 COPY server/ 层缓存失效、不浪费上下文上传。
+# 注意：不要排除 server/tests——其 .cpp 被 gocook-server-lib 列为源文件
+# （server/CMakeLists.txt add_library 源列表），排除会导致镜像内 configure 失败。
+.git
+.reasonix
+client
+docs
+**/build
+**/.qtcreator
+**/*.md
+server/sql
+# 密钥卫生：.env 只被 docker compose 运行时读取，不需要进构建上下文
 .env
-.env.example
+# 仅排除仓库根 uploads（服务端本机运行目录）；server/uploads 是镜像种子图片，必须保留
+/uploads
