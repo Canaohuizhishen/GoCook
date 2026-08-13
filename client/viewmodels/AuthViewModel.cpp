@@ -154,7 +154,7 @@ void AuthViewModel::saveProfile(const QString &displayName,
         self->m_profilePhone = QString::fromStdString(profile.phone);
         // 记录 saveProfile 返回的 avatar_url
         qDebug() << "saveProfile callback: avatar_url=" << QString::fromStdString(profile.avatar_url);
-        {   // write to file log (without QFile include dependency)
+        {   // 写入文件日志（不引入 QFile 头依赖）
             QFile logF("/tmp/gocook_avatar_debug.log");
             if (logF.open(QIODevice::Append | QIODevice::Text))
                 logF.write(("[AUTH-VM] saveProfile callback: avatar_url=" + QString::fromStdString(profile.avatar_url) + "\n").toUtf8());
@@ -241,7 +241,7 @@ void AuthViewModel::deleteAccount() {
                          (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
-            // Clear local state and log out
+            // 清除本地状态并注销
             self->m_db->clearUser();
             self->m_api->setAuthToken("");
             self->setLoggedIn(false, 0, "");
@@ -326,7 +326,7 @@ void AuthViewModel::saveHealthProfile(int heightCm, double weightKg, const QStri
             return;
         }
 
-        // Convert avoidance items to QVariantList for QML
+        // 将忌口建议转换为 QVariantList 供 QML 使用
         QVariantList avoidances;
         for (const auto& item : resp.suggested_avoidances) {
             QVariantMap ai;
@@ -354,7 +354,7 @@ void AuthViewModel::loadHealthProfile() {
             return;
         }
 
-        // Convert to QML-friendly types
+        // 转换为 QML 友好的类型
         int height = resp.height_cm.has_value() ? resp.height_cm.value() : 0;
         double weight = resp.weight_kg.has_value() ? resp.weight_kg.value() : 0.0;
         QStringList conditions;

@@ -298,7 +298,7 @@ TEST(UserServiceTest, 请求重置密码邮箱已注册生成令牌) {
     // SMTP 未配置时应返回令牌（开发模式），而非抛异常
     auto result = service.requestPasswordReset("testuser", "user@test.com");
     EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().size(), 6);   // 6-digit code
+    EXPECT_EQ(result.value().size(), 6);   // 6 位数字验证码
 
     // 恢复 SMTP 环境变量
     if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
@@ -345,13 +345,13 @@ TEST(UserServiceTest, 更新个人资料成功) {
     profile.email = "new@example.com";
     profile.phone = "13900139000";
 
-    auto currentProfile = makeUserProfile(42);  // has email "test@example.com"
+    auto currentProfile = makeUserProfile(42);  // 该资料带邮箱 "test@example.com"
     auto updatedProfile = makeUserProfile(42);
     updatedProfile.display_name = "新昵称";
     updatedProfile.email = "new@example.com";
     updatedProfile.phone = "13900139000";
 
-    // First findById is for email check (returns current), second is for return value (returns updated)
+    // 第一次 findById 用于邮箱查重（返回当前资料），第二次用于返回更新后的资料
     EXPECT_CALL(*repo, findById(42))
         .WillOnce(Return(currentProfile))
         .WillOnce(Return(updatedProfile));
@@ -424,12 +424,12 @@ TEST(UserServiceTest, 更新个人资料邮箱不变跳过检查) {
 
     UpdateProfileRequest profile;
     profile.display_name = "新昵称";
-    profile.email = "same@example.com";  // same as current — should NOT call existsByEmail
+    profile.email = "same@example.com";  // 与当前邮箱相同 — 不应调用 existsByEmail
 
     EXPECT_CALL(*repo, findById(42))
         .Times(2)
         .WillRepeatedly(Return(current));
-    EXPECT_CALL(*repo, existsByEmail(_)).Times(0);  // should not check
+    EXPECT_CALL(*repo, existsByEmail(_)).Times(0);  // 不应检查邮箱唯一性
     EXPECT_CALL(*repo, updateProfile(42, _)).Times(1);
 
     auto result = service.updateProfile(42, profile);

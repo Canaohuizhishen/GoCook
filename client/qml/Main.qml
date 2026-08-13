@@ -49,7 +49,7 @@ ApplicationWindow {
                      isLoggedIn ? homePage : loginPage
 
         // 页面推入动画（淡入）
-        // Note: x animation removed because anchors.fill:parent conflicts with direct x assignment
+        // 注：x 动画已移除，因为 anchors.fill:parent 与直接赋值 x 冲突
         pushEnter: Transition {
             PropertyAnimation {
                 property: "opacity"

@@ -6,6 +6,13 @@
 #include <memory>
 #include <gocook/IGoCookApi.h>
 
+/**
+ * @brief 菜谱域 ViewModel：QML 侧唯一的菜谱数据入口（setContextProperty("recipeVM") 注入，main.cpp:56）。
+ *
+ * 所有 Q_INVOKABLE 均为异步：立即返回，结果经 Q_PROPERTY + NOTIFY 驱动 QML 绑定刷新，
+ * 失败经 signals（searchErrorOccurred / errorOccurred 等）通知 QML；
+ * 底层统一调用 IGoCookApi（HttpGoCookApi 经 HTTP 实现）。
+ */
 class RecipeViewModel : public QObject
 {
     Q_OBJECT
@@ -20,7 +27,7 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchResultsChanged)
     Q_PROPERTY(bool searchLoading READ searchLoading NOTIFY searchLoadingChanged)
     Q_PROPERTY(bool searchHasMore READ searchHasMore NOTIFY searchHasMoreChanged)
-    Q_PROPERTY(bool searchPerformed READ searchPerformed NOTIFY searchPerformedChanged)
+    Q_PROPERTY(bool searchPerformed READ searchPerformed NOTIFY searchPerformedChanged)   ///< 已执行过搜索：区分"无结果"与"尚未搜索"两种空态
     Q_PROPERTY(QVariantMap nutritionReport READ nutritionReport NOTIFY nutritionReportChanged)
     Q_PROPERTY(bool nutritionLoading READ nutritionLoading NOTIFY nutritionLoadingChanged)
     Q_PROPERTY(QVariantList recipeVideos READ recipeVideos NOTIFY recipeVideosChanged)
@@ -36,11 +43,11 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool myRatingsLoading READ myRatingsLoading NOTIFY myRatingsLoadingChanged)
     Q_PROPERTY(bool myRatingsHasMore READ myRatingsHasMore NOTIFY myRatingsHasMoreChanged)
     Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
-    Q_PROPERTY(int favoritesTotalCount READ favoritesTotalCount NOTIFY favoritesChanged)
+    Q_PROPERTY(int favoritesTotalCount READ favoritesTotalCount NOTIFY favoritesChanged)   ///< 总数变化复用 favoritesChanged 通知
     Q_PROPERTY(bool favoritesHasMore READ favoritesHasMore NOTIFY favoritesHasMoreChanged)
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoritesLoadingChanged)
     Q_PROPERTY(QVariantList favoriteGroups READ favoriteGroups NOTIFY favoriteGroupsChanged)
-    Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)
+    Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)   ///< CONSTANT：服务端地址（自 httpApi），QML 用于拼接资源 URL
 
 public:
     explicit RecipeViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -78,11 +85,13 @@ public:
     bool favoritesLoading() const { return m_favoritesLoading; }
     QVariantList favoriteGroups() const { return m_favoriteGroups; }
 
+    // ===== 菜谱列表与详情 =====
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 30);
     Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 30);
-    Q_INVOKABLE void loadNextPage();
-    Q_INVOKABLE void refresh();
+    Q_INVOKABLE void loadNextPage();   ///< 加载当前列表模式（公开/推荐）的下一页
+    Q_INVOKABLE void refresh();   ///< 重新加载当前模式的第一页
     Q_INVOKABLE void loadRecipeDetail(int recipeId);
+    // ===== 投稿与编辑 =====
     Q_INVOKABLE void submitRecipe(const QString& name, const QString& description,
                                    const QString& imageUrl, const QVariantList& ingredients,
                                    const QVariantList& steps, const QVariantList& tags);
@@ -92,9 +101,11 @@ public:
                                  const QString& imageUrl, const QVariantList& ingredients,
                                  const QVariantList& steps, const QVariantList& tags);
     Q_INVOKABLE void loadRecipeForEdit(int recipeId);
+    // ===== 搜索 =====
     Q_INVOKABLE void searchRecipes(const QString& keyword, int page = 1, int size = 20);
     Q_INVOKABLE void searchNextPage();
-    Q_INVOKABLE void resetSearch();
+    Q_INVOKABLE void resetSearch();   ///< 清空搜索结果与空态标记（返回/清空输入时调用）
+    // ===== 营养 / 视频 / 评分评论 =====
     Q_INVOKABLE void loadNutritionReport(int recipeId);
     Q_INVOKABLE void loadRecipeVideos(int recipeId);
     Q_INVOKABLE void loadRecipeRatings(int recipeId, int page = 1, int size = 10);
@@ -103,22 +114,24 @@ public:
     Q_INVOKABLE void rateRecipe(int recipeId, int rating, const QString& comment);
     Q_INVOKABLE void updateRating(int recipeId, int ratingId, int rating, const QString& comment);
     Q_INVOKABLE void deleteRating(int recipeId, int ratingId);
-    Q_INVOKABLE void deleteRecipe(int recipeId);
-    Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");
+    Q_INVOKABLE void deleteRecipe(int recipeId);   ///< 删除我的投稿（乐观删除，失败发 deleteFailed）
+    // ===== 我的投稿与评论 =====
+    Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");   ///< status: "pending"/"approved"/"rejected"，空串=全部
     Q_INVOKABLE void loadMyRecipesNextPage();
     Q_INVOKABLE void loadMyRatings(int page = 1, int size = 20);
     Q_INVOKABLE void loadMyRatingsNextPage();
 
+    // ===== 收藏 =====
     Q_INVOKABLE void loadFavorites(int page = 1, int size = 20, const QString &group = "");
     Q_INVOKABLE void loadMoreFavorites();
-    Q_INVOKABLE void toggleFavorite(int recipeId, int groupId = 0);
+    Q_INVOKABLE void toggleFavorite(int recipeId, int groupId = 0);   ///< groupId=0 表示默认收藏夹
     Q_INVOKABLE void loadFavoriteGroups();
     Q_INVOKABLE void createFavoriteGroup(const QString &name);
     Q_INVOKABLE void deleteFavoriteGroup(int groupId);
     Q_INVOKABLE void removeFavorite(int favoriteId);
-    Q_INVOKABLE void batchRemoveFavorites(const QVariantList &favoriteIds);
+    Q_INVOKABLE void batchRemoveFavorites(const QVariantList &favoriteIds);   ///< 批量删除，完成后发 favoriteRemoved
     Q_INVOKABLE void moveFavorite(int favoriteId, int groupId);
-    Q_INVOKABLE void batchMoveFavorites(const QVariantList &favoriteIds, int groupId);
+    Q_INVOKABLE void batchMoveFavorites(const QVariantList &favoriteIds, int groupId);   ///< 批量移动，完成后发 favoriteMoved
     Q_INVOKABLE void updateFavoriteGroupName(int groupId, const QString &name);
 
 signals:
@@ -165,12 +178,12 @@ signals:
     void stepImageUploadFailed(int stepIndex, const QString& error);
     void recipeEdited();
     void editFailed(const QString& error);
-    void editFormDataReady();
+    void editFormDataReady();   ///< loadRecipeForEdit 成功、编辑表单数据已就绪
     void favoritesChanged();
     void favoritesHasMoreChanged();
     void favoritesLoadingChanged();
     void favoriteGroupsChanged();
-    void favoriteToggleSuccess(int recipeId, bool isFavorited);
+    void favoriteToggleSuccess(int recipeId, bool isFavorited);   ///< 收藏成功（isFavorited=最终状态，当前恒 true）；取消收藏发 favoriteRemoved
     void favoriteRemoved();
     void favoriteGroupCreated();
     void favoriteGroupDeleted();

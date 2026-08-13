@@ -58,10 +58,18 @@ void Router::setupRoutes(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerRateLimiter(httplib::Server& svr) {
-    // 客户端 IP 来源：默认按 socket 对端（remote_addr）。
-    // 反向代理部署时可设 GOCOOK_TRUST_PROXY_HEADERS=1 改用 X-Real-IP /
-    // X-Forwarded-For 首个 IP——否则 docker-proxy/nginx 后所有用户共享同一计数。
-    // 警告：该头由客户端可控，仅在可信代理之后启用。
+    /*
+     *  客户端 IP 来源：默认按 socket 对端（remote_addr）。
+     *  反向代理部署时可设 GOCOOK_TRUST_PROXY_HEADERS=1 改用 X-Real-IP
+     *  X-Forwarded-For 首个 IP——否则 docker-proxy/nginx 后所有用户共享同一计数。
+     *  警告：该头由客户端可控，仅在可信代理之后启用。
+     */
+
+    /*
+     * 此处使用“立即执行 Lambda (IIFE)”将环境变量读取与日志输出限定在
+     * 静态局部变量初始化阶段，确保只在程序启动时执行一次：
+     * 避免每次调用 registerRateLimiter 时重复读取 getenv 及刷写警告日志。
+     */
     static const bool trustProxyHeaders = []() {
         const char* v = std::getenv("GOCOOK_TRUST_PROXY_HEADERS");
         bool on = v && std::string(v) == "1";

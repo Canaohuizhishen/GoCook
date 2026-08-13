@@ -140,8 +140,8 @@ bool EmailSender::isConfigured() {
     return loadConfig().valid;
 }
 
-/// @brief Create an SSL_CTX with certificate verification configured.
-///        Returns nullptr on failure; caller must SSL_CTX_free.
+/// @brief 创建配置了证书校验的 SSL_CTX。
+///        失败时返回 nullptr；调用方必须调用 SSL_CTX_free 释放。
 static SSL_CTX* createSmtpSslCtx() {
     const SSL_METHOD* method = TLS_client_method();
     SSL_CTX* ctx = SSL_CTX_new(method);
@@ -165,11 +165,11 @@ static SSL_CTX* createSmtpSslCtx() {
     return ctx;
 }
 
-/// @brief Connect via STARTTLS (port 587): plain TCP → EHLO → STARTTLS → TLS handshake → re-EHLO.
-///        Returns the BIO chain (SSL on top of TCP) on success, or nullptr on failure.
-///        Caller must BIO_free_all on the returned chain.
+/// @brief 通过 STARTTLS（端口 587）建立连接：明文 TCP → EHLO → STARTTLS → TLS 握手 → 重新 EHLO。
+///        成功时返回 BIO 链（TCP 之上的 SSL）；失败返回 nullptr。
+///        调用方必须对返回的链调用 BIO_free_all 释放。
 static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
-    // 1. Plain TCP connect
+    // 1. 建立明文 TCP 连接
     BIO* tcpBio = BIO_new_connect(addr.c_str());
     if (!tcpBio) return nullptr;
     if (BIO_do_connect(tcpBio) <= 0) {
@@ -177,26 +177,26 @@ static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
         return nullptr;
     }
 
-    // 2. Read server greeting
+    // 2. 读取服务器问候
     std::string resp;
     sendCommand(tcpBio, "", resp);
     LOG_DEBUG("SMTP greeting: %s", resp.c_str());
 
-    // 3. EHLO (drain multi-line response)
+    // 3. 发送 EHLO（排空多行响应）
     if (sendCommand(tcpBio, "EHLO gocook-server", resp, true) != 250) {
         LOG_ERROR("EHLO failed: %s", resp.c_str());
         BIO_free_all(tcpBio);
         return nullptr;
     }
 
-    // 4. STARTTLS
+    // 4. 发送 STARTTLS
     if (sendCommand(tcpBio, "STARTTLS", resp) != 220) {
         LOG_ERROR("STARTTLS failed: %s", resp.c_str());
         BIO_free_all(tcpBio);
         return nullptr;
     }
 
-    // 5. Wrap TCP BIO with SSL
+    // 5. 用 SSL 包裹 TCP BIO
     BIO* sslBio = BIO_new_ssl(ctx, 1);
     if (!sslBio) {
         BIO_free_all(tcpBio);
@@ -206,17 +206,17 @@ static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
     BIO_get_ssl(sslBio, &ssl);
     SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
 
-    // Chain: sslBio → tcpBio
+    // 链：sslBio → tcpBio
     BIO* chain = BIO_push(sslBio, tcpBio);
 
-    // 6. TLS handshake over the existing TCP connection
+    // 6. 在既有 TCP 连接上进行 TLS 握手
     if (BIO_do_handshake(chain) <= 0) {
         LOG_ERROR("STARTTLS handshake failed");
         BIO_free_all(chain);
         return nullptr;
     }
 
-    // 7. Re-EHLO inside TLS (required by RFC 3207)
+    // 7. 在 TLS 内重新 EHLO（RFC 3207 要求）
     if (sendCommand(chain, "EHLO gocook-server", resp, true) != 250) {
         LOG_ERROR("EHLO inside TLS failed: %s", resp.c_str());
         BIO_free_all(chain);
@@ -226,8 +226,8 @@ static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
     return chain;
 }
 
-/// @brief Send SMTP AUTH LOGIN, MAIL FROM, RCPT TO, DATA + QUIT over an established TLS BIO.
-///        Returns true if mail was accepted (250 from DATA).
+/// @brief 在已建立的 TLS BIO 上发送 SMTP AUTH LOGIN、MAIL FROM、RCPT TO、DATA 与 QUIT。
+///        邮件被接受（DATA 返回 250）时返回 true。
 static bool smtpSendMail(BIO* bio,
                           const std::string& username,
                           const std::string& password,
@@ -237,38 +237,38 @@ static bool smtpSendMail(BIO* bio,
                           const std::string& body) {
     std::string resp;
 
-    // AUTH LOGIN
+    // 发送 AUTH LOGIN
     if (sendCommand(bio, "AUTH LOGIN", resp) != 334) {
         LOG_ERROR("AUTH LOGIN failed: %s", resp.c_str());
         return false;
     }
-    // Username (base64)
+    // 用户名（base64 编码）
     if (sendCommand(bio, base64Encode(username), resp) != 334) {
         LOG_ERROR("AUTH username failed: %s", resp.c_str());
         return false;
     }
-    // Password (base64)
+    // 密码（base64 编码）
     if (sendCommand(bio, base64Encode(password), resp) != 235) {
         LOG_ERROR("AUTH password failed: %s", resp.c_str());
         return false;
     }
-    // MAIL FROM
+    // 发送 MAIL FROM
     if (sendCommand(bio, "MAIL FROM:<" + from + ">", resp) != 250) {
         LOG_ERROR("MAIL FROM failed: %s", resp.c_str());
         return false;
     }
-    // RCPT TO
+    // 发送 RCPT TO
     if (sendCommand(bio, "RCPT TO:<" + to + ">", resp) != 250) {
         LOG_ERROR("RCPT TO failed: %s", resp.c_str());
         return false;
     }
-    // DATA
+    // 发送 DATA
     if (sendCommand(bio, "DATA", resp) != 354) {
         LOG_ERROR("DATA failed: %s", resp.c_str());
         return false;
     }
 
-    // Send email content
+    // 发送邮件内容
     std::ostringstream email;
     email << "From: " << from << "\r\n"
           << "To: " << to << "\r\n"
@@ -289,19 +289,19 @@ static bool smtpSendMail(BIO* bio,
         return false;
     }
 
-    // QUIT
+    // 发送 QUIT
     sendCommand(bio, "QUIT", resp);
     return true;
 }
 
 bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
                            const std::string& subject, const std::string& body) {
-    // Initialize OpenSSL — OPENSSL_init_ssl handles all init in OpenSSL 3.x
-    // (SSL_load_error_strings / ERR_load_BIO_strings / OpenSSL_add_all_algorithms
-    //  are deprecated in OpenSSL 3.0 and automatically called by init_ssl)
+    // 初始化 OpenSSL — OPENSSL_init_ssl 负责 OpenSSL 3.x 的全部初始化
+    // （SSL_load_error_strings / ERR_load_BIO_strings / OpenSSL_add_all_algorithms
+    //  在 OpenSSL 3.0 中已弃用，init_ssl 会自动调用）
     OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nullptr);
 
-    // Create SSL context with certificate verification
+    // 创建带证书校验的 SSL 上下文
     SSL_CTX* ctx = createSmtpSslCtx();
     if (!ctx) return false;
 
@@ -309,7 +309,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
     bool ok = false;
 
     if (cfg.port == 587) {
-        // STARTTLS mode: plain TCP → EHLO → STARTTLS → TLS → re-EHLO
+        // STARTTLS 模式：明文 TCP → EHLO → STARTTLS → TLS → 重新 EHLO
         BIO* chain = startTlsConnect(ctx, addr);
         if (chain) {
             ok = smtpSendMail(chain, cfg.username, cfg.password, cfg.from,
@@ -319,7 +319,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
             LOG_ERROR("STARTTLS connection failed for %s", addr.c_str());
         }
     } else {
-        // Implicit TLS mode (465+): connect + handshake in one call
+        // 隐式 TLS 模式（465+）：连接与握手一步完成
         BIO* bio = BIO_new_ssl_connect(ctx);
         if (!bio) {
             LOG_ERROR("Failed to create SSL BIO");
@@ -345,7 +345,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
             return false;
         }
 
-        // Read greeting + EHLO (drain multi-line)
+        // 读取问候 + EHLO（排空多行）
         std::string resp;
         sendCommand(bio, "", resp);
         LOG_DEBUG("SMTP greeting: %s", resp.c_str());

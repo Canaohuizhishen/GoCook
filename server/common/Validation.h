@@ -11,6 +11,7 @@ namespace Validation {
 
 using json = nlohmann::json;
 
+/// 检查 JSON 是否包含全部指定字段，缺失时通过 missing 返回第一个缺失字段名
 inline bool hasFields(const json& j, const std::vector<std::string>& keys,
                       std::string& missing) {
     for (const auto& k : keys) {
@@ -19,6 +20,7 @@ inline bool hasFields(const json& j, const std::vector<std::string>& keys,
     return true;
 }
 
+/// 简单邮箱格式校验（正则）
 inline bool isValidEmail(const std::string& email) {
     static const std::regex re(R"(^[^\s@]+@[^\s@]+\.[^\s@]{2,}$)");
     return std::regex_match(email, re);

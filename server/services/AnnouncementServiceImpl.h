@@ -4,8 +4,14 @@
 #include <gocook/IAnnouncementRepository.h>
 #include <memory>
 
+/**
+ * @brief 公告服务实现，承载 IAnnouncementService 接口定义的全部业务逻辑。
+ *
+ * 依赖公告仓库抽象完成数据访问，由 AnnouncementHandler 调用。
+ */
 class AnnouncementServiceImpl : public gocook::services::IAnnouncementService {
 public:
+    // 构造函数，注入公告仓库抽象
     explicit AnnouncementServiceImpl(std::unique_ptr<gocook::repository::IAnnouncementRepository> announcementRepo);
 
     /**
@@ -18,5 +24,5 @@ public:
     gocook::models::PagedAnnouncements getAnnouncements(int page, int size) override;
 
 private:
-    std::unique_ptr<gocook::repository::IAnnouncementRepository> announcementRepo_;
+    std::unique_ptr<gocook::repository::IAnnouncementRepository> announcementRepo_; ///< 公告仓库抽象
 };

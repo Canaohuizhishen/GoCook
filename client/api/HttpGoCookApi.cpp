@@ -1299,7 +1299,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
         // health_filter_applied
         result.health_filter_applied = root["health_filter_applied"].toBool(false);
 
-        // pagination
+        // 分页信息
         if (root.contains("pagination") && root["pagination"].isObject()) {
             QJsonObject pag = root["pagination"].toObject();
             result.pagination.page        = pag["page"].toInt();
@@ -1308,14 +1308,14 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
             result.pagination.total_pages = pag["total_pages"].toInt();
         }
 
-        // data array
+        // data 数组
         if (root.contains("data") && root["data"].isArray()) {
             const QJsonArray dataArr = root["data"].toArray();
             for (const QJsonValue& val : dataArr) {
                 QJsonObject obj = val.toObject();
                 gocook::models::RecommendedRecipe rec;
 
-                // RecipeSummary fields
+                // RecipeSummary 公共字段
                 rec.id                = obj["id"].toInt();
                 rec.name              = obj["name"].toString().toStdString();
                 rec.description       = obj["description"].toString().toStdString();
@@ -1337,7 +1337,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
                         rec.tags.push_back(t.toString().toStdString());
                 }
 
-                // RecommendedRecipe extras
+                // RecommendedRecipe 扩展字段
                 rec.match_score = obj["match_score"].toDouble();
 
                 QJsonObject status = obj["match_status"].toObject();

@@ -20,29 +20,31 @@ namespace {
     constexpr int CANDIDATE_MULTIPLIER = 3;
 
     // 最终评分权重
-    constexpr double WEIGHT_INVENTORY    = 0.50;
-    constexpr double WEIGHT_PREFERENCE   = 0.25;
-    constexpr double WEIGHT_POPULARITY   = 0.10;
-    constexpr double WEIGHT_RECENCY      = 0.05;
-    constexpr double WEIGHT_NUTRITION    = 0.10;
+    constexpr double WEIGHT_INVENTORY    = 0.50;  // 库存（已有食材占菜谱总食材的比例）
+    constexpr double WEIGHT_PREFERENCE   = 0.25;  // 偏好（喜欢/厌恶）
+    constexpr double WEIGHT_POPULARITY   = 0.10;  // 流行度（平均评分）
+    constexpr double WEIGHT_RECENCY      = 0.05;  // 新鲜度（近期投稿）
+    constexpr double WEIGHT_NUTRITION    = 0.10;  // 营养适配（健康目标）
 
-    // 偏好加分/减分（独立于其他维度）
-    constexpr double BOOST_LIKE_FLAVOR     = 0.15;
-    constexpr double BOOST_LIKE_TAG        = 0.10;
-    constexpr double PENALTY_DISLIKE       = 0.50;  // 厌食惩罚足够强，能翻转排名
-    constexpr double BOOST_HEALTH_GOAL     = 0.10;
+    // 偏好加分/减分
+    constexpr double BOOST_LIKE_FLAVOR     = 0.15;  // 菜谱风味命中用户“喜欢”列表时加的分数
+    constexpr double BOOST_LIKE_TAG        = 0.10;  // 菜谱标签命中用户“喜欢”列表时加的分数
+    constexpr double PENALTY_DISLIKE       = 0.50;  // 菜谱含用户“厌恶”食材时的惩罚值，厌食惩罚足够强，能翻转排名
 
     // 流行度加分
-    constexpr double BOOST_RATING_HIGH     = 0.08;  // avg_rating >= 4.5
-    constexpr double BOOST_RATING_MED      = 0.05;  // avg_rating >= 4.0
+    constexpr double BOOST_RATING_HIGH     = 0.08;  // 菜谱平均评分 >= 4.5时加的分数
+    constexpr double BOOST_RATING_MED      = 0.05;  // 菜谱平均评分 >= 4.0时加的分数
 
-    // 新鲜度加分（投稿 7 天内）
-    constexpr double BOOST_RECENT          = 0.05;
-    constexpr int    RECENT_DAYS           = 7;
+    // 新鲜度加分
+    constexpr double BOOST_RECENT          = 0.05;  // 投稿时间在 RECENT_DAYS 天内的菜谱加的分数
+    constexpr int    RECENT_DAYS           = 7;     // 时间窗口
+
+    // 营养适配加分
+    constexpr double BOOST_HEALTH_GOAL     = 0.10;  // 当菜谱的营养指标（蛋白、热量、脂肪）与用户的健康目标（高蛋白/低卡/减脂/增肌）匹配时加的分数
 
     // 多样化约束
-    constexpr int MAX_PER_FLAVOR    = 2;
-    constexpr int MAX_PER_METHOD    = 3;
+    constexpr int MAX_PER_FLAVOR    = 2;  // 同一风味（如“麻辣”）最多出现的菜谱数量
+    constexpr int MAX_PER_METHOD    = 3;  // 同一烹饪方法（如“炒”）最多出现的菜谱数量
 
     // ── 健康条件 → 禁忌食材映射 ──
     // 注意：假设数据库健康条件使用中文 locale
@@ -132,20 +134,29 @@ namespace {
         return (now - ts) <= days * 86400;
     }
 
-    /// 检查 recipe flavor 或 tags 是否与喜好列表匹配
-    bool matchesLikes(const RecommendedRecipe& rec,
-                      const std::vector<std::string>& likes)
+    /// 检查菜谱风味是否命中用户“喜欢”列表（命中 → BOOST_LIKE_FLAVOR）
+    bool matchesLikeFlavor(const RecommendedRecipe& rec,
+                           const std::vector<std::string>& likes)
     {
-        if (likes.empty()) return false;
-        // flavor 匹配
+        if (likes.empty() || rec.flavor.empty()) return false;
+        std::string lowerFlavor;
+        for (char c : rec.flavor) lowerFlavor += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         for (const auto& like : likes) {
             std::string lowerLike;
             for (char c : like) lowerLike += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            // 匹配 flavor
-            std::string lowerFlavor;
-            for (char c : rec.flavor) lowerFlavor += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (!rec.flavor.empty() && lowerFlavor == lowerLike) return true;
-            // 匹配 tags
+            if (lowerFlavor == lowerLike) return true;
+        }
+        return false;
+    }
+
+    /// 检查菜谱标签是否命中用户“喜欢”列表（命中 → BOOST_LIKE_TAG）
+    bool matchesLikeTag(const RecommendedRecipe& rec,
+                        const std::vector<std::string>& likes)
+    {
+        if (likes.empty() || rec.tags.empty()) return false;
+        for (const auto& like : likes) {
+            std::string lowerLike;
+            for (char c : like) lowerLike += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             for (const auto& tag : rec.tags) {
                 std::string lowerTag;
                 for (char c : tag) lowerTag += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -251,8 +262,11 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     for (auto& rec : candidates) {
         // 偏好维度（仅 likes/dislikes）
         double prefMod = 0.0;
-        if (matchesLikes(rec, prefs.likes)) {
+        if (matchesLikeFlavor(rec, prefs.likes)) {
             prefMod += BOOST_LIKE_FLAVOR;
+        }
+        if (matchesLikeTag(rec, prefs.likes)) {
+            prefMod += BOOST_LIKE_TAG;
         }
         if (!prefs.dislikes.empty() && hasDislikedIngredient(rec, prefs.dislikes)) {
             prefMod -= PENALTY_DISLIKE;
@@ -273,7 +287,7 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
         double nutritionBoost = nutritionFitScore(rec, prefs.health_goal);
 
         // 最终复合评分：各维度独立加权求和
-        // prefMod ∈ [-0.5, +0.15]，乘积贡献 ≈ ±0.125
+        // prefMod ∈ [-0.5, +0.25]（厌恶 -0.50 / 风味 +0.15 / 标签 +0.10，可叠加），乘积贡献 ∈ [-0.125, +0.0625]
         double finalScore =
               rec.match_score * WEIGHT_INVENTORY
             + prefMod         * WEIGHT_PREFERENCE
@@ -281,7 +295,7 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
             + recencyBoost    * WEIGHT_RECENCY
             + nutritionBoost  * WEIGHT_NUTRITION;
 
-        // 钳位到 [0, 1]
+        // 钳位成 [0, 1] 之间的两位小数
         rec.match_score = std::round(std::max(0.0, std::min(1.0, finalScore)) * 100.0) / 100.0;
     }
 
@@ -292,7 +306,7 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
               });
 
     // ── 8. 多样化重排序 ──
-    // 策略：同 flavor 最多 2 道，同 cooking_method 最多 3 道
+    // 策略：同 flavor 最多 MAX_PER_FLAVOR 道，同 cooking_method 最多 MAX_PER_METHOD 道
     std::vector<RecommendedRecipe> diverse;
     diverse.reserve(candidates.size());
     std::unordered_map<std::string, int> flavorCount;
@@ -342,7 +356,7 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     result.data = std::move(diverse);
     result.pagination.page = page;
     result.pagination.size = size;
-    result.pagination.total = raw.pagination.total;
+    result.pagination.total = raw.pagination.total;  // total 保留原始候选数，过滤只影响 data 条数
     result.pagination.total_pages = result.pagination.total > 0
         ? (result.pagination.total + size - 1) / size
         : 0;
@@ -395,7 +409,7 @@ std::string RecipeServiceImpl::editRecipe(int userId, int recipeId, const EditRe
     return recipeRepo_->update(userId, recipeId, updates);
 }
 void RecipeServiceImpl::toggleFavorite(int userId, int recipeId, std::optional<int> groupId, std::optional<bool> isPublic) {
-    // Verify recipe exists
+    // 验证菜谱存在
     auto recipe = recipeRepo_->findById(recipeId);
     if (recipe.id == 0) {
         throw ServiceException("菜谱不存在", 404);

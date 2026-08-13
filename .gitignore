@@ -1,4 +1,4 @@
-# This file is used to ignore files which are generated
+# 本文件用于忽略生成的文件
 # ----------------------------------------------------------------------------
 
 *~
@@ -35,18 +35,18 @@ Thumbs.db
 /.qmake.cache
 /.qmake.stash
 
-# qtcreator generated files
+# Qt Creator 生成的文件
 *.pro.user*
 *.qbs.user*
 CMakeLists.txt.user*
 
-# xemacs temporary files
+# xemacs 临时文件
 *.flc
 
-# Vim temporary files
+# Vim 临时文件
 .*.swp
 
-# Visual Studio generated files
+# Visual Studio 生成的文件
 *.ib_pdb_index
 *.idb
 *.ilk
@@ -61,19 +61,19 @@ CMakeLists.txt.user*
 *.vcxproj
 *vcxproj.*
 
-# MinGW generated files
+# MinGW 生成的文件
 *.Debug
 *.Release
 
-# Python byte code
+# Python 字节码
 *.pyc
 
-# Binaries
+# 二进制文件
 # --------
 *.dll
 *.exe
 
-# Directories with generated files
+# 含生成文件的目录
 .moc/
 .obj/
 .pch/
@@ -81,7 +81,7 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 
-# added by stardust
+# 由 stardust 添加
 *.qmlproject.user*
 
 #vpp
@@ -93,7 +93,7 @@ build/
 
 .env
 
-# user-uploaded files — runtime directory, not git
+# 用户上传文件 — 运行期目录，不入库
 uploads/
 server/uploads/avatars
 

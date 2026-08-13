@@ -33,7 +33,7 @@ namespace {
         return {"New Recipe", "Yummy", "img.jpg", {}, {}, std::nullopt, {}, std::nullopt, std::nullopt, std::nullopt};
     }
 
-    // Helper for recommendation tests
+    // 推荐测试的辅助构造
     RecommendedRecipe makeRec(int id, const std::string& name,
                               const std::string& flavor,
                               const std::string& method,
@@ -59,7 +59,7 @@ namespace {
         r.cook_time_minutes = 20;
         r.author_id = 1;
         r.author_name = "Chef";
-        // Add some ingredients
+        // 添加一些食材
         r.match_status.available_ingredients.push_back({"鸡蛋", 3.0, "个"});
         r.match_status.available_ingredients.push_back({"番茄", 2.0, "个"});
         r.match_status.missing_ingredients.push_back({"葱花", 1.0, "把"});
@@ -335,6 +335,70 @@ TEST(RecipeServiceTest, 推荐偏好厌食减分) {
     // 蒸蛋羹因 dislike 减分，应排在清炒时蔬之后
     EXPECT_EQ(result.data[0].name, "清炒时蔬");
     EXPECT_EQ(result.data[1].name, "蒸蛋羹");
+}
+
+TEST(RecipeServiceTest, 推荐喜欢风味与标签独立加分) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    // 喜欢列表：风味 "清淡" + 标签 "家常"
+    UserPreferences pref;
+    pref.likes = {"清淡", "家常"};
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(pref));
+
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{}));
+
+    // 四道菜：基准完全相同（match 0.63 / 评分 3.0 / 非近期），仅命中维度不同
+    PagedRecommendedRecipes candidates = makePagedRecommended(4, 1, 60);
+    auto rNone = makeRec(1, "无命中", "甜", "炒", 0.63, 3.0);
+    rNone.tags = {"西式"};
+    rNone.submitted_at = "2020-01-01T00:00:00";
+    candidates.data.push_back(rNone);
+
+    auto rTag = makeRec(2, "仅标签命中", "甜", "炒", 0.63, 3.0);
+    rTag.tags = {"家常"};  // 仅命中标签
+    rTag.submitted_at = "2020-01-01T00:00:00";
+    candidates.data.push_back(rTag);
+
+    auto rFlavor = makeRec(3, "仅风味命中", "清淡", "炒", 0.63, 3.0);
+    rFlavor.tags = {"西式"};  // 仅命中风味
+    rFlavor.submitted_at = "2020-01-01T00:00:00";
+    candidates.data.push_back(rFlavor);
+
+    auto rBoth = makeRec(4, "双命中", "清淡", "炒", 0.63, 3.0);
+    rBoth.tags = {"家常"};  // 风味 + 标签同时命中
+    rBoth.submitted_at = "2020-01-01T00:00:00";
+    candidates.data.push_back(rBoth);
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    ASSERT_EQ(result.data.size(), 4);
+    // 基准分 0.63*0.5 = 0.315；
+    // 无命中 → 0.315；仅标签 +0.10*0.25 → 0.34；仅风味 +0.15*0.25 → 0.35；双命中 +0.25*0.25 → 0.38
+    EXPECT_EQ(result.data[0].name, "双命中");
+    EXPECT_EQ(result.data[0].match_score, 0.38);
+    EXPECT_EQ(result.data[1].name, "仅风味命中");
+    EXPECT_EQ(result.data[1].match_score, 0.35);
+    EXPECT_EQ(result.data[2].name, "仅标签命中");
+    EXPECT_EQ(result.data[2].match_score, 0.34);
+    EXPECT_EQ(result.data[3].name, "无命中");
+    EXPECT_EQ(result.data[3].match_score, 0.32);
 }
 
 TEST(RecipeServiceTest, 关联视频查询成功) {
