@@ -148,7 +148,7 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
 
 std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::string& username,
                                                                    const std::string& email) {
-    // 1. Verify username + email match (双重验证)
+    // 1. 校验用户名与邮箱是否匹配（双重验证）
     auto userIdOpt = userRepo_->findIdByUsernameAndEmail(username, email);
     if (!userIdOpt.has_value()) {
         LOG_WARN("Password reset requested for username='%s' email='%s' — no match found",
@@ -158,7 +158,7 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
 
     // 注意：开发模式下返回 dev_token 可能被利用枚举已注册用户名+邮箱组合。
     // 未来改进：对已验证身份（如 session/IP）返回 token，未验证者始终返回 200 + nullopt。
-    // 2. Generate 6-digit numeric code (CSPRNG, range 100000-999999)
+    // 2. 生成 6 位数字验证码（CSPRNG，范围 100000-999999）
     unsigned char randomBytes[4];
     if (RAND_bytes(randomBytes, sizeof(randomBytes)) != 1) {
         throw ServiceException("无法生成安全令牌");
@@ -167,17 +167,17 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
                  | (static_cast<uint32_t>(randomBytes[1]) << 16)
                  | (static_cast<uint32_t>(randomBytes[2]) << 8)
                  | static_cast<uint32_t>(randomBytes[3]);
-    int code = (val % 900000) + 100000;  // always 6 digits
+    int code = (val % 900000) + 100000;  // 始终为 6 位数字
     std::string token = std::to_string(code);
 
-    // 3. Store token in database — expiry is computed in SQL as NOW() + INTERVAL '15 minutes'
+    // 3. 将令牌存入数据库 — 过期时间在 SQL 中计算为 NOW() + INTERVAL '15 minutes'
     userRepo_->createPasswordResetToken(userIdOpt.value(), token);
 
-    // 5. Send email
-    //    - SMTP configured + sent OK → return nullopt (token delivered via email)
-    //    - SMTP not configured → return token for dev-mode response
-    //      (safer than printing to stderr — the token goes to the API caller, not the log)
-    //    - SMTP configured but send failed → throw (real error)
+    // 5. 发送邮件
+    //    - SMTP 已配置且发送成功 → 返回 nullopt（令牌已通过邮件发送）
+    //    - SMTP 未配置 → 返回令牌用于开发模式响应
+    //      （比打印到 stderr 更安全 — 令牌直接返回给 API 调用方，而非写入日志）
+    //    - SMTP 已配置但发送失败 → 抛出异常（真实错误）
     if (EmailSender::isConfigured()) {
         bool sent = EmailSender::sendPasswordResetEmail(email, token);
         if (!sent) {
@@ -195,13 +195,13 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
 void UserServiceImpl::resetPassword(const std::string& token, const std::string& newPassword) {
     // \note 已知限制：密码重置后，旧的 JWT 令牌在过期前仍然有效。
     //       当前无服务器端令牌黑名单/版本号机制。
-    // 1. Validate token — find user_id from valid (unused & not expired) token
+    // 1. 校验令牌 — 从有效（未使用且未过期）的令牌中查找 user_id
     auto userIdOpt = userRepo_->findUserIdByResetToken(token);
     if (!userIdOpt.has_value()) {
         throw ServiceException("令牌无效或已过期", 400);
     }
 
-    // 2. Validate new password strength (reuse same rules as changePassword)
+    // 2. 校验新密码强度（复用 changePassword 的相同规则）
     if (newPassword.size() < 6) {
         throw ServiceException("密码需包含字母和数字，至少6位", 400);
     }
@@ -214,35 +214,35 @@ void UserServiceImpl::resetPassword(const std::string& token, const std::string&
         throw ServiceException("密码需包含字母和数字，至少6位", 400);
     }
 
-    // 3. Hash new password
+    // 3. 对新密码进行哈希
     std::string newHash = hashPassword(newPassword);
 
-    // 4. Update password + mark token as used in one transaction (防重放)
+    // 4. 在单个事务中更新密码并将令牌标记为已使用（防重放）
     userRepo_->resetPasswordAndMarkTokenUsed(userIdOpt.value(), newHash, token);
 }
 UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileRequest& profile) {
-    // Validate: at least one field must be provided
+    // 校验：至少需提供一个字段
     if (!profile.display_name.has_value() && !profile.avatar_url.has_value() &&
         !profile.avatar_id.has_value() && !profile.email.has_value() &&
         !profile.phone.has_value()) {
         throw ServiceException("没有提供需要更新的字段", 400);
     }
 
-    // Validate display_name not empty
+    // 校验 display_name 不为空
     if (profile.display_name.has_value() && profile.display_name->empty()) {
         throw ServiceException("昵称不能为空", 400);
     }
 
-    // Resolve avatar_id → if avatar_id equals userId, keep current avatar_url
-    // (the upload already set it). If avatar_id is set but different, ignore it.
+    // 解析 avatar_id：若 avatar_id 等于 userId，保留当前 avatar_url
+    // （上传时已设置）。若 avatar_id 已设置但不同，则忽略它。
     UpdateProfileRequest resolvedProfile = profile;
     if (profile.avatar_id.has_value() && profile.avatar_id.value() == userId) {
-        // Keep existing avatar_url — set resolvedProfile.avatar_url to nullopt
-        // so the repo's COALESCE won't override it
+        // 保留现有 avatar_url — 将 resolvedProfile.avatar_url 设为 nullopt
+        // 以免仓库层的 COALESCE 覆盖它
         resolvedProfile.avatar_url = std::nullopt;
     }
 
-    // Check email uniqueness if being changed
+    // 若邮箱被修改则检查唯一性
     if (profile.email.has_value() && !profile.email->empty()) {
         auto currentUser = userRepo_->findById(userId);
         if (currentUser.has_value() && profile.email.value() != currentUser->email) {
@@ -254,7 +254,7 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
 
     userRepo_->updateProfile(userId, resolvedProfile);
 
-    // Return updated profile
+    // 返回更新后的用户资料
     auto updated = userRepo_->findById(userId);
     if (!updated.has_value()) {
         throw ServiceException("用户不存在", 404);
@@ -295,7 +295,7 @@ void UserServiceImpl::changePassword(int userId,
     userRepo_->changePassword(userId, newHash);
 }
 void UserServiceImpl::deleteAccount(int userId) {
-    // Verify user exists first
+    // 先确认用户存在
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) {
         throw ServiceException("用户不存在", 404);
@@ -309,7 +309,7 @@ AvatarUploadResponse UserServiceImpl::uploadAvatar(int userId, const std::string
     return userRepo_->uploadAvatar(userId, filePath);
 }
 UserPreferences UserServiceImpl::getPreferences(int userId) {
-    // Verify user exists first
+    // 先确认用户存在
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) {
         throw ServiceException("用户不存在", 404);
@@ -317,7 +317,7 @@ UserPreferences UserServiceImpl::getPreferences(int userId) {
     return userRepo_->getPreferences(userId);
 }
 void UserServiceImpl::updatePreferences(int userId, const UserPreferences& prefs) {
-    // Verify user exists first
+    // 先确认用户存在
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) {
         throw ServiceException("用户不存在", 404);
@@ -325,37 +325,37 @@ void UserServiceImpl::updatePreferences(int userId, const UserPreferences& prefs
     userRepo_->updatePreferences(userId, prefs);
 }
 HealthProfileResponse UserServiceImpl::updateHealthProfile(int userId, const HealthProfileRequest& req) {
-    // Verify user exists first
+    // 先确认用户存在
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) {
         throw ServiceException("用户不存在", 404);
     }
 
-    // Save health profile to database
+    // 将健康档案保存到数据库
     userRepo_->updateHealthProfile(userId, req);
 
-    // Generate avoidance suggestions based on user's health conditions
+    // 根据用户的健康情况生成忌口建议
     HealthProfileResponse resp;
-    // Populate saved fields in case the caller needs them
+    // 填充已保存的字段，以备调用方需要
     resp.height_cm = req.height_cm;
     resp.weight_kg = req.weight_kg;
     resp.conditions = req.conditions;
-    // Populate avoidance suggestions
+    // 填充忌口建议
     populateAvoidanceSuggestions(req.conditions, resp.suggested_avoidances);
     return resp;
 }
 
 HealthProfileResponse UserServiceImpl::getHealthProfile(int userId) {
-    // Verify user exists
+    // 先确认用户存在
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) {
         throw ServiceException("用户不存在", 404);
     }
 
-    // Load health profile from database
+    // 从数据库加载健康档案
     auto resp = userRepo_->getHealthProfile(userId);
 
-    // Generate avoidance suggestions based on saved conditions
+    // 根据已保存的健康情况生成忌口建议
     populateAvoidanceSuggestions(resp.conditions, resp.suggested_avoidances);
 
     return resp;

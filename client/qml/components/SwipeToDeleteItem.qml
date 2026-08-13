@@ -213,8 +213,8 @@ Item {
         // ---- iOS 弹簧动画 ----
         Behavior on x {
             SpringAnimation {
-                spring: 5.0          // stiffness ≈ 300 (UIKit)
-                damping: 0.35        // damping ≈ 30
+                spring: 5.0          // 刚度 ≈ 300（UIKit 参考值）
+                damping: 0.35        // 阻尼 ≈ 30
                 epsilon: 0.001
             }
         }

@@ -217,23 +217,26 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
                                                int page, int size,
                                                const nlohmann::json& filters) {
     return executeDb(db_, [&](pqxx::work& txn) {
+        // 初始化分页偏移与 WHERE 骨架
         PagedRecipes result;
         int offset = (page > 0) ? (page - 1) * size : 0;
 
         std::string where = "WHERE r.status = 'approved'";
         ParamBuilder pb;
 
-        // 关键词搜索：匹配菜名、描述、食材名称（ingredients 是 JSONB 数组）
+        // 关键词模糊匹配：匹配菜名、描述、食材名称（ingredients 是 JSONB 数组）
         if (!keyword.empty()) {
             std::string safeKw = txn.esc(keyword);
-            where += " AND (r.name ILIKE '%' || '" + safeKw + "' || '%'"
-                     " OR r.description ILIKE '%' || '" + safeKw + "' || '%'"
-                     " OR EXISTS (SELECT 1 FROM jsonb_array_elements(r.ingredients) AS ing"
+            where += " AND (r.name ILIKE '%' || '" + safeKw + "' || '%'"  // 名字模糊匹配
+                     " OR r.description ILIKE '%' || '" + safeKw + "' || '%'"  // 或描述模糊匹配
+                     " OR EXISTS (SELECT 1 FROM jsonb_array_elements(r.ingredients) AS ing"  // 或食材名模糊匹配
                      "           WHERE ing->>'name' ILIKE '%' || '" + safeKw + "' || '%'))";
         }
 
+        // 动态拼接筛选条件的SQL骨架
         applyRecipeFilters(filters, where, pb);
 
+        // 总数查询——根据是否有参数，选择是否带参数执行
         std::string countSql = "SELECT COUNT(*) FROM recipes r " + where;
         int total;
         if (pb.values.empty()) {
@@ -245,6 +248,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
                         [0][0].as<int>();
         }
 
+        // 排序白名单——防止 ORDER BY 注入
         std::string order = "ORDER BY r.created_at DESC";
         if (filters.contains("sort_by")) {
             std::string sort = filters["sort_by"].get<std::string>();
@@ -253,11 +257,13 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             else if (sort == "newest") order = "ORDER BY r.created_at DESC";
         }
 
+        // 用 ParamBuilder 生成 $n 占位符并添加 size 和 offset 值。
         where += " " + order + " LIMIT " + pb.next();
         pb.addInt(size);
         where += " OFFSET " + pb.next();
         pb.addInt(offset);
 
+        // 构建最终 SQL（dataSql）并执行
         std::string dataSql = R"(
             SELECT r.id, r.name, r.description, r.prep_time_minutes,
                    r.cook_time_minutes, r.image_url,
@@ -273,6 +279,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
         LOG_DEBUG("[SQL] searchRecipes data | keyword=%s", keyword.c_str());
         auto rows = txn.exec(dataSql, makeParams(pb.values));
 
+        // 逐行读取查询结果（rows），构造 RecipeSummary 对象，添加到结果集（result）
         for (const auto& row : rows) {
             RecipeSummary recipe;
             recipe.id = row["id"].as<int>();
@@ -304,6 +311,7 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             result.data.push_back(recipe);
         }
 
+        // 分页信息填充
         result.pagination.page = page;
         result.pagination.size = size;
         result.pagination.total = total;
@@ -330,7 +338,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
         int total = txn.exec(countSql)[0][0].as<int>();
         LOG_DEBUG("[SQL] findRecommendedRecipes count: %d", total);
 
-        // ── 数据查询：CTE 做库存匹配（推荐引擎核心，见 gocook资料 3.5.x）──
+        // ── 数据查询：CTE 做库存匹配（推荐引擎核心）──
         std::string dataSql = R"(
             WITH user_inv AS (
                 SELECT LOWER(ingredient_name) AS name,
@@ -419,6 +427,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
                                      size,
                                      offset});
 
+        // 结果集映射
         for (const auto& row : rows) {
             RecommendedRecipe rec;
 
@@ -491,6 +500,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
 
 RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
     return executeDb(db_, [&](pqxx::work& txn) {
+        // 判断是否需要查询收藏状态
         bool checkFav = (userId > 0);
         std::string favSelect = checkFav
             ? ", CASE WHEN f.id IS NOT NULL THEN true ELSE false END AS is_favorited"
@@ -498,6 +508,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
         std::string favJoin = checkFav
             ? " LEFT JOIN favorites f ON f.recipe_id = r.id AND f.user_id = $2"
             : "";
+        // 拼接 SQL 主语句
         std::string sql = "SELECT r.id, r.name, r.description, r.image_url,"
             " r.cooking_method, r.flavor,"
             " r.prep_time_minutes, r.cook_time_minutes,"
@@ -512,6 +523,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             + favJoin
             + " WHERE r.id = $1";
 
+        // 执行查询
         LOG_DEBUG("[SQL] findById | recipeId=%d userId=%d", recipeId, userId);
         pqxx::result r;
         if (checkFav)
@@ -525,6 +537,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
 
         const auto& row = r[0];
 
+        // 填充结果
         RecipeDetail detail;
         detail.id = row["id"].as<int>();
         detail.name = row["name"].c_str();
@@ -538,6 +551,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
         detail.avg_rating = row["avg_rating"].as<double>(0.0);
         detail.is_favorited = checkFav ? row["is_favorited"].as<bool>(false) : false;
 
+        // 解析 ingredients JSONB
         if (!row["ingredients"].is_null()) {
             auto ingredientsArr = json::parse(row["ingredients"].c_str());
             for (const auto& ing : ingredientsArr) {
@@ -549,6 +563,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             }
         }
 
+        // 解析 steps JSONB
         if (!row["steps"].is_null()) {
             auto stepsArr = json::parse(row["steps"].c_str());
             for (const auto& s : stepsArr) {
@@ -563,6 +578,7 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             }
         }
 
+        // 解析 nutrition_info JSONB
         if (!row["nutrition_info"].is_null()) {
             auto nutJson = json::parse(row["nutrition_info"].c_str());
             detail.nutrition.calories = nutJson.value("calories", 0.0);
@@ -571,8 +587,10 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             detail.nutrition.carbs = nutJson.value("carbs", 0.0);
         }
 
+        // 填充 tags
         detail.tags = parseTags(row["tags_json"].as<std::string>());
 
+        // 填充作者信息和时间戳
         detail.author_id = row["author_id"].as<int>(0);
         if (!row["author_name"].is_null())
             detail.author_name = row["author_name"].c_str();
@@ -875,6 +893,7 @@ void PgRecipeRepository::rateRecipe(int userId, int recipeId,
             throw ServiceException("您已评过分", 409);
         }
 
+        // 插入评分记录
         LOG_DEBUG("[SQL] rateRecipe INSERT | userId=%d recipeId=%d rating=%d", userId, recipeId, req.rating);
         txn.exec(
             "INSERT INTO ratings (user_id, recipe_id, rating, comment)"
@@ -1062,6 +1081,7 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
 // 保持手写——与 uploadAvatar 同理，特例显式化。
 std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::string& filePath) {
     try {
+        // 解析文件扩展名
         std::string ext = ".jpg";
         auto dotPos = filePath.find_last_of('.');
         if (dotPos != std::string::npos) {

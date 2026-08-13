@@ -67,7 +67,7 @@ private:
     /// 后台清理线程执行函数
     void cleanupLoop();
 
-    /// 锁住整个记录表，用于读写操作
+    /// 锁住整个记录表，用于读写操作。使用 mutable 修饰，使得统计类 const 成员函数也能安全加锁，不破坏对象的逻辑常量性。
     mutable std::shared_mutex mutex_;
     std::unordered_map<std::string, std::deque<std::chrono::steady_clock::time_point>> records_;
 

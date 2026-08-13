@@ -196,14 +196,14 @@ endif()
 
 
 
-# set(CMAKE_CXX_STANDARD_REQUIRED ON) # Globally preventing the fallback behaviour of C++ standard
-#qt_add_executable(client)  //Creates and finalizes an application target of a platform-specific type.
-#This command performs the following tasks:
-#    1. Create a CMake target of the appropriate type for the target platform.
-#    2. Link the target to the Qt::Core library.
-#    3. Handle finalization of the CMake target.
+# set(CMAKE_CXX_STANDARD_REQUIRED ON) # 全局阻止 C++ 标准的回退行为
+#qt_add_executable(client)  //创建并完成一个平台特定类型的应用目标。
+#该命令执行以下任务：
+#    1. 为目标平台创建适当类型的 CMake 目标。
+#    2. 将目标链接到 Qt::Core 库。
+#    3. 处理 CMake 目标的收尾工作。
 
-# set(CMAKE_CXX_STANDARD_REQUIRED ON) # Globally preventing the fallback behaviour of C++ standard
+# set(CMAKE_CXX_STANDARD_REQUIRED ON) # 全局阻止 C++ 标准的回退行为
 
 # qt_standard_project_setup()  #set(CMAKE_AUTOUIC ON)  set(CMAKE_AUTOMOC ON)
 
@@ -242,9 +242,9 @@ endif()
 #         Main.qml
 # )
 #
-# # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# # If you are developing for iOS or macOS you should consider setting an
-# # explicit, fixed bundle identifier manually though.
+# # 自 Qt 6.1 起，Qt 会在 iOS 上自动设置 MACOSX_BUNDLE_GUI_IDENTIFIER。
+# # 如果你正在为 iOS 或 macOS 开发，应考虑手动设置一个
+# # 明确、固定的 bundle 标识符。
 # set_target_properties(appclient PROPERTIES
 # #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appclient
 #     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}

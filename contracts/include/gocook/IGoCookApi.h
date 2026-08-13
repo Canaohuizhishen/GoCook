@@ -166,10 +166,12 @@ using PagedActivityLogsCallback = std::function<void(bool success,
                                                      const std::string& error)>;
 
 /**
- * @brief 服务端 API 抽象接口，定义所有与后端交互的方法。
+ * @brief 客户端 API 抽象接口（服务端 REST API 的客户端门面），
+ *        定义客户端与后端交互所需的全部异步方法。
  *
  * 具体实现类（HttpGoCookApi）负责通过 HTTP 发送请求。
- * 客户端高层模块只依赖本接口，符合依赖倒置原则。
+ * 客户端高层模块（ViewModel）只依赖本接口，符合依赖倒置原则；
+ * 服务端业务抽象见 IServices.h（由 server/services 下的 *ServiceImpl 实现）。
  * 所有业务数据均使用强类型结构体（定义于 DataModels.h），
  * 仅筛选条件 filters 因结构多变暂时保留为 nlohmann::json。
  */
@@ -250,6 +252,10 @@ public:
      */
     virtual void updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
                                      HealthProfileCallback callback) = 0;
+    /**
+     * @brief 获取当前用户的健康指标
+     * @param callback 回调 (success, healthProfile, error)
+     */
     virtual void getHealthProfile(HealthProfileCallback callback) = 0;
 
     /**

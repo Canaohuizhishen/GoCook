@@ -8,16 +8,28 @@
 #include <filesystem>
 #include <stdexcept>
 
+/**
+ * @brief 服务器运行配置，从环境变量或 .env 文件加载。
+ *
+ * 支持 GOCOOK_* 系列环境变量（默认值见各字段）；加载 .env 文件后
+ * 会 chdir 到其所在目录，保证所有相对路径一致解析。
+ */
 struct Config {
-    std::string host = "0.0.0.0";
-    int port = 8080;
-    std::string dbConnString;
-    std::string jwtSecret;
-    std::string tlsCertPath;
-    std::string tlsKeyPath;
-    int dbPoolSize = 10;
-    std::string logLevel = "info";
+    std::string host = "0.0.0.0";  ///< 监听地址
+    int port = 8080;               ///< 监听端口
+    std::string dbConnString;      ///< PostgreSQL 连接串
+    std::string jwtSecret;         ///< JWT 签名密钥（必填）
+    std::string tlsCertPath;       ///< TLS 证书路径（可选）
+    std::string tlsKeyPath;        ///< TLS 私钥路径（可选）
+    int dbPoolSize = 10;           ///< 数据库连接池大小
+    std::string logLevel = "info"; ///< 日志级别：debug/info/warn/error
 
+    /**
+     * @brief 从环境变量与 .env 文件加载配置。
+     * @return 填充完成的配置对象
+     * @throw std::runtime_error 缺少必填项 GOCOOK_JWT_SECRET 或
+     *        GOCOOK_DB_CONN_STRING 时抛出
+     */
     static Config load() {
         const char* candidates[] = {".env", "../../../.env", "../../.env", "../.env"};
         bool loaded = false;
@@ -31,7 +43,7 @@ struct Config {
             }
         }
         if (!envPath.empty()) {
-            // chdir to the directory containing .env so all relative paths resolve consistently
+            // chdir 到 .env 所在目录，使所有相对路径都能一致地解析
             auto dir = std::filesystem::absolute(envPath).parent_path();
             std::filesystem::current_path(dir);
         }
@@ -58,22 +70,26 @@ struct Config {
     }
 
 private:
+    // 判断文件是否存在
     static bool fileExists(const std::string& path) {
         std::ifstream f(path);
         return f.is_open();
     }
 
+    // 读取环境变量，未设置时返回默认值
     static std::string getEnv(const std::string& key, const std::string& defaultValue) {
         const char* val = std::getenv(key.c_str());
         return val ? std::string(val) : defaultValue;
     }
 
+    // 读取整数环境变量，未设置或非法输入时返回默认值
     static int getEnvInt(const std::string& key, int defaultValue) {
         const char* val = std::getenv(key.c_str());
         if (!val) return defaultValue;
         try { return std::stoi(val); } catch (...) { return defaultValue; }
     }
 
+    // 解析 .env 文件（KEY=VALUE，支持引号）并写入进程环境变量
     static void loadEnvFile(const std::string& path) {
         std::ifstream file(path);
         if (!file.is_open()) return;
@@ -92,6 +108,7 @@ private:
         }
     }
 
+    // 去除字符串首尾空白字符
     static std::string trim(const std::string& s) {
         auto start = s.find_first_not_of(" \t\r\n");
         if (start == std::string::npos) return "";

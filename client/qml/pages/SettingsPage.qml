@@ -328,7 +328,7 @@ Page {
                 readonly property int headerHeight: 52
                 readonly property int optionRowHeight: 40
                 readonly property int dividerHeight: 1
-                readonly property int expandedPadding: 8  // top + bottom
+                readonly property int expandedPadding: 8  // 上下内边距
                 readonly property int expandedContentHeight: dividerHeight + optionRowHeight * 3 + expandedPadding
 
                 implicitHeight: headerHeight + (themeExpanded.visible ? expandedContentHeight : 0)

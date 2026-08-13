@@ -535,7 +535,7 @@ Page {
             healthProfilePage.avoidances = avoidances
             healthProfilePage.hasData = true
             showEdit = false
-            // Reload to get updated data from server (height, weight, conditions)
+            // 重新加载以获取服务器端最新数据（身高、体重、健康状况）
             authViewModel.loadHealthProfile()
         }
         function onHealthProfileSaveFailed(error) {

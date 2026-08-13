@@ -26,6 +26,9 @@ inline void setErrorResponse(httplib::Response &res, int status, const std::stri
  * @param res  响应对象
  */
 inline void handleStandardException(const std::exception &e, httplib::Response &res) {
+    // 这一行是运行时向下转型：因为 Handler 收到的 e 是 std::exception 基类引用，但实际传入的可能是子类 ServiceException。
+    // 我用 dynamic_cast 去试探它：如果转型成功，说明是业务异常，我可以拿到它携带的 HTTP 状态码；
+    // 如果转出来是 nullptr，说明是系统底层异常（如内存或 SQL 错误），我就直接把它当 500 处理，绝不把内部错误信息暴露给客户端。
     auto* se = dynamic_cast<const gocook::services::ServiceException*>(&e);
     if (!se) {
         LOG_ERROR("Unhandled exception: %s", e.what());
