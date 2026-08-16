@@ -96,3 +96,6 @@ build/
 # user-uploaded files — runtime directory, not git
 uploads/
 server/uploads/avatars
+
+# reasonix 本地工具目录
+.reasonix/

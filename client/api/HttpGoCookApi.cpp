@@ -12,6 +12,26 @@
 #include <QFileInfo>
 #include <gocook/IServices.h>
 
+// 统一错误文案解析：三级判据（与笔记 6.1 一致）
+//  1) statusCode <= 0        → 网络层错误（断网/拒绝连接/超时），无服务端响应
+//  2) 服务端 JSON 含 error   → 业务错误，用服务端精确文案
+//  3) 其余（statusCode > 0） → 服务器问题（5xx 返回 HTML/空体等），不能误导用户去查网络
+static QString errorMessageFor(int statusCode, const QJsonDocument &doc)
+{
+    if (statusCode <= 0) {
+        return QStringLiteral("网络连接失败，请检查网络");
+    }
+    if (doc.isObject()) {
+        const QJsonObject obj = doc.object();
+        if (obj.contains("error")) {
+            const QString err = obj["error"].toString();
+            if (!err.isEmpty())
+                return err;
+        }
+    }
+    return QStringLiteral("服务器有点问题，请稍候再试");
+}
+
 // 构造函数
 HttpGoCookApi::HttpGoCookApi(QObject *parent) : QObject(parent)
 {
@@ -257,7 +277,8 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
             QJsonDocument doc = QJsonDocument::fromJson(responseData);
             reply->deleteLater();
             if (callback) {
-                callback(false, QString::fromUtf8(responseData), doc);
+                // 与绕过 sendRequest 的接口一致：统一返回解析后的精确文案（doc 仍透传，门面层可继续解析）
+                callback(false, errorMessageFor(statusCode, doc), doc);
             }
             return;
         }
@@ -267,7 +288,9 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
             QByteArray responseData = reply->readAll();
             QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-            if (op == QNetworkAccessManager::GetOperation && retryCount < m_maxRetries) {
+            // 只对真正的网络错误（无任何 HTTP 响应，statusCode <= 0）重试 GET；
+            // 4xx/5xx 说明服务端已应答（包裹送到了），业务错误/服务器问题重试只会放大问题
+            if (op == QNetworkAccessManager::GetOperation && statusCode <= 0 && retryCount < m_maxRetries) {
                 QTimer::singleShot(m_retryDelay, this, [self, op, endpoint, data, callback, retryCount, suppressNetworkError]() {
                     if (!self) return;
                     self->sendRequest(op, endpoint, data, callback, retryCount + 1, "", suppressNetworkError);
@@ -276,19 +299,8 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                 return;
             }
 
-            // 即使 reply->error() 有值，也尝试读取响应体（某些 Qt 版本对 HTTP 5xx 同时设置 error）
-            QString errMsg;
-            if (doc.isObject() && doc.object().contains("error")) {
-                errMsg = doc.object()["error"].toString();
-            } else if (statusCode > 0) {
-                // 收到了 HTTP 响应但格式不符（非业务错误 JSON，如 5xx 返回 HTML/空体）——
-                // 是服务器问题不是网络问题，不能误导用户去查网络
-                errMsg = QStringLiteral("服务器有点问题，请稍候再试");
-            } else {
-                // 网络层错误（断网/拒绝连接/超时等，无服务端响应）统一中文文案，
-                // 避免把 Qt 英文错误串（Connection refused）直接展示给用户
-                errMsg = QStringLiteral("网络连接失败，请检查网络");
-            }
+            // 统一三级文案（statusCode>0 且非业务 JSON → 服务器问题，不是网络问题）
+            const QString errMsg = errorMessageFor(statusCode, doc);
 
             if (!suppressNetworkError) emit networkError(errMsg);
             if (callback) {
@@ -672,15 +684,14 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
             avLog("unauthorized (401)");
             emit self->unauthorized();
             self->invokeUnauthorizedHandler();
-            if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "未授权");
+            if (callback) callback(false, gocook::models::AvatarUploadResponse{}, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
         bool success = (statusCode >= 200 && statusCode < 300);
         if (!success) {
-            QString err = QString::fromUtf8(responseData);
-            if (doc.isObject() && doc.object().contains("error"))
-                err = doc.object()["error"].toString();
+            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
+            const QString err = errorMessageFor(statusCode, doc);
             avLog("request failed: " + err);
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, err.toStdString());
             return;
@@ -744,22 +755,20 @@ void HttpGoCookApi::uploadRecipeImage(int recipeId,
         if (!self) return;
 
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray responseData = reply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         reply->deleteLater();
 
         if (statusCode == 401) {
             emit self->unauthorized();
             self->invokeUnauthorizedHandler();
-            if (callback) callback(false, "", "未授权");
+            if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
         bool success = (statusCode >= 200 && statusCode < 300);
         if (!success) {
-            QString err = QString::fromUtf8(responseData);
-            if (doc.isObject() && doc.object().contains("error"))
-                err = doc.object()["error"].toString();
+            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
+            const QString err = errorMessageFor(statusCode, doc);
             if (callback) callback(false, "", err.toStdString());
             return;
         }
@@ -847,15 +856,14 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
             siLog("unauthorized (401)");
             emit self->unauthorized();
             self->invokeUnauthorizedHandler();
-            if (callback) callback(false, "", "未授权");
+            if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
         bool success = (statusCode >= 200 && statusCode < 300);
         if (!success) {
-            QString err = QString::fromUtf8(responseData);
-            if (doc.isObject() && doc.object().contains("error"))
-                err = doc.object()["error"].toString();
+            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
+            const QString err = errorMessageFor(statusCode, doc);
             siLog("request failed: " + err);
             if (callback) callback(false, "", err.toStdString());
             return;
@@ -1046,17 +1054,30 @@ void HttpGoCookApi::updateFavoriteItem(int favoriteId,
 
     QByteArray body = QJsonDocument(QJsonObject::fromVariantMap(data)).toJson();
     QNetworkReply *reply = m_nam.sendCustomRequest(req, "PATCH", body);
-    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
+    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this)]() {
+        if (!self) return;
+
         QByteArray responseData = reply->readAll();
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        reply->deleteLater();
+
+        // 与其它接口一致：401 触发全局登出（否则用户不知道 token 已失效）
+        if (statusCode == 401) {
+            emit self->unauthorized();
+            self->invokeUnauthorizedHandler();
+            if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
+            return;
+        }
+
         bool success = (statusCode >= 200 && statusCode < 300);
         if (callback) {
             if (success)
                 callback(true, "");
             else
-                callback(false, QString::fromUtf8(responseData).toStdString());
+                // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
+                callback(false, errorMessageFor(statusCode, doc).toStdString());
         }
-        reply->deleteLater();
     });
 }
 

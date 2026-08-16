@@ -37,9 +37,24 @@ namespace {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
         auto cfg = Config::load();
+
+        // CLI 端口参数：./server [port] 优先级高于环境变量/.env（便于本地多实例调试与端口冲突排查）
+        if (argc >= 2) {
+            char* end = nullptr;
+            long cliPort = std::strtol(argv[1], &end, 10);
+            if (end != argv[1] && *end == '\0' && cliPort > 0 && cliPort <= 65535) {
+                cfg.port = static_cast<int>(cliPort);
+                LOG_INFO("Using CLI port argument: %d", cfg.port);
+            } else {
+                fprintf(stderr, "Usage: %s [port]\n", argv[0]);
+                fflush(stderr);
+                return 2;
+            }
+        }
+
     auto url = (cfg.host == "0.0.0.0")
         ? "http://127.0.0.1:" + std::to_string(cfg.port) + "/"
         : "http://" + cfg.host + ":" + std::to_string(cfg.port) + "/";
@@ -74,14 +89,39 @@ int main() {
                   mealPlanHandler, announcementHandler, adminHandler);
 
     httplib::Server svr;
+    // 请求日志：每个请求一行（方法/路径/对端 IP/状态码），运维排查必备
+    // （Router 里原有的请求日志是 LOG_DEBUG 级，默认 logLevel=info 不可见）
+    svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
+        LOG_INFO("HTTP %s %s from %s -> %d", req.method.c_str(), req.path.c_str(),
+                 req.remote_addr.c_str(), res.status);
+    });
+    // 覆盖 httplib 默认 socket 选项：Linux 下默认只设 SO_REUSEPORT，
+    // 两个进程可同时监听同一端口（NetDemo ⑦ 事故：连接被轮流分配、token 随机 401）。
+    // 改为仅 SO_REUSEADDR：第二个实例 bind 必然失败，杜绝静默双实例。
+    svr.set_socket_options([](socket_t sock) {
+#ifdef SO_REUSEADDR
+        int reuse = 1;
+        ::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+                     reinterpret_cast<const void*>(&reuse), sizeof(reuse));
+#else
+        (void)sock;
+#endif
+    });
     router.setupRoutes(svr);
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
+    std::atomic<bool> gListenOk{true};
     std::thread serverThread([&]() {
         LOG_INFO("Starting HTTP server on %s", url.c_str());
-        svr.listen(cfg.host.c_str(), cfg.port);
+        if (!svr.listen(cfg.host.c_str(), cfg.port)) {
+            // httplib 默认静默失败（连 stderr 都不打），必须自己报错并退出，
+            // 否则主循环永久空转、进程挂死不服务（比 NetDemo ③ 更糟）。
+            LOG_ERROR("Failed to bind/listen on %s:%d (端口被占用或权限不足?)", cfg.host.c_str(), cfg.port);
+            gListenOk = false;
+            gRunning = false; // 唤醒主循环退出
+        }
     });
 
     LOG_INFO("Server is running. Press Ctrl+C to stop.");
@@ -97,7 +137,7 @@ int main() {
 
     fflush(stderr);
     fflush(stdout);
-    _Exit(0);
+    _Exit(gListenOk.load() ? 0 : 1);
     } catch (const std::exception& e) {
         fprintf(stderr, "FATAL: %s\n", e.what());
         fflush(stderr);

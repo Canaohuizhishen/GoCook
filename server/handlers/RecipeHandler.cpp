@@ -308,12 +308,14 @@ void RecipeHandler::rateRecipe(const httplib::Request& req, httplib::Response& r
         request.comment = reqJson.value("comment", "");
         if (request.rating < 1 || request.rating > 5) {
             res.status = 400;
+            res.set_header("Content-Type", "application/json");
             res.body = json{{"error", "评分必须在1到5之间"}}.dump();
             return;
         }
         service_.rateRecipe(info.userId, recipeId, request);
         res.status = 201;
-        res.body = json{{"message", "Rating submitted"}}.dump();
+        res.set_header("Content-Type", "application/json");
+        res.body = json{{"message", "评分提交成功"}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

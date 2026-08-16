@@ -58,11 +58,41 @@ void Router::setupRoutes(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerRateLimiter(httplib::Server& svr) {
-    svr.set_pre_routing_handler([this](const httplib::Request& req, httplib::Response& res) {
-        std::string ip = req.remote_addr;
-        if (ip.empty()) {
-            ip = "127.0.0.1";
+    // 客户端 IP 来源：默认按 socket 对端（remote_addr）。
+    // 反向代理部署时可设 GOCOOK_TRUST_PROXY_HEADERS=1 改用 X-Real-IP /
+    // X-Forwarded-For 首个 IP——否则 docker-proxy/nginx 后所有用户共享同一计数。
+    // 警告：该头由客户端可控，仅在可信代理之后启用。
+    static const bool trustProxyHeaders = []() {
+        const char* v = std::getenv("GOCOOK_TRUST_PROXY_HEADERS");
+        bool on = v && std::string(v) == "1";
+        if (on) {
+            LOG_WARN("GOCOOK_TRUST_PROXY_HEADERS=1: 限流改用代理头(X-Real-IP/X-Forwarded-For)，"
+                     "请确保服务端只暴露在可信反向代理之后，否则限流可被伪造头绕过");
         }
+        return on;
+    }();
+    auto clientIp = [](const httplib::Request& req) -> std::string {
+        if (trustProxyHeaders) {
+            if (req.has_header("X-Real-IP"))
+                return req.get_header_value("X-Real-IP");
+            if (req.has_header("X-Forwarded-For")) {
+                const std::string& xff = req.get_header_value("X-Forwarded-For");
+                auto comma = xff.find(',');
+                std::string first = comma == std::string::npos ? xff : xff.substr(0, comma);
+                // 去掉可能的空白
+                while (!first.empty() && (first.front() == ' ' || first.front() == '\t'))
+                    first.erase(first.begin());
+                while (!first.empty() && (first.back() == ' ' || first.back() == '\t'))
+                    first.pop_back();
+                if (!first.empty())
+                    return first;
+            }
+        }
+        return req.remote_addr.empty() ? "127.0.0.1" : req.remote_addr;
+    };
+
+    svr.set_pre_routing_handler([this, clientIp](const httplib::Request& req, httplib::Response& res) {
+        const std::string ip = clientIp(req);
         LOG_DEBUG("%s %s from %s", req.method.c_str(), req.path.c_str(), ip.c_str());
         if (!rateLimiter_.isAllowed(ip, req.path)) {
             setErrorResponse(res, 429, "请求过于频繁，请稍后重试");
@@ -544,6 +574,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
                 "SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
             if (userRes.empty()) {
                 res.status = 404;
+                res.set_header("Content-Type", "application/json");
                 res.body = json{{"error", "Test user 'testuser' not found. Please run seed_test_data.sql"}}.dump();
                 return;
             }
@@ -608,6 +639,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
                 "SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
             if (userRes.empty()) {
                 res.status = 404;
+                res.set_header("Content-Type", "application/json");
                 res.body = json{{"error", "Test user 'testuser' not found"}}.dump();
                 return;
             }
