@@ -29,7 +29,9 @@ services:
     environment:
       # 容器内连接 postgres 服务名，不走 localhost
       GOCOOK_DB_CONN_STRING: "dbname=gocookdb user=gocook password=gocook123 host=postgres port=5432"
-      GOCOOK_JWT_SECRET: "${GOCOOK_JWT_SECRET:-GoCook-Project-Secret-Key-Change-Me-In-Production}"
+      # JWT 签名密钥：必须显式提供，拒绝默认值（默认密钥可伪造任意用户 token）。
+      # 生成方式：openssl rand -base64 32；写入同目录 .env（GOCOOK_JWT_SECRET=...）或导出环境变量。
+      GOCOOK_JWT_SECRET: "${GOCOOK_JWT_SECRET:?请在 .env 或环境变量中设置 GOCOOK_JWT_SECRET（openssl rand -base64 32 生成）}"
       GOCOOK_HOST: "0.0.0.0"
       GOCOOK_PORT: "8080"
       GOCOOK_LOG_LEVEL: "info"
