@@ -135,6 +135,7 @@ install(TARGETS appclient
 
 # ---- 单元测试 ----
 # GTest 缺失时跳过测试子目录（仅告警），避免无 GTest 的环境 configure 硬失败
+# option 在顶层已有定义；此处保留是为了单独 configure 本目录时默认行为不变（no-op 不覆盖顶层值）
 option(BUILD_TESTING "Build unit tests" ON)
 if(BUILD_TESTING)
     enable_testing()

@@ -13,5 +13,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 构建产物：server/server（服务端），client/appclient（客户端）
 # ============================================================
 
+# ---- 单元测试（顶层唯一开关：ctest 在 build/ 根目录直接可用）----
+option(BUILD_TESTING "Build unit tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+endif()
+
 add_subdirectory(server)
 add_subdirectory(client)

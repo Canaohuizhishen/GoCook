@@ -16,6 +16,7 @@ pkg_check_modules(PQXX REQUIRED libpqxx)
 # ---- 可复用的服务器库（不含 main.cpp）----
 set(SERVER_LIB_SOURCES
     common/ConnectionPool.cpp common/ConnectionPool.h
+    common/DbExecutor.h
     Router.h Router.cpp
     middleware/auth_middleware.h middleware/auth_middleware.cpp
     middleware/RateLimiter.h middleware/RateLimiter.cpp
@@ -68,8 +69,7 @@ set(SERVER_LIB_SOURCES
 set(CONTRACTS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/include")
 set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
 
-add_library(gocook-server-lib STATIC ${SERVER_LIB_SOURCES}
-    tests/CMakeLists.txt tests/MockInventoryRepository.h tests/MockRecipeRepository.h tests/MockUserRepository.h tests/test_inventory_service.cpp tests/test_recipe_service.cpp tests/test_unimplemented_services.cpp tests/test_user_service.cpp)
+add_library(gocook-server-lib STATIC ${SERVER_LIB_SOURCES})
 
 target_include_directories(gocook-server-lib PUBLIC
     ${CONTRACTS_DIR}
@@ -96,6 +96,9 @@ add_executable(server main.cpp)
 target_link_libraries(server PRIVATE gocook-server-lib)
 
 # ---- 单元测试 ----
+# option/enable_testing 在顶层 CMakeLists 已有定义；此处保留一份是为了
+# 单独 configure 本目录（如 Dockerfile 的 cmake -S server）时默认行为不变：
+# CMake 对已定义的 option 调用是 no-op，不会覆盖顶层值。
 option(BUILD_TESTING "Build unit tests" ON)
 if(BUILD_TESTING)
     enable_testing()
