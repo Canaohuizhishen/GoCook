@@ -7,6 +7,7 @@ set(TEST_SOURCES
     test_recipe_service.cpp
     test_inventory_service.cpp
     test_unimplemented_services.cpp
+    test_db_executor.cpp
 )
 
 add_executable(test_services ${TEST_SOURCES})

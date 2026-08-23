@@ -2,6 +2,7 @@
 #include <pqxx/pqxx>
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
+#include "../common/DbExecutor.h"
 #include <filesystem>
 #include <fstream>
 
@@ -10,8 +11,16 @@ using namespace gocook::models;
 using namespace gocook::repository;
 using namespace gocook::services;
 
+//   本文件已按"生产级收敛形态"重构：所有常规方法用 executeDb 包裹（见 ../common/DbExecutor.h），
+//   方法体只剩"差异部分"（SQL + 参数 + 行→结构体映射），异常分层/事务边界由辅助函数统一保证。
+//   动态 WHERE 的骨架拼接（ParamBuilder）属于"差异部分"，留在本文件匿名命名空间里（见 4.3 节）。
+//   三个特例保持手写（原因见方法内注释）：
+//     · updateRecipeImage / updateStepImage —— 文件操作 + 数据库混编，失败文案自定义
+//     · deleteRecipe —— 两段式：先读+提交 → 清理图片文件（文件系统操作不可回滚）→ 再执行 DELETE
+
 namespace {
 
+// 动态 WHERE 参数占位符发号器：拼的是"骨架"（结构由代码控制），值永远走参数化
 struct ParamBuilder {
     std::vector<std::string> values;
 
@@ -28,13 +37,14 @@ struct ParamBuilder {
     }
 };
 
-// libpqxx 8: convert string vector to pqxx::params
+// libpqxx 8：把字符串 vector 转成 pqxx::params
 pqxx::params makeParams(const std::vector<std::string>& values) {
     pqxx::params p;
     for (const auto& v : values) p.append(v);
     return p;
 }
 
+// 把 SQL 返回的 tags JSON 数组文本解析成字符串列表
 std::vector<std::string> parseTags(const std::string& jsonStr) {
     if (jsonStr.empty()) return {};
     auto arr = json::parse(jsonStr);
@@ -44,6 +54,8 @@ std::vector<std::string> parseTags(const std::string& jsonStr) {
     return tags;
 }
 
+// 把筛选条件（cuisine/meal_type/difficulty/flavor/max_time/...）逐个拼进 WHERE 骨架，
+// 占位符编号由 ParamBuilder 依次发放，值只进 values 最终走参数化执行（防注入分界线见 4.3 节）
 void applyRecipeFilters(const nlohmann::json& filters,
                         std::string& where,
                         ParamBuilder& pb) {
@@ -93,10 +105,7 @@ void applyRecipeFilters(const nlohmann::json& filters,
 
 bool PgRecipeRepository::existsByContent(const nlohmann::json& ingredients,
                                           const nlohmann::json& steps) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         std::string sql = R"(
             SELECT 1 FROM recipes
             WHERE ingredients = $1::jsonb
@@ -110,21 +119,13 @@ bool PgRecipeRepository::existsByContent(const nlohmann::json& ingredients,
 
         auto rows = txn.exec(sql, pqxx::params{ingredients.dump(), steps.dump()});
         return !rows.empty();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in existsByContent: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
                                                    const nlohmann::json& filters) {
-    PagedRecipes result;
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
+        PagedRecipes result;
         int offset = (page > 0) ? (page - 1) * size : 0;
 
         std::string where = "WHERE r.status = 'approved'";
@@ -143,6 +144,7 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
                         [0][0].as<int>();
         }
 
+        // 排序字段白名单：只认 popular/rating/newest，其余回退默认（ORDER BY 不能拼用户输入）
         std::string order = "ORDER BY r.created_at DESC";
         if (filters.contains("sort_by")) {
             std::string sort = filters["sort_by"].get<std::string>();
@@ -205,26 +207,17 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
         result.pagination.page = page;
         result.pagination.size = size;
         result.pagination.total = total;
-        result.pagination.total_pages = (total + size - 1) / size;
+        result.pagination.total_pages = safeTotalPages(total, size);
 
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findPublicRecipes: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
-    return result;
+        return result;
+    }, "数据库操作失败");
 }
 
 PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
                                                int page, int size,
                                                const nlohmann::json& filters) {
-    PagedRecipes result;
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
+        PagedRecipes result;
         int offset = (page > 0) ? (page - 1) * size : 0;
 
         std::string where = "WHERE r.status = 'approved'";
@@ -314,29 +307,20 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
         result.pagination.page = page;
         result.pagination.size = size;
         result.pagination.total = total;
-        result.pagination.total_pages = (total + size - 1) / size;
+        result.pagination.total_pages = safeTotalPages(total, size);
 
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in searchRecipes: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
-    return result;
+        return result;
+    }, "数据库操作失败");
 }
 
 PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
                                                                     int page,
                                                                     int size) {
-    PagedRecommendedRecipes result;
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
+        PagedRecommendedRecipes result;
         int offset = (page > 0) ? (page - 1) * size : 0;
 
-        // ── Count query ──
+        // ── 总数查询 ──
         std::string countSql = R"(
             SELECT COUNT(DISTINCT r.id)
             FROM recipes r
@@ -346,7 +330,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
         int total = txn.exec(countSql)[0][0].as<int>();
         LOG_DEBUG("[SQL] findRecommendedRecipes count: %d", total);
 
-        // ── Data query: CTE-based inventory matching ──
+        // ── 数据查询：CTE 做库存匹配（推荐引擎核心，见 gocook资料 3.5.x）──
         std::string dataSql = R"(
             WITH user_inv AS (
                 SELECT LOWER(ingredient_name) AS name,
@@ -438,7 +422,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
         for (const auto& row : rows) {
             RecommendedRecipe rec;
 
-            // RecipeSummary fields
+            // RecipeSummary 公共字段
             rec.id = row["recipe_id"].as<int>();
             rec.name = row["name"].is_null() ? "" : row["name"].c_str();
             rec.description = row["description"].is_null() ? "" : row["description"].c_str();
@@ -460,17 +444,17 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
             rec.view_count = row["view_count"].as<int>(0);
             rec.avg_rating = row["avg_rating"].as<double>(0.0);
 
-            // Raw match_score (inventory overlap ratio)
+            // 原始匹配分（库存重合比例）
             rec.match_score = row["match_score"].as<double>(0.0);
 
-            // Internal nutrition data for service-layer scoring
+            // 内部营养数据，供 Service 层打分用
             rec.protein_g = row["protein_g"].as<double>(0.0);
             rec.fat_g = row["fat_g"].as<double>(0.0);
             rec.carbs_g = row["carbs_g"].as<double>(0.0);
             if (!row["submitted_at"].is_null())
                 rec.submitted_at = row["submitted_at"].c_str();
 
-            // MatchStatus: parse available / missing JSON arrays
+            // MatchStatus：解析 available / missing 两个 JSON 数组
             if (!row["available_json"].is_null()) {
                 auto jarr = json::parse(row["available_json"].c_str());
                 for (const auto& j : jarr) {
@@ -498,24 +482,15 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
         result.pagination.page = page;
         result.pagination.size = size;
         result.pagination.total = total;
-        result.pagination.total_pages = (total + size - 1) / size;
-        result.health_filter_applied = false;  // Service layer sets this
+        result.pagination.total_pages = safeTotalPages(total, size);
+        result.health_filter_applied = false;  // 健康过滤由 Service 层设置
 
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findRecommendedRecipes: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
-    return result;
+        return result;
+    }, "数据库操作失败");
 }
 
 RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         bool checkFav = (userId > 0);
         std::string favSelect = checkFav
             ? ", CASE WHEN f.id IS NOT NULL THEN true ELSE false END AS is_favorited"
@@ -607,21 +582,12 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
         detail.created_at = row["created_at"].as<std::string>("");
         detail.updated_at = row["updated_at"].as<std::string>("");
 
-        txn.commit();
         return detail;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findById: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 std::vector<RecipeVideo> PgRecipeRepository::findVideos(int recipeId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         LOG_DEBUG("[SQL] findVideos | recipeId=%d", recipeId);
         pqxx::result r = txn.exec(
             "SELECT id, title, platform, url, thumbnail_url, duration_seconds"
@@ -641,22 +607,12 @@ std::vector<RecipeVideo> PgRecipeRepository::findVideos(int recipeId) {
             v.duration_seconds = row["duration_seconds"].as<int>(0);
             videos.push_back(std::move(v));
         }
-
-        txn.commit();
         return videos;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findVideos: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         // 总数
         LOG_DEBUG("[SQL] findRatings count | recipeId=%d", recipeId);
         pqxx::result countResult = txn.exec(
@@ -688,24 +644,14 @@ PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
             result.data.push_back(std::move(rating));
         }
 
-        int totalPages = (size > 0) ? (total + size - 1) / size : 0;
+        int totalPages = safeTotalPages(total, size);
         result.pagination = {page, size, total, totalPages};
-
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findRatings: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRequest& data) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         json ingredientsJson = json::array();
         for (const auto& ing : data.ingredients)
             ingredientsJson.push_back({{"name", ing.name}, {"quantity", ing.quantity}, {"unit", ing.unit}});
@@ -752,26 +698,16 @@ SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRe
             data.ingredient_type.has_value() ? data.ingredient_type.value() : "",
             userId});
 
-        txn.commit();
-
         SubmitRecipeResponse resp;
         resp.id = r[0][0].as<int>();
         resp.status = "pending";
         return resp;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in create recipe: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, int size, const std::string& status) {
-    PagedMyRecipes result;
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
+        PagedMyRecipes result;
         int offset = (page > 0) ? (page - 1) * size : 0;
 
         std::string where = "WHERE author_id = $1";
@@ -814,23 +750,14 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
         result.pagination.page = page;
         result.pagination.size = size;
         result.pagination.total = total;
-        result.pagination.total_pages = (total + size - 1) / size;
+        result.pagination.total_pages = safeTotalPages(total, size);
 
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findMySubmittedRecipes: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
-    return result;
+        return result;
+    }, "数据库操作失败");
 }
 
 std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecipeRequest& updates) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         // 1. 验证菜谱存在、归属以及是否可编辑
         LOG_DEBUG("[SQL] SELECT author_id, status FROM recipes WHERE id = $1 (update verify) | $1=%d", recipeId);
         pqxx::result r = txn.exec(
@@ -896,30 +823,22 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
             updates.ingredient_type.has_value() ? updates.ingredient_type.value() : "",
             recipeId});
 
-        std::string newStatus = updateResult[0]["status"].c_str();
-        txn.commit();
-        return newStatus;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in update recipe: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+        // 注意：必须在 lambda 内先拷贝成 std::string——updateResult 在 lambda 返回时就销毁，
+        // 直接返回 c_str() 指针会悬空
+        return std::string(updateResult[0]["status"].c_str());
+    }, "数据库操作失败");
 }
 
 void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<int> groupId, std::optional<bool> isPublic) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
-        // Check if already favorited
+    executeDb(db_, [&](pqxx::work& txn) {
+        // 查一下是否已收藏
         LOG_DEBUG("[SQL] toggleFavorite check | userId=%d recipeId=%d", userId, recipeId);
         pqxx::result existing = txn.exec(
             "SELECT id FROM favorites WHERE user_id = $1 AND recipe_id = $2",
             pqxx::params{userId, recipeId});
 
         if (existing.empty()) {
-            // Insert new favorite
+            // 未收藏 → 新增收藏
             int gid = groupId.has_value() ? groupId.value() : 0;
             bool pub = isPublic.has_value() ? isPublic.value() : true;
 
@@ -935,27 +854,18 @@ void PgRecipeRepository::toggleFavorite(int userId, int recipeId, std::optional<
                     pqxx::params{userId, recipeId, pub});
             }
         } else {
-            // Already favorited → unfavorite (toggle off)
+            // 已收藏 → 取消收藏（toggle 关）
             LOG_DEBUG("[SQL] toggleFavorite DELETE | userId=%d recipeId=%d", userId, recipeId);
             txn.exec(
                 "DELETE FROM favorites WHERE user_id = $1 AND recipe_id = $2",
                 pqxx::params{userId, recipeId});
         }
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in toggleFavorite: %s", e.what());
-        throw ServiceException("操作失败");
-    }
+    }, "操作失败");
 }
 
 void PgRecipeRepository::rateRecipe(int userId, int recipeId,
                                     const RateRecipeRequest& req) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    executeDb(db_, [&](pqxx::work& txn) {
         // 检查是否已评过分
         LOG_DEBUG("[SQL] rateRecipe check existing | userId=%d recipeId=%d", userId, recipeId);
         pqxx::result existing = txn.exec(
@@ -971,7 +881,7 @@ void PgRecipeRepository::rateRecipe(int userId, int recipeId,
             " VALUES ($1, $2, $3, $4)",
             pqxx::params{userId, recipeId, req.rating, req.comment});
 
-        // 更新菜谱平均分
+        // 更新菜谱平均分（同一事务：评分写进去但平均分没更新这种事不可能发生）
         LOG_DEBUG("[SQL] rateRecipe update avg_rating | recipeId=%d", recipeId);
         txn.exec(
             "UPDATE recipes SET avg_rating = ("
@@ -979,22 +889,12 @@ void PgRecipeRepository::rateRecipe(int userId, int recipeId,
             "  FROM ratings WHERE recipe_id = $1"
             ") WHERE id = $1",
             pqxx::params{recipeId});
-
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in rateRecipe: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 void PgRecipeRepository::updateRating(int userId, int recipeId, int ratingId,
                                       const RateRecipeRequest& req) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    executeDb(db_, [&](pqxx::work& txn) {
         LOG_DEBUG("[SQL] updateRating | ratingId=%d userId=%d recipeId=%d", ratingId, userId, recipeId);
         pqxx::result r = txn.exec(
             "UPDATE ratings SET rating = $1, comment = $2, updated_at = NOW()"
@@ -1014,21 +914,11 @@ void PgRecipeRepository::updateRating(int userId, int recipeId, int ratingId,
             "  FROM ratings WHERE recipe_id = $1"
             ") WHERE id = $1",
             pqxx::params{recipeId});
-
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in updateRating: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 void PgRecipeRepository::deleteRating(int userId, int recipeId, int ratingId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    executeDb(db_, [&](pqxx::work& txn) {
         LOG_DEBUG("[SQL] deleteRating | ratingId=%d userId=%d recipeId=%d", ratingId, userId, recipeId);
         pqxx::result r = txn.exec(
             "DELETE FROM ratings WHERE id = $1 AND user_id = $2 AND recipe_id = $3"
@@ -1047,21 +937,11 @@ void PgRecipeRepository::deleteRating(int userId, int recipeId, int ratingId) {
             "  FROM ratings WHERE recipe_id = $1"
             ") WHERE id = $1",
             pqxx::params{recipeId});
-
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in deleteRating: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int recipeId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) -> std::optional<RecipeRating> {
         LOG_DEBUG("[SQL] findMyRating | userId=%d recipeId=%d", userId, recipeId);
         pqxx::result r = txn.exec(
             "SELECT r.id, r.user_id, u.username, r.rating, r.comment, r.created_at"
@@ -1071,7 +951,6 @@ std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int rec
             pqxx::params{recipeId, userId});
 
         if (r.empty()) {
-            txn.commit();
             return std::nullopt;
         }
 
@@ -1083,22 +962,12 @@ std::optional<RecipeRating> PgRecipeRepository::findMyRating(int userId, int rec
         rating.rating = row["rating"].as<int>();
         rating.comment = row["comment"].as<std::string>("");
         rating.created_at = row["created_at"].as<std::string>("");
-
-        txn.commit();
         return rating;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findMyRating: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int size) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         // 总数
         LOG_DEBUG("[SQL] findMyRatings count | userId=%d", userId);
         pqxx::result countResult = txn.exec(
@@ -1132,24 +1001,14 @@ PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int siz
             result.data.push_back(std::move(item));
         }
 
-        int totalPages = (size > 0) ? (total + size - 1) / size : 0;
+        int totalPages = safeTotalPages(total, size);
         result.pagination = {page, size, total, totalPages};
-
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findMyRatings: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         LOG_DEBUG("[SQL] findNutrition | recipeId=%d", recipeId);
         pqxx::result r = txn.exec(
             "SELECT r.id, r.name, r.nutrition_info"
@@ -1195,17 +1054,12 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
         }
 
         report.health_notes = nutJson.value("health_notes", "");
-
-        txn.commit();
         return report;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error in findNutrition: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
+// ⚠️ 特例：文件操作（拷贝/清理）+ 数据库更新混编，失败文案自定义（"菜谱图片保存失败"）。
+// 保持手写——与 uploadAvatar 同理，特例显式化。
 std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::string& filePath) {
     try {
         std::string ext = ".jpg";
@@ -1219,6 +1073,7 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
             else if (lower == ".svg")  ext = ".svg";
         }
 
+        // 生成唯一文件名：recipe_<id>_<时间戳><扩展名>
         auto now = std::chrono::system_clock::now();
         auto ts = std::chrono::duration_cast<std::chrono::seconds>(
                       now.time_since_epoch()).count();
@@ -1231,17 +1086,20 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
 
+        // 把上传的临时文件复制到永久位置
         std::filesystem::copy(filePath, destPath,
                               std::filesystem::copy_options::overwrite_existing);
 
         std::string imageUrl = "/uploads/recipes/" + filename;
 
+        // 更新数据库里的 image_url
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
         txn.exec("UPDATE recipes SET image_url = $1 WHERE id = $2",
                         pqxx::params{imageUrl, recipeId});
         txn.commit();
 
+        // 清理临时文件
         std::filesystem::remove(filePath);
         return imageUrl;
 
@@ -1253,6 +1111,8 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
     }
 }
 
+// ⚠️ 特例：文件操作 + 数据库更新混编，且要先读 JSONB steps 改完再写回，失败文案自定义
+// （"步骤图片保存失败"）。保持手写。
 std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, const std::string& filePath) {
     try {
         std::string ext = ".jpg";
@@ -1266,6 +1126,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
             else if (lower == ".svg")  ext = ".svg";
         }
 
+        // 生成唯一文件名：recipe_<id>_step_<索引>_<时间戳><扩展名>
         auto now = std::chrono::system_clock::now();
         auto ts = std::chrono::duration_cast<std::chrono::seconds>(
                       now.time_since_epoch()).count();
@@ -1279,6 +1140,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
 
+        // 把上传的临时文件复制到永久位置
         std::filesystem::copy(filePath, destPath,
                               std::filesystem::copy_options::overwrite_existing);
 
@@ -1287,6 +1149,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
+        // 读 JSONB steps，校验步骤索引，把 image_url 写进对应步骤再整体写回
         pqxx::result rows = txn.exec(
             "SELECT steps FROM recipes WHERE id = $1", pqxx::params{recipeId});
         if (rows.empty()) {
@@ -1304,6 +1167,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
                         pqxx::params{steps.dump(), recipeId});
         txn.commit();
 
+        // 清理临时文件
         std::filesystem::remove(filePath);
         return imageUrl;
 
@@ -1315,6 +1179,9 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
     }
 }
 
+// ⚠️ 特例：两段式删除（笔记 4.5 反例同款）——① 先在一个事务里读菜谱信息（校验权限 +
+// 收集图片路径）并提交；② 清理图片文件（文件系统操作不能回滚）；③ 再开第二个事务执行
+// DELETE。整个过程横跨两个连接和文件系统，无法用 executeDb 包裹，保持手写。
 void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
     try {
         auto conn = db_.getConnection();
@@ -1377,7 +1244,8 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
             } catch (...) {}
         }
 
-        txn.commit(); // commit before file deletion
+        // 先提交（文件删除在提交之后——文件系统操作不能回滚）
+        txn.commit();
 
         // 清理图片文件（失败不影响数据库删除）
         for (const auto& f : filesToRemove) {

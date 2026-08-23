@@ -2,16 +2,17 @@
 #include <pqxx/pqxx>
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
+#include "../common/DbExecutor.h"
 
 using namespace gocook::repository;
 using namespace gocook::services;
 using namespace gocook::models;
 
-PagedAnnouncements PgAnnouncementRepository::findAll(int page, int size) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
+//   本文件已按"生产级收敛形态"重构：方法用 executeDb 包裹（见 ../common/DbExecutor.h），
+//   异常分层/事务边界由辅助函数统一保证。
 
+PagedAnnouncements PgAnnouncementRepository::findAll(int page, int size) {
+    return executeDb(db_, [&](pqxx::work& txn) {
         pqxx::result countRes = txn.exec(
             "SELECT COUNT(*) FROM announcements");
         int total = countRes[0][0].as<int>();
@@ -37,14 +38,8 @@ PagedAnnouncements PgAnnouncementRepository::findAll(int page, int size) {
         result.pagination.page = page;
         result.pagination.size = size;
         result.pagination.total = total;
-        result.pagination.total_pages = (total + size - 1) / size;
+        result.pagination.total_pages = safeTotalPages(total, size);
 
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }

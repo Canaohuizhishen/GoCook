@@ -2,16 +2,18 @@
 #include <pqxx/pqxx>
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
+#include "../common/DbExecutor.h"
 
 using namespace gocook::models;
 using namespace gocook::repository;
 using namespace gocook::services;
 
+//   本文件已按"生产级收敛形态"重构：每个方法用 executeDb 包裹（见 ../common/DbExecutor.h），
+//   方法体只剩"差异部分"（SQL + 参数 + 行→结构体映射），异常分层/事务边界由辅助函数统一保证。
+
 PagedInventory PgInventoryRepository::findInventory(int userId, int page, int size) {
-    PagedInventory result;
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
+    return executeDb(db_, [&](pqxx::work& txn) {
+        PagedInventory result;
 
         LOG_DEBUG("[SQL] findInventory count | userId=%d", userId);
         pqxx::result countRes = txn.exec(
@@ -42,29 +44,21 @@ PagedInventory PgInventoryRepository::findInventory(int userId, int page, int si
         result.pagination.page        = page;
         result.pagination.size        = size;
         result.pagination.total       = total;
-        result.pagination.total_pages = (total + size - 1) / size;
+        result.pagination.total_pages = safeTotalPages(total, size);
 
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
-    return result;
+        return result;
+    }, "数据库操作失败");
 }
 
 int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequest& item) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         LOG_DEBUG("[SQL] upsertInventory check existing | userId=%d ing=%s", userId, item.ingredient_name.c_str());
         pqxx::result existing = txn.exec(
             "SELECT id FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
             pqxx::params{userId, item.ingredient_name});
 
         if (!existing.empty()) {
+            // 已有行 → UPDATE（同用户同食材只允许一行，UNIQUE(user_id, ingredient_name) 兜底）
             int existingId = existing[0]["id"].as<int>();
             if (item.expiry_date.has_value()) {
                 LOG_DEBUG("[SQL] upsertInventory UPDATE (with expiry) | id=%d", existingId);
@@ -77,16 +71,15 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
                     "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
                     pqxx::params{item.quantity, item.unit, existingId});
             }
-            txn.commit();
             return existingId;
         } else {
+            // 没有 → INSERT ... RETURNING id
             if (item.expiry_date.has_value()) {
                 LOG_DEBUG("[SQL] upsertInventory INSERT (with expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
                 pqxx::result res = txn.exec(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit, expiry_date) "
                     "VALUES ($1, $2, $3, $4, $5) RETURNING id",
                     pqxx::params{userId, item.ingredient_name, item.quantity, item.unit, item.expiry_date.value()});
-                txn.commit();
                 return res[0][0].as<int>();
             } else {
                 LOG_DEBUG("[SQL] upsertInventory INSERT (no expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
@@ -94,22 +87,14 @@ int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequ
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
                     "VALUES ($1, $2, $3, $4) RETURNING id",
                     pqxx::params{userId, item.ingredient_name, item.quantity, item.unit});
-                txn.commit();
                 return res[0][0].as<int>();
             }
         }
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
+    executeDb(db_, [&](pqxx::work& txn) {
         LOG_DEBUG("[SQL] deleteInventoryItem | id=%d userId=%d", itemId, userId);
         auto res = txn.exec(
             "DELETE FROM inventory WHERE id = $1 AND user_id = $2",
@@ -117,20 +102,11 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
         if (res.affected_rows() == 0) {
             throw ServiceException("Item not found or not owned by user", 404);
         }
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 std::vector<ShoppingListSummary> PgInventoryRepository::findShoppingLists(int userId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         pqxx::result rows = txn.exec(
             "SELECT sl.id, sl.name, COUNT(sli.id) AS item_count, sl.created_at "
             "FROM shopping_lists sl "
@@ -148,21 +124,12 @@ std::vector<ShoppingListSummary> PgInventoryRepository::findShoppingLists(int us
             summary.created_at = row["created_at"].c_str();
             result.push_back(std::move(summary));
         }
-
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 int PgInventoryRepository::createShoppingList(int userId, const CreateShoppingListRequest& req) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
+    return executeDb(db_, [&](pqxx::work& txn) {
         pqxx::result res;
         if (req.plan_id.has_value()) {
             res = txn.exec(
@@ -173,22 +140,12 @@ int PgInventoryRepository::createShoppingList(int userId, const CreateShoppingLi
                 "INSERT INTO shopping_lists (user_id, name) VALUES ($1, $2) RETURNING id",
                 pqxx::params{userId, req.name});
         }
-        int id = res[0]["id"].as<int>();
-        txn.commit();
-        return id;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+        return res[0]["id"].as<int>();
+    }, "数据库操作失败");
 }
 
 ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         pqxx::result listRes = txn.exec(
             "SELECT id, name FROM shopping_lists WHERE id = $1 AND user_id = $2",
             pqxx::params{listId, userId});
@@ -217,22 +174,12 @@ ShoppingList PgInventoryRepository::findShoppingListDetail(int userId, int listI
             item.checked = row["checked"].as<bool>();
             result.items.push_back(std::move(item));
         }
-
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 void PgInventoryRepository::deleteShoppingList(int userId, int listId) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    executeDb(db_, [&](pqxx::work& txn) {
         pqxx::result res = txn.exec(
             "DELETE FROM shopping_lists WHERE id = $1 AND user_id = $2",
             pqxx::params{listId, userId});
@@ -240,22 +187,12 @@ void PgInventoryRepository::deleteShoppingList(int userId, int listId) {
         if (res.affected_rows() == 0) {
             throw ServiceException("购物清单不存在", 404);
         }
-
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int itemId,
                                                        const UpdateShoppingItemRequest& req) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    executeDb(db_, [&](pqxx::work& txn) {
         // 查询当前清单项 + 验证归属
         pqxx::result itemRes = txn.exec(
             "SELECT sli.checked, sli.ingredient_name, sli.to_buy_quantity, sli.unit "
@@ -288,34 +225,25 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
                 pqxx::params{userId, ingredientName});
 
             if (!existing.empty()) {
+                // 已有库存 → 数量累加
                 int invId = existing[0]["id"].as<int>();
                 double currentQty = existing[0]["quantity"].as<double>();
                 txn.exec(
                     "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
                     pqxx::params{currentQty + toBuyQty, unit, invId});
             } else {
-                // 全新食材，INSERT
+                // 全新食材 → INSERT
                 txn.exec(
                     "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
                     "VALUES ($1, $2, $3, $4)",
                     pqxx::params{userId, ingredientName, toBuyQty, unit});
             }
         }
-
-        txn.commit();
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, int listId, const std::vector<BatchShoppingItem>& items) {
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         // 验证购物清单归属
         pqxx::result listRes = txn.exec(
             "SELECT id FROM shopping_lists WHERE id = $1 AND user_id = $2",
@@ -328,7 +256,7 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
         int addedCount = 0;
 
         for (const auto& reqItem : items) {
-            // 查询当前库存量
+            // 查询当前库存量，算出"还差多少要买"（to_buy = max(需要 - 已有, 0)）
             double invQty = 0.0;
             pqxx::result invRes = txn.exec(
                 "SELECT quantity FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
@@ -359,25 +287,15 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
         }
 
         result.message = "Successfully added " + std::to_string(addedCount) + " items";
-
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
 
 std::string PgInventoryRepository::exportShoppingList(int userId, int listId, const std::string& format) {
     if (format != "text") {
-        throw ServiceException("不支持的导出格式，仅支持 text", 400);
+        throw ServiceException("不支持的导出格式，仅支持 text", 400);   // 纯参数校验，不碰数据库，放在 executeDb 外
     }
-    try {
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-
+    return executeDb(db_, [&](pqxx::work& txn) {
         pqxx::result listRes = txn.exec(
             "SELECT name FROM shopping_lists WHERE id = $1 AND user_id = $2",
             pqxx::params{listId, userId});
@@ -413,13 +331,6 @@ std::string PgInventoryRepository::exportShoppingList(int userId, int listId, co
             if (!unit.empty()) result += " " + unit;
             result += "\n";
         }
-
-        txn.commit();
         return result;
-    } catch (const ServiceException&) {
-        throw;
-    } catch (const std::exception& e) {
-        LOG_WARN("Database error: %s", e.what());
-        throw ServiceException("数据库操作失败");
-    }
+    }, "数据库操作失败");
 }
