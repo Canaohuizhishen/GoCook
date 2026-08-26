@@ -29,15 +29,15 @@ public:
     MOCK_METHOD(std::vector<gocook::models::RecipeVideo>, findVideos, (int), (override));
     // 查询菜谱评分与评论
     MOCK_METHOD(gocook::models::PagedRatings, findRatings, (int, int, int), (override));
-    // 创建菜谱投稿
+    // 创建菜谱投稿（第三个参数为服务层计算好的营养 JSON）
     MOCK_METHOD(gocook::models::SubmitRecipeResponse, create,
-                (int, const gocook::models::SubmitRecipeRequest&), (override));
+                (int, const gocook::models::SubmitRecipeRequest&, const nlohmann::json&), (override));
     // 查询当前用户的投稿列表
     MOCK_METHOD(gocook::models::PagedMyRecipes, findMySubmittedRecipes,
                 (int, int, int, const std::string&), (override));
-    // 更新未审核菜谱
+    // 更新未审核菜谱（第四个参数为服务层计算好的营养 JSON；nullopt=保留旧营养）
     MOCK_METHOD(std::string, update,
-                (int, int, const gocook::models::EditRecipeRequest&), (override));
+                (int, int, const gocook::models::EditRecipeRequest&, const std::optional<nlohmann::json>&), (override));
     // 切换收藏状态
     MOCK_METHOD(void, toggleFavorite,
                 (int, int, std::optional<int>, std::optional<bool>), (override));

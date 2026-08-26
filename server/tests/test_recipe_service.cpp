@@ -120,7 +120,7 @@ TEST(RecipeServiceTest, 投稿菜谱正确委派) {
     EXPECT_CALL(*repo, existsByContent(_, _)).WillOnce(Return(false));
     EXPECT_CALL(*repo, create(42, Truly([](const auto& r) {
         return r.name == "New Recipe";
-    }))).WillOnce(Return(expectedResp));
+    }), _)).WillOnce(Return(expectedResp));
 
     auto result = service.submitRecipe(42, req);
     EXPECT_EQ(result.id, 99);
@@ -135,7 +135,7 @@ TEST(RecipeServiceTest, 投稿内容完全一致驳回) {
     auto req = makeSubmitReq();
 
     EXPECT_CALL(*repo, existsByContent(_, _)).WillOnce(Return(true));
-    EXPECT_CALL(*repo, create(_, _)).Times(0);
+    EXPECT_CALL(*repo, create(_, _, _)).Times(0);
 
     try {
         service.submitRecipe(42, req);
@@ -487,7 +487,7 @@ TEST(RecipeServiceTest, 编辑菜谱成功委派) {
     updates.name = "Modified Recipe";
     updates.description = "Modified description";
 
-    EXPECT_CALL(*repo, update(42, 1, ::testing::_))
+    EXPECT_CALL(*repo, update(42, 1, ::testing::_, _))
         .WillOnce(Return(std::string("pending")));
 
     std::string newStatus = service.editRecipe(42, 1, updates);
@@ -499,7 +499,7 @@ TEST(RecipeServiceTest, 编辑已通过菜谱后进入pending) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, update(42, 1, ::testing::_))
+    EXPECT_CALL(*repo, update(42, 1, ::testing::_, _))
         .WillOnce(Return(std::string("pending")));
 
     std::string newStatus = service.editRecipe(42, 1, {});
@@ -511,7 +511,7 @@ TEST(RecipeServiceTest, 编辑他人菜谱返回403) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, update(99, 1, ::testing::_))
+    EXPECT_CALL(*repo, update(99, 1, ::testing::_, _))
         .WillOnce(Throw(ServiceException("仅可编辑自己投稿的菜谱", 403)));
 
     try {
@@ -528,7 +528,7 @@ TEST(RecipeServiceTest, 编辑不存在的菜谱返回404) {
     auto* repo = mock.get();
     RecipeServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, update(42, 999, ::testing::_))
+    EXPECT_CALL(*repo, update(42, 999, ::testing::_, _))
         .WillOnce(Throw(ServiceException("菜谱不存在", 404)));
 
     try {

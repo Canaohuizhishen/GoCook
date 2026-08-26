@@ -265,7 +265,9 @@ Page {
                 width: parent.width
                 height: 1
                 color: Theme.dividerColor
-                visible: nutrition && nutrition.calories > 0
+                // 与 NutritionSummaryCard 的有数据判定一致（has_data 缺省时回退 calories>0）
+                visible: nutrition && (nutrition.has_data !== undefined
+                                       ? nutrition.has_data : nutrition.calories > 0)
             }
 
             NutritionSummaryCard {

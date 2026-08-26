@@ -47,6 +47,8 @@ docker exec -it gocook-postgres psql -U gocook -d gocookdb
 ```bash
 docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/create_all_tables.sql
 docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_test_data.sql
+# 食材营养库（投稿营养自动计算用；幂等可重复执行，旧库升级只需跑这一条）
+docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_ingredient_nutrition.sql
 ```
 
 常用 psql 命令速查：

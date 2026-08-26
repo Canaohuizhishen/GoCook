@@ -17,6 +17,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_TESTING "Build unit tests" ON)
 if(BUILD_TESTING)
     enable_testing()
+    # 自定义 gtest 测试发现：系统 gtest 1.17 的 JSON 输出会损坏非 ASCII 测试名，
+    # 导致 gtest_discover_tests 生成的双编码过滤器匹配不到任何中文名用例
+    # （空跑通过）。改用 stdout 解析，见 cmake/DiscoverGTestTests.cmake。
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 endif()
 
 add_subdirectory(server)

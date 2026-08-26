@@ -162,7 +162,7 @@ Page {
             ListView {
                 id: ingredientsList
                 width: parent.width
-                height: contentHeight + (ingredientListModel.count > 0 ? 48 : 0)
+                height: contentHeight
                 interactive: false
                 model: ListModel { id: ingredientListModel }
                 spacing: 4
@@ -189,12 +189,13 @@ Page {
                         }
                     }
                 }
-                footer: CustomButton {
-                    width: ingredientsList.width
-                    buttonText: qsTr("+ 添加食材")
-                    buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: ingredientDialog.open()
-                }
+            }
+
+            CustomButton {
+                width: parent.width
+                buttonText: qsTr("+ 添加食材")
+                buttonType: CustomButton.ButtonType.Secondary
+                onClicked: ingredientDialog.open()
             }
 
             Rectangle { width: parent.width; height: 1; color: Theme.dividerColor }
@@ -207,7 +208,7 @@ Page {
             ListView {
                 id: stepsList
                 width: parent.width
-                height: contentHeight + (stepListModel.count > 0 ? 48 : 0)
+                height: contentHeight
                 interactive: false
                 model: ListModel { id: stepListModel }
                 spacing: 4
@@ -260,11 +261,59 @@ Page {
                         }
                     }
                 }
-                footer: CustomButton {
-                    width: stepsList.width
-                    buttonText: qsTr("+ 添加步骤")
-                    buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: stepDialog.open()
+            }
+
+            CustomButton {
+                width: parent.width
+                buttonText: qsTr("+ 添加步骤")
+                buttonType: CustomButton.ButtonType.Secondary
+                onClicked: stepDialog.open()
+            }
+
+            // 营养区与步骤列表的分隔线（仅编辑模式）
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Theme.dividerColor
+                visible: recipeId > 0
+            }
+
+            // 营养合计（仅编辑模式展示；数值为上次保存时服务端按食材自动计算的结果）
+            Column {
+                width: parent.width
+                spacing: Theme.spacingXSmall
+                visible: recipeId > 0
+
+                SectionHeader {
+                    width: parent.width
+                    headerText: qsTr("营养合计")
+                }
+
+                Text {
+                    text: qsTr("由系统根据食材自动计算，保存修改后更新")
+                    font.pointSize: Theme.fontSizeCaption
+                    color: Theme.textHint
+                }
+
+                NutritionSummaryCard {
+                    detailRecipeId: page.recipeId
+                    stackView: page._stackView
+                    showHeader: false   // 外层已有"营养合计"标题
+                }
+
+                // 无数据补位提示（卡片在有数据时才可见；判定与服务端 has_data 一致，
+                // 旧缓存缺字段时回退 calories>0，避免 0 千卡但有钠数据的菜谱误报空态）
+                Text {
+                    width: parent.width
+                    text: qsTr("该菜谱暂无营养报告（食材未收录或用量无法换算）")
+                    font.pointSize: Theme.fontSizeCaption
+                    color: Theme.textHint
+                    wrapMode: Text.WordWrap
+                    visible: {
+                        var n = recipeVM.recipeDetail.nutrition
+                        var has = n && (n.has_data !== undefined ? n.has_data : n.calories > 0)
+                        return !has
+                    }
                 }
             }
 
@@ -329,13 +378,14 @@ Page {
             TextField { id: ingNameField; placeholderText: qsTr("食材名"); Layout.fillWidth: true }
             RowLayout {
                 Layout.fillWidth: true
-                TextField { id: ingQtyField; placeholderText: qsTr("数量"); Layout.preferredWidth: 100; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                TextField { id: ingQtyField; placeholderText: qsTr("数量（必填，>0）"); Layout.preferredWidth: 100; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                 TextField { id: ingUnitField; placeholderText: qsTr("单位 (如 克)"); Layout.fillWidth: true }
             }
             CustomButton {
                 Layout.fillWidth: true
                 buttonText: qsTr("确定")
-                enabled: ingNameField.text.trim() !== ""
+                // 数量必填且 >0：数量为 0 的食材（如"适量"）会被服务端跳过，静默丢失营养贡献
+                enabled: ingNameField.text.trim() !== "" && parseFloat(ingQtyField.text) > 0
                 onClicked: {
                     ingredientListModel.append({
                         name: ingNameField.text.trim(),

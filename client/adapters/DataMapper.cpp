@@ -21,6 +21,7 @@ namespace DataMapper {
         map["protein"]  = nutrition.protein;
         map["fat"]      = nutrition.fat;
         map["carbs"]    = nutrition.carbs;
+        map["has_data"] = nutrition.has_data;
         return map;
     }
 
@@ -223,7 +224,17 @@ namespace DataMapper {
             breakdown << toMap(item);
         map["ingredients_breakdown"] = breakdown;
 
+        QVariantList excluded;
+        for (const auto& item : report.excluded_ingredients) {
+            QVariantMap m;
+            m["name"]   = QString::fromStdString(item.name);
+            m["reason"] = QString::fromStdString(item.reason);
+            excluded << m;
+        }
+        map["excluded_ingredients"] = excluded;
+
         map["health_notes"] = QString::fromStdString(report.health_notes);
+        map["has_data"] = report.has_data;
         return map;
     }
 

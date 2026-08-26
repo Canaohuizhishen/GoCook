@@ -8,14 +8,20 @@ Column {
     id: root
     width: parent ? parent.width : 200
     spacing: Theme.spacingXSmall
-    visible: _nutrition && _nutrition.calories > 0
+    // 有数据判定：优先用服务端 has_data；旧缓存/旧服务端缺字段时回退 calories>0
+    readonly property bool _hasNutrition: !!_nutrition && _nutrition !== null
+        && (_nutrition.has_data !== undefined ? _nutrition.has_data : _nutrition.calories > 0)
+    visible: _hasNutrition
 
     property int detailRecipeId: 0
     property var stackView: null
+    // 是否显示自带标题（编辑页外层已有标题时传 false，避免重复）
+    property bool showHeader: true
     readonly property var _nutrition: recipeVM.recipeDetail.nutrition || ({})
 
     SectionHeader {
-        headerText: qsTr("营养信息")
+        headerText: qsTr("营养合计")
+        visible: root.showHeader
     }
 
     Grid {
@@ -32,6 +38,9 @@ Column {
         Text { text: qsTr("碳水"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeCaption }
         Text { text: (_nutrition.carbs || 0) + " g"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeCaption }
     }
+
+    // 摘要与按钮之间的间距（避免紧挨）
+    Item { width: parent.width; height: Theme.spacingMedium }
 
     CustomButton {
         width: parent.width

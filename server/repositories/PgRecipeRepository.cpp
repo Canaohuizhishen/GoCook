@@ -162,7 +162,8 @@ PagedRecipes PgRecipeRepository::findPublicRecipes(int page, int size,
             SELECT r.id, r.name, r.description, r.prep_time_minutes,
                    r.cook_time_minutes, r.image_url,
                    array_to_json(r.tags) AS tags_json,
-                   COALESCE((r.nutrition_info->>'calories')::numeric, 0) AS calories,
+                   -- 营养热量取整后再转 int：自动计算结果带 1 位小数（如 457.7），直接 as<int> 会转换失败
+                   COALESCE(ROUND((r.nutrition_info->>'calories')::numeric), 0) AS calories,
                    r.author_id,
                    u.username AS author_name, r.cooking_method, r.flavor,
                    r.ingredient_type, r.view_count, r.avg_rating
@@ -268,7 +269,8 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
             SELECT r.id, r.name, r.description, r.prep_time_minutes,
                    r.cook_time_minutes, r.image_url,
                    array_to_json(r.tags) AS tags_json,
-                   COALESCE((r.nutrition_info->>'calories')::numeric, 0) AS calories,
+                   -- 营养热量取整后再转 int：自动计算结果带 1 位小数（如 457.7），直接 as<int> 会转换失败
+                   COALESCE(ROUND((r.nutrition_info->>'calories')::numeric), 0) AS calories,
                    r.author_id,
                    u.username AS author_name, r.cooking_method, r.flavor,
                    r.ingredient_type, r.view_count, r.avg_rating
@@ -402,7 +404,8 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
                 r.prep_time_minutes,
                 r.cook_time_minutes,
                 array_to_json(r.tags) AS tags_json,
-                COALESCE((r.nutrition_info->>'calories')::numeric, 0) AS calories,
+                -- 营养热量取整后再转 int：自动计算结果带 1 位小数（如 457.7），直接 as<int> 会转换失败
+                   COALESCE(ROUND((r.nutrition_info->>'calories')::numeric), 0) AS calories,
                 r.author_id,
                 u.username AS author_name,
                 r.cooking_method,
@@ -578,13 +581,26 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             }
         }
 
-        // 解析 nutrition_info JSONB
+        // 解析 nutrition_info JSONB（has_data=false 表示无可用营养数据，前端展示空态而非全 0）
+        // 判定规则与 findNutrition 完全一致，避免详情页与报告页对同一菜谱结论相反：
+        //   新格式（含 per_serving 对象）→ true；旧 flat-only 格式 → 四项任一 >0 才 true；
+        //   空对象/全 0 flat → false。
         if (!row["nutrition_info"].is_null()) {
             auto nutJson = json::parse(row["nutrition_info"].c_str());
             detail.nutrition.calories = nutJson.value("calories", 0.0);
             detail.nutrition.protein = nutJson.value("protein", 0.0);
             detail.nutrition.fat = nutJson.value("fat", 0.0);
             detail.nutrition.carbs = nutJson.value("carbs", 0.0);
+            if (nutJson.contains("per_serving") && nutJson["per_serving"].is_object()) {
+                detail.nutrition.has_data = true;
+            } else {
+                detail.nutrition.has_data = detail.nutrition.calories > 0.0
+                    || detail.nutrition.protein > 0.0
+                    || detail.nutrition.fat > 0.0
+                    || detail.nutrition.carbs > 0.0;
+            }
+        } else {
+            detail.nutrition.has_data = false;
         }
 
         // 填充 tags
@@ -668,7 +684,8 @@ PagedRatings PgRecipeRepository::findRatings(int recipeId, int page, int size) {
     }, "数据库操作失败");
 }
 
-SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRequest& data) {
+SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRequest& data,
+                                                const nlohmann::json& nutritionInfo) {
     return executeDb(db_, [&](pqxx::work& txn) {
         json ingredientsJson = json::array();
         for (const auto& ing : data.ingredients)
@@ -686,15 +703,8 @@ SubmitRecipeResponse PgRecipeRepository::create(int userId, const SubmitRecipeRe
             stepsJson.push_back(step);
         }
 
-        json nutritionJson;
-        if (data.nutrition.has_value()) {
-            nutritionJson["calories"] = data.nutrition->calories;
-            nutritionJson["protein"]  = data.nutrition->protein;
-            nutritionJson["fat"]      = data.nutrition->fat;
-            nutritionJson["carbs"]    = data.nutrition->carbs;
-        } else {
-            nutritionJson = json::object();
-        }
+        // 营养 JSON 由 Service 层按食材清单计算好后传入（无数据时传空对象 {}）
+        const json& nutritionJson = nutritionInfo;
 
         LOG_DEBUG("[SQL] INSERT recipes (create) | author_id=%d name=%s", userId, data.name.c_str());
         pqxx::result r = txn.exec(
@@ -774,7 +784,8 @@ PagedMyRecipes PgRecipeRepository::findMySubmittedRecipes(int userId, int page, 
     }, "数据库操作失败");
 }
 
-std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecipeRequest& updates) {
+std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecipeRequest& updates,
+                                       const std::optional<nlohmann::json>& nutritionInfo) {
     return executeDb(db_, [&](pqxx::work& txn) {
         // 1. 验证菜谱存在、归属以及是否可编辑
         LOG_DEBUG("[SQL] SELECT author_id, status FROM recipes WHERE id = $1 (update verify) | $1=%d", recipeId);
@@ -809,37 +820,38 @@ std::string PgRecipeRepository::update(int userId, int recipeId, const EditRecip
             stepsJson.push_back(step);
         }
 
-        json nutritionJson;
-        if (updates.nutrition.has_value()) {
-            nutritionJson["calories"] = updates.nutrition->calories;
-            nutritionJson["protein"]  = updates.nutrition->protein;
-            nutritionJson["fat"]      = updates.nutrition->fat;
-            nutritionJson["carbs"]    = updates.nutrition->carbs;
-        } else {
-            nutritionJson = json::object();
-        }
+        // 营养 JSON 由 Service 层按新食材清单计算好后传入：
+        //   has_value → 写入计算值（无数据时为 "{}"）；
+        //   nullopt（营养计算不可用且无手填，如营养表查询异常）→ 传 SQL NULL，
+        //   COALESCE 保留库中已有 nutrition_info，编辑不因计算不可用而清空营养。
+        pqxx::params params;
+        params.append(updates.name);
+        params.append(updates.description);
+        params.append(updates.image_url);
+        params.append(ingredientsJson.dump());
+        params.append(stepsJson.dump());
+        if (nutritionInfo.has_value())
+            params.append(nutritionInfo->dump());
+        else
+            params.append();   // SQL NULL
+        params.append(updates.tags);
+        params.append(updates.cooking_method.has_value() ? updates.cooking_method.value() : "");
+        params.append(updates.flavor.has_value() ? updates.flavor.value() : "");
+        params.append(updates.ingredient_type.has_value() ? updates.ingredient_type.value() : "");
+        params.append(recipeId);
 
         // 3. 更新菜谱，编辑后始终回到 pending 状态等待重新审核
         LOG_DEBUG("[SQL] UPDATE recipes (update) | id=%d", recipeId);
         pqxx::result updateResult = txn.exec(
             "UPDATE recipes SET"
             " name = $1, description = $2, image_url = $3,"
-            " ingredients = $4, steps = $5, nutrition_info = $6,"
+            " ingredients = $4, steps = $5,"
+            " nutrition_info = COALESCE($6, nutrition_info),"
             " tags = $7, cooking_method = $8, flavor = $9, ingredient_type = $10,"
             " status = 'pending', updated_at = NOW()"
             " WHERE id = $11"
             " RETURNING status",
-            pqxx::params{updates.name,
-            updates.description,
-            updates.image_url,
-            ingredientsJson.dump(),
-            stepsJson.dump(),
-            nutritionJson.dump(),
-            updates.tags,
-            updates.cooking_method.has_value() ? updates.cooking_method.value() : "",
-            updates.flavor.has_value() ? updates.flavor.value() : "",
-            updates.ingredient_type.has_value() ? updates.ingredient_type.value() : "",
-            recipeId});
+            params);
 
         // 注意：必须在 lambda 内先拷贝成 std::string——updateResult 在 lambda 返回时就销毁，
         // 直接返回 c_str() 指针会悬空
@@ -1041,17 +1053,45 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
 
         const auto& row = r[0];
 
-        if (row["nutrition_info"].is_null()) {
-            throw ServiceException("该菜谱暂无营养报告", 400);
-        }
-
-        auto nutJson = json::parse(row["nutrition_info"].c_str());
-
         NutritionReport report;
         report.recipe_id = row["id"].as<int>();
         report.recipe_name = row["name"].c_str();
 
-        auto perServing = nutJson["per_serving"];
+        // 无营养数据（NULL）→ 返回 has_data=false，前端据此展示"暂无营养报告"空态；
+        // 不再返回全 0 假数据（见 ARCHITECTURE_REVIEW 方案 A）。
+        if (row["nutrition_info"].is_null()) {
+            report.has_data = false;
+            return report;
+        }
+
+        auto nutJson = json::parse(row["nutrition_info"].c_str());
+
+        // 旧格式兼容（升级前菜谱/未注入营养仓库的旧回退路径只写 flat 四项，无 per_serving）：
+        // flat 四项任一存在且 >0 → 合成 per_serving（fiber/sodium/vitc 置 0），
+        // 使详情页与报告页的 has_data 判定一致，避免"详情有营养、报告说没有"的矛盾；
+        // 空对象/全 0 → has_data=false。
+        if (!nutJson.contains("per_serving") || !nutJson["per_serving"].is_object()) {
+            const bool hasFlat = nutJson.contains("calories") || nutJson.contains("protein")
+                || nutJson.contains("fat") || nutJson.contains("carbs");
+            const double cal = nutJson.value("calories", 0.0);
+            const double pro = nutJson.value("protein", 0.0);
+            const double fat = nutJson.value("fat", 0.0);
+            const double carb = nutJson.value("carbs", 0.0);
+            if (hasFlat && (cal > 0.0 || pro > 0.0 || fat > 0.0 || carb > 0.0)) {
+                report.per_serving.calories = cal;
+                report.per_serving.protein_g = pro;
+                report.per_serving.fat_g = fat;
+                report.per_serving.carbs_g = carb;
+                report.has_data = true;
+            } else {
+                report.has_data = false;
+            }
+            return report;
+        }
+
+        // 正常路径（新格式含 per_serving）：has_data 显式置 true（模型默认已改为 false）
+        report.has_data = true;
+        const auto& perServing = nutJson["per_serving"];
         report.per_serving.calories = perServing.value("calories", 0.0);
         report.per_serving.protein_g = perServing.value("protein_g", 0.0);
         report.per_serving.fat_g = perServing.value("fat_g", 0.0);
@@ -1069,6 +1109,16 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
                 bi.fat_g = item.value("fat_g", 0.0);
                 bi.carbs_g = item.value("carbs_g", 0.0);
                 report.ingredients_breakdown.push_back(std::move(bi));
+            }
+        }
+
+        // 未计入营养的食材（新格式恒为数组；旧数据缺省 → 空）
+        if (nutJson.contains("excluded_ingredients") && nutJson["excluded_ingredients"].is_array()) {
+            for (const auto& item : nutJson["excluded_ingredients"]) {
+                ExcludedIngredient ei;
+                ei.name = item.value("name", "");
+                ei.reason = item.value("reason", "");
+                report.excluded_ingredients.push_back(std::move(ei));
             }
         }
 

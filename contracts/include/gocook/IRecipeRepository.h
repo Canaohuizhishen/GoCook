@@ -88,10 +88,13 @@ public:
      * @brief 创建菜谱投稿。
      * @param userId 投稿用户 ID
      * @param data 投稿数据（菜谱名/食材/步骤等）
+     * @param nutritionInfo 服务层计算好的完整营养 JSON（flat 四项 + per_serving +
+     *        ingredients_breakdown + health_notes）；无法计算时传空对象 "{}"
      * @return 投稿响应（含新菜谱 ID 与状态）
      */
     virtual models::SubmitRecipeResponse create(
-        int userId, const models::SubmitRecipeRequest& data) = 0;
+        int userId, const models::SubmitRecipeRequest& data,
+        const nlohmann::json& nutritionInfo) = 0;
 
     /**
      * @brief 查询当前用户的投稿列表（分页）。
@@ -109,10 +112,13 @@ public:
      * @param userId 操作者用户 ID
      * @param recipeId 菜谱 ID
      * @param updates 待更新的字段
+     * @param nutritionInfo 服务层按新食材清单计算好的营养 JSON；无法计算且无手填时传
+     *        nullopt（实现应保留库中已有 nutrition_info，编辑不因计算不可用而清空营养）
      * @return 更新后的状态（"pending"）
      */
     virtual std::string update(int userId, int recipeId,
-                                const models::EditRecipeRequest& updates) = 0;
+                                const models::EditRecipeRequest& updates,
+                                const std::optional<nlohmann::json>& nutritionInfo) = 0;
 
     /**
      * @brief 切换菜谱收藏状态（未收藏则收藏，已收藏则取消）。

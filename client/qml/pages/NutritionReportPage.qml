@@ -15,6 +15,9 @@ Page {
     readonly property var _report: recipeVM.nutritionReport || {}
     readonly property var _perServing: _report.per_serving || {}
     readonly property var _breakdown: _report.ingredients_breakdown || []
+    readonly property var _excluded: _report.excluded_ingredients || []
+    // 有可用营养数据（服务端 has_data=false 表示"暂无营养报告"，展示空态而非全 0 假数据）
+    readonly property bool _hasData: _report.has_data !== false
 
     Component.onCompleted: {
         if (recipeId > 0)
@@ -113,24 +116,24 @@ Page {
                 font.weight: Theme.fontWeightBold
                 color: Theme.textPrimary
                 wrapMode: Text.WordWrap
-                visible: Object.keys(_report).length > 0
+                visible: _hasData && Object.keys(_report).length > 0
             }
 
-            // 每份营养成分
+            // 营养合计
             Text {
-                text: qsTr("每份营养成分")
+                text: qsTr("营养合计")
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSizeH3
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
-                visible: Object.keys(_report).length > 0
+                visible: _hasData && Object.keys(_report).length > 0
             }
 
             Rectangle {
                 width: parent.width
                 height: 1
                 color: Theme.dividerColor
-                visible: Object.keys(_report).length > 0
+                visible: _hasData && Object.keys(_report).length > 0
             }
 
             // 7 项营养指标
@@ -138,7 +141,7 @@ Page {
                 columns: 2
                 width: parent.width
                 spacing: 6
-                visible: Object.keys(_report).length > 0
+                visible: _hasData && Object.keys(_report).length > 0
 
                 Text { text: qsTr("热量"); color: Theme.textSecondary; font.pointSize: Theme.fontSizeBody }
                 Text { text: _perServing.calories + " kcal"; color: Theme.textPrimary; font.pointSize: Theme.fontSizeBody; font.weight: Theme.fontWeightMedium }
@@ -166,7 +169,7 @@ Page {
             Column {
                 width: parent.width
                 spacing: Theme.spacingSmall
-                visible: Object.keys(_report).length > 0
+                visible: _hasData && Object.keys(_report).length > 0
                     && _breakdown
                     && _breakdown.length > 0
 
@@ -227,11 +230,46 @@ Page {
                 }
             }
 
+            // 未计入营养的食材（部分食材未收录/无法换算时提示，避免用户误以为合计已包含全部食材）
+            Column {
+                width: parent.width
+                spacing: Theme.spacingXSmall
+                visible: _hasData && Object.keys(_report).length > 0
+                    && _excluded
+                    && _excluded.length > 0
+
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: Theme.dividerColor
+                }
+
+                Text {
+                    text: qsTr("未计入营养的食材")
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSizeH3
+                    font.weight: Theme.fontWeightMedium
+                    color: Theme.textPrimary
+                }
+
+                Repeater {
+                    model: _excluded
+                    delegate: Text {
+                        width: parent.width
+                        text: qsTr("%1（%2）").arg(modelData.name).arg(modelData.reason)
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeBody
+                        color: Theme.textHint
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
             // 健康提示
             Column {
                 width: parent.width
                 spacing: Theme.spacingXSmall
-                visible: Object.keys(_report).length > 0
+                visible: _hasData && Object.keys(_report).length > 0
                     && _report.health_notes !== ""
 
                 Rectangle {
@@ -259,7 +297,8 @@ Page {
                 }
             }
 
-            // 无数据提示（加载失败与真实无报告区分开：失败优先显示错误）
+            // 无数据提示（加载失败与真实无报告区分开：失败优先显示错误；
+            // has_data=false 表示该菜谱确实没有营养数据，显示提示色空态）
             Text {
                 width: parent.width
                 text: loadError !== "" ? loadError : qsTr("该菜谱暂无营养报告")
@@ -268,7 +307,8 @@ Page {
                 color: loadError !== "" ? Theme.errorColor : Theme.textHint
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
-                visible: !recipeVM.nutritionLoading && Object.keys(_report).length === 0
+                visible: !recipeVM.nutritionLoading
+                    && (Object.keys(_report).length === 0 || !_hasData)
             }
         }
     }

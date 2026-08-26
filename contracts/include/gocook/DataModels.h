@@ -189,6 +189,8 @@ namespace gocook::models {
         double protein = 0.0;    // 蛋白质（克）
         double fat = 0.0;        // 脂肪（克）
         double carbs = 0.0;      // 碳水化合物（克）
+        // 是否有可用营养数据。默认 false（安全方向：缺字段时前端展示空态而非全 0 假数据）
+        bool has_data = false;
     };
 
     /// 菜谱列表项（摘要）
@@ -332,11 +334,17 @@ namespace gocook::models {
         double carbs_g = 0.0;      // 碳水化合物（克）
     };
 
+    /// 未计入营养计算的食材（营养库未收录或用量无法换算）
+    struct ExcludedIngredient {
+        std::string name;          // 食材名（投稿时的原始输入）
+        std::string reason;        // 原因："未收录" | "无法换算"
+    };
+
     /// 独立营养报告（API 4.15）
     struct NutritionReport {
         int recipe_id = 0;                                   // 菜谱 ID
         std::string recipe_name;                             // 菜谱名称
-        /// 每份营养含量
+        /// 营养含量（当前版本语义：整道菜合计，非单份；后续可由 servings 除法升级）
         struct PerServing {
             double calories = 0.0;      // 热量（千卡）
             double protein_g = 0.0;     // 修正：对齐 API 字段名
@@ -347,7 +355,9 @@ namespace gocook::models {
             double vitamin_c_mg = 0.0;  // 新增：维生素C（毫克）
         } per_serving;                                       // 每份营养含量
         std::vector<NutritionBreakdownItem> ingredients_breakdown; // 食材营养明细列表
+        std::vector<ExcludedIngredient> excluded_ingredients;      // 未计入营养的食材（可能为空）
         std::string health_notes;                            // 健康提示（文本）
+        bool has_data = false;                               // 是否有可用营养数据（false=该菜谱暂无营养报告）
     };
 
     // ==============================================

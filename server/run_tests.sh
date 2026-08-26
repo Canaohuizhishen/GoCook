@@ -4,7 +4,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${BUILD_DIR:-$SCRIPT_DIR/build}"
 
 echo "=== 配置构建 ==="
-cmake -B "$BUILD_DIR" -G Ninja -S "$SCRIPT_DIR" -DBUILD_TESTING=ON
+# 单独 configure 本目录时需显式注入仓库根 cmake/ 模块路径：
+# tests/CMakeLists.txt 的 include(DiscoverGTestTests) 只被顶层 CMakeLists 默认追加过
+# CMAKE_MODULE_PATH，单目录 configure（本脚本 / Dockerfile）不带上会 include 失败。
+cmake -B "$BUILD_DIR" -G Ninja -S "$SCRIPT_DIR" \
+    -DCMAKE_MODULE_PATH="$SCRIPT_DIR/../cmake" -DBUILD_TESTING=ON
 
 echo ""
 echo "=== 编译测试 ==="
