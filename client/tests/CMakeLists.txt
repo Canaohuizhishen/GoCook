@@ -31,5 +31,7 @@ target_link_libraries(test_client PRIVATE
 
 target_compile_features(test_client PUBLIC cxx_std_23)
 
-include(GoogleTest)
-gtest_discover_tests(test_client)
+# 自定义测试发现：系统 gtest 1.17 的 JSON 输出会损坏非 ASCII 测试名，
+# 标准 gtest_discover_tests 生成的过滤器匹配不到中文名用例（ctest 空跑通过）
+include(DiscoverGTestTests)
+gocook_discover_gtest_tests(test_client)

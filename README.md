@@ -201,6 +201,16 @@ docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/create_al
 docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_test_data.sql
 ```
 
+> 📌 **营养自动计算**（2026-08 新增）：投稿/编辑菜谱时服务端按食材清单自动计算营养，依赖 `ingredient_nutrition` 食材营养表。
+> - **全新初始化**：`create_all_tables.sql` 已含建表，直接再跑 `server/sql/seed_ingredient_nutrition.sql` 灌入 200 种常见食材数据（幂等，可重复执行）：
+>   ```bash
+>   docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_ingredient_nutrition.sql
+>   ```
+> - **已有库升级**：只需执行上面这条种子脚本（建表语句在脚本内会先执行）。种子对已存在行按规范名同步修订（`ON CONFLICT DO UPDATE`），营养库修正/扩充随重跑自动生效，无需手工 DELETE。
+> - 未收录/无法换算的食材不计入营养（营养报告页会列出"未计入营养的食材"）；全部无法计算时该菜谱营养接口返回 `has_data:false`，客户端展示"暂无营养报告"空态（不再显示全 0 假数据）。若投稿时填写了 `nutrition` 手填值，则自动计算失败时回退使用手填值。
+> - **降级说明**：营养表缺失或查询异常时，投稿/编辑不会失败，服务端记日志降级处理——投稿按"手填值或空"入库；**编辑若无手填值则保留库中已有的营养数据，不因计算不可用而清空已保存的营养**。但营养功能需建表+灌种子后才可用，请按上述步骤先初始化。
+> - 单位换算约定：质量单位（克/千克/斤/两/磅，含 g/G/kg/KG、lb/LB）与体积单位（毫升/升按 1ml≈1g，含 ml/mL/ML、L/l）直接换算；容器单位按固定容量近似（杯≈240ml、碗≈200ml、汤匙≈15ml、勺≈10ml、茶匙≈5ml）；计数单位（个/只/根…）依赖食材表 `default_portion_g`，无单重则跳过；单位首尾空白自动忽略。
+
 ---
 
 ## 三、脚本使用说明书

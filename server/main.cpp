@@ -13,6 +13,7 @@
 #include "repositories/PgMealPlanRepository.h"
 #include "repositories/PgAnnouncementRepository.h"
 #include "repositories/PgAdminRepository.h"
+#include "repositories/PgIngredientNutritionRepository.h"
 #include "services/RecipeServiceImpl.h"
 #include "services/UserServiceImpl.h"
 #include "services/InventoryServiceImpl.h"
@@ -71,7 +72,8 @@ int main(int argc, char* argv[]) {
     RecipeServiceImpl recipeService(
         std::make_unique<PgRecipeRepository>(db),
         std::make_unique<PgUserRepository>(db),
-        std::make_unique<PgInventoryRepository>(db));
+        std::make_unique<PgInventoryRepository>(db),
+        std::make_unique<PgIngredientNutritionRepository>(db));
     UserServiceImpl userService(std::make_unique<PgUserRepository>(db), cfg.jwtSecret);
     InventoryServiceImpl inventoryService(std::make_unique<PgInventoryRepository>(db));
     MealPlanServiceImpl mealPlanService(std::make_unique<PgMealPlanRepository>(db));

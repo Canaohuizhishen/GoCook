@@ -1,13 +1,17 @@
 find_package(GTest REQUIRED)
 
-include(GoogleTest)
+# 自定义测试发现：系统 gtest 1.17 的 JSON 输出会损坏非 ASCII 测试名，
+# 标准 gtest_discover_tests 生成的过滤器匹配不到中文名用例（ctest 空跑通过）
+include(DiscoverGTestTests)
 
 set(TEST_SOURCES
     test_user_service.cpp
     test_recipe_service.cpp
+    test_recipe_nutrition.cpp
     test_inventory_service.cpp
     test_unimplemented_services.cpp
     test_db_executor.cpp
+    test_nutrition_integration.cpp
 )
 
 add_executable(test_services ${TEST_SOURCES})
@@ -25,4 +29,4 @@ target_link_libraries(test_services PRIVATE
 
 target_compile_features(test_services PUBLIC cxx_std_23)
 
-gtest_discover_tests(test_services)
+gocook_discover_gtest_tests(test_services)

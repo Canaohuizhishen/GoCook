@@ -8,7 +8,8 @@ using namespace gocook::models;
 // ======================== 基础模型 ========================
 
 json toJson(const Nutrition& n) {
-    return {{"calories", n.calories}, {"protein", n.protein}, {"fat", n.fat}, {"carbs", n.carbs}};
+    return {{"calories", n.calories}, {"protein", n.protein}, {"fat", n.fat}, {"carbs", n.carbs},
+            {"has_data", n.has_data}};
 }
 
 json toJson(const Ingredient& ing) {
@@ -165,7 +166,12 @@ json toJson(const NutritionReport& report) {
     for (const auto& item : report.ingredients_breakdown)
         breakdown.push_back(toJson(item));
     j["ingredients_breakdown"] = breakdown;
+    json excluded = json::array();
+    for (const auto& item : report.excluded_ingredients)
+        excluded.push_back({{"name", item.name}, {"reason", item.reason}});
+    j["excluded_ingredients"] = excluded;
     j["health_notes"] = report.health_notes;
+    j["has_data"] = report.has_data;
     return j;
 }
 

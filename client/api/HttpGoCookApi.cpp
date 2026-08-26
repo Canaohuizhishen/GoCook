@@ -1493,6 +1493,17 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
             detail.nutrition.protein = nut["protein"].toDouble();
             detail.nutrition.fat = nut["fat"].toDouble();
             detail.nutrition.carbs = nut["carbs"].toDouble();
+            if (nut.contains("has_data")) {
+                // 新服务端：has_data 为权威判定（false=无营养报告，前端展示空态而非全 0）
+                detail.nutrition.has_data = nut["has_data"].toBool();
+            } else {
+                // 旧服务端未返回该字段：按四项值兜底（等价于修复前 QML 的 calories>0 判定，
+                // 避免无数据菜谱的"营养合计"卡片显示全 0）
+                detail.nutrition.has_data = detail.nutrition.calories > 0
+                    || detail.nutrition.protein > 0
+                    || detail.nutrition.fat > 0
+                    || detail.nutrition.carbs > 0;
+            }
         }
         if (obj.contains("tags") && obj["tags"].isArray()) {
             for (const auto& val : obj["tags"].toArray())
@@ -1909,7 +1920,24 @@ void HttpGoCookApi::getRecipeNutrition(int recipeId,
             report.ingredients_breakdown.push_back(std::move(bi));
         }
 
+        QJsonArray excludedArr = obj["excluded_ingredients"].toArray();
+        for (const QJsonValue& val : excludedArr) {
+            QJsonObject item = val.toObject();
+            gocook::models::ExcludedIngredient ei;
+            ei.name = item["name"].toString().toStdString();
+            ei.reason = item["reason"].toString().toStdString();
+            report.excluded_ingredients.push_back(std::move(ei));
+        }
+
         report.health_notes = obj["health_notes"].toString().toStdString();
+        if (obj.contains("has_data")) {
+            // 新服务端：has_data 为权威判定（false=该菜谱暂无营养报告，展示空态）
+            report.has_data = obj["has_data"].toBool();
+        } else {
+            // 旧服务端（v2.8-）无该字段：200 响应必有 per_serving 数据（无数据时返回 400），
+            // 按 per_serving 存在性兜底；避免把"有数据的老响应"误判为空态
+            report.has_data = obj.contains("per_serving") && obj["per_serving"].isObject();
+        }
 
         callback(true, report, "");
     }, true);

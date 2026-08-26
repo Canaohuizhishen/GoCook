@@ -264,6 +264,10 @@ void RecipeViewModel::editRecipe(int recipeId, const QString& name, const QStrin
 
 void RecipeViewModel::loadRecipeForEdit(int recipeId)
 {
+    // 先清空旧菜谱详情，避免编辑页（营养合计区等）短暂显示上一菜谱的数据
+    m_recipeDetail = QVariantMap();
+    emit recipeDetailChanged();
+
     m_detailLoading = true;
     emit detailLoadingChanged();
 

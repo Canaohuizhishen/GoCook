@@ -41,17 +41,20 @@ public:
     gocook::models::PagedRatings findRatings(int recipeId, int page,
                                              int size) override;
 
-    // 创建菜谱投稿，返回投稿响应（含 ID 与状态）
+    // 创建菜谱投稿，返回投稿响应（含 ID 与状态）；nutritionInfo 由服务层计算好传入
     gocook::models::SubmitRecipeResponse create(
-        int userId, const gocook::models::SubmitRecipeRequest& data) override;
+        int userId, const gocook::models::SubmitRecipeRequest& data,
+        const nlohmann::json& nutritionInfo) override;
 
     // 查询当前用户的投稿列表（分页，可按状态筛选）
     gocook::models::PagedMyRecipes findMySubmittedRecipes(
         int userId, int page, int size, const std::string& status) override;
 
-    // 更新未审核菜谱，返回更新后的状态
+    // 更新未审核菜谱，返回更新后的状态；nutritionInfo 由服务层计算好传入，
+    // nullopt 表示保留库中已有 nutrition_info（编辑不因计算不可用而清空营养）
     std::string update(int userId, int recipeId,
-                       const gocook::models::EditRecipeRequest& updates) override;
+                       const gocook::models::EditRecipeRequest& updates,
+                       const std::optional<nlohmann::json>& nutritionInfo) override;
 
     // 切换菜谱收藏状态（可指定分组与可见性）
     void toggleFavorite(int userId, int recipeId,

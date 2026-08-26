@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS health_profiles        CASCADE;
 DROP TABLE IF EXISTS user_preferences       CASCADE;
 DROP TABLE IF EXISTS recipe_videos          CASCADE;
 DROP TABLE IF EXISTS recipes                CASCADE;
+DROP TABLE IF EXISTS ingredient_nutrition   CASCADE;
 DROP TABLE IF EXISTS announcements          CASCADE;
 DROP TABLE IF EXISTS users                  CASCADE;
 
@@ -83,6 +84,23 @@ CREATE TABLE IF NOT EXISTS recipe_videos (
     duration_seconds INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- 2c. 食材营养表（每 100g 含量，供投稿/编辑时自动计算菜谱营养）
+CREATE TABLE IF NOT EXISTS ingredient_nutrition (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,                       -- 规范名（如"鸡蛋"）
+    aliases TEXT[] NOT NULL DEFAULT '{}',            -- 别名（如"土鸡蛋"），匹配用
+    default_portion_g DOUBLE PRECISION,              -- 单个计数的近似质量（克）；NULL=无法按个数换算
+    calories DOUBLE PRECISION NOT NULL,              -- 热量（千卡 / 100g）
+    protein_g DOUBLE PRECISION NOT NULL,             -- 蛋白质（克 / 100g）
+    fat_g DOUBLE PRECISION NOT NULL,                 -- 脂肪（克 / 100g）
+    carbs_g DOUBLE PRECISION NOT NULL,               -- 碳水化合物（克 / 100g）
+    fiber_g DOUBLE PRECISION NOT NULL DEFAULT 0,     -- 膳食纤维（克 / 100g）
+    sodium_mg DOUBLE PRECISION NOT NULL DEFAULT 0,   -- 钠（毫克 / 100g）
+    vitamin_c_mg DOUBLE PRECISION NOT NULL DEFAULT 0,-- 维生素 C（毫克 / 100g）
+    source TEXT NOT NULL DEFAULT '近似值，来自公开食物成分数据（中国食物成分表/USDA），仅供参考'
+);
+CREATE INDEX IF NOT EXISTS idx_ingredient_nutrition_name ON ingredient_nutrition (name);
 
 -- 3. 用户偏好与禁忌表
 CREATE TABLE IF NOT EXISTS user_preferences (

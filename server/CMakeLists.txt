@@ -28,6 +28,7 @@ set(SERVER_LIB_SOURCES
     ../contracts/include/gocook/IMealPlanRepository.h
     ../contracts/include/gocook/IAnnouncementRepository.h
     ../contracts/include/gocook/IAdminRepository.h
+    ../contracts/include/gocook/INutritionRepository.h
     services/RecipeServiceImpl.cpp services/RecipeServiceImpl.h
     services/UserServiceImpl.h services/UserServiceImpl.cpp
     services/InventoryServiceImpl.h services/InventoryServiceImpl.cpp
@@ -40,6 +41,7 @@ set(SERVER_LIB_SOURCES
     repositories/PgMealPlanRepository.h repositories/PgMealPlanRepository.cpp
     repositories/PgAnnouncementRepository.h repositories/PgAnnouncementRepository.cpp
     repositories/PgAdminRepository.h repositories/PgAdminRepository.cpp
+    repositories/PgIngredientNutritionRepository.h repositories/PgIngredientNutritionRepository.cpp
     handlers/RecipeHandler.h handlers/RecipeHandler.cpp
     handlers/UserHandler.h handlers/UserHandler.cpp
     handlers/InventoryHandler.h handlers/InventoryHandler.cpp
