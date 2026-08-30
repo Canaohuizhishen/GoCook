@@ -426,6 +426,17 @@ QString AuthViewModel::apiBaseUrl() const {
 
 void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
 {
+    if (!loggedIn) {
+        // 登出 / 注销 / token 失效：清空上一登录态的个人资料残留（头像等），避免游客态继续显示
+        if (!m_profileDisplayName.isEmpty() || !m_profileEmail.isEmpty() ||
+            !m_profilePhone.isEmpty() || !m_profileAvatarUrl.isEmpty()) {
+            m_profileDisplayName.clear();
+            m_profileEmail.clear();
+            m_profilePhone.clear();
+            m_profileAvatarUrl.clear();
+            emit profileChanged();
+        }
+    }
     if (m_loggedIn != loggedIn) {
         m_loggedIn = loggedIn;
         emit loggedInChanged();

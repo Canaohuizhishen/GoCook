@@ -14,18 +14,30 @@ Page {
 
     signal showShoppingListRequest()
 
+    // 页面每次可见时刷新（首次创建与登录/登出后切回均生效），并清空上一次的状态提示，
+    // 避免登录成功后仍残留「请先登录」/旧状态
     Component.onCompleted: {
-        inventoryVM.loadInventory()
+        if (visible) inventoryVM.loadInventory()
+    }
+    onVisibleChanged: {
+        if (visible) {
+            statusText.text = ""
+            inventoryVM.loadInventory()
+        }
     }
 
+    // 按钮组：锚定页面顶部，与内容区解耦——空/非空库存时三个按钮位置严格一致、紧贴顶部
     ColumnLayout {
-        anchors.fill: parent
+        id: buttonGroup
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.topMargin: Theme.spacingSmall
         spacing: Theme.spacingSmall
 
         CustomButton {
             id: addButton
             Layout.fillWidth: true
-            Layout.topMargin: Theme.spacingMedium
             Layout.leftMargin: Theme.spacingMedium
             Layout.rightMargin: Theme.spacingMedium
             buttonText: qsTr("+ 添加食材")
@@ -52,12 +64,21 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             onClicked: showShoppingListRequest()
         }
+    }
+
+    // 内容区：按钮组下方到页面底部（空态提示 / 状态提示 / 列表）
+    ColumnLayout {
+        anchors.top: buttonGroup.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        spacing: Theme.spacingSmall
 
         Text {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacingMedium
             Layout.rightMargin: Theme.spacingMedium
-            text: qsTr("暂无库存，点击上方按钮添加食材")
+            text: authViewModel.loggedIn ? qsTr("暂无库存，点击上方按钮添加食材") : qsTr("登录后查看你的库存")
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSizeBody
             color: Theme.textHint
@@ -159,7 +180,7 @@ Page {
                                 editNameField.text = modelData.ingredientName || ""
                                 editQuantityField.text = modelData.quantity !== undefined ? modelData.quantity.toString() : "1"
                                 editUnitField.text = modelData.unit || ""
-                                editExpiryField.text = modelData.expiry || ""
+                                editExpiryField.text = modelData.expiryDate || ""
                                 moreMenu.popup()
                             }
                         }
@@ -205,11 +226,16 @@ Page {
     Connections {
         target: inventoryVM
         function onErrorOccurred(error) {
+            // 失败兜底：重置提交中标记，避免后续操作被 onItemsChanged 分支误判（成功路径才重置）
+            addPending = false
+            editPending = false
             if (addDialog.opened) {
                 addError.text = error
             } else if (editDialog.opened) {
                 editError.text = error
             } else {
+                // 页面级提示：守卫拦截（请先登录）已有空态文案「登录后查看你的库存」，不重复显示
+                if (error === "请先登录") return
                 statusText.text = error
             }
         }
@@ -331,7 +357,7 @@ Page {
                 TextField {
                     id: editUnitField
                     Layout.fillWidth: true
-                    placeholderText: qsTr("单位")
+                    placeholderText: qsTr("单位 (默认: 克)")
                     font.pointSize: Theme.fontSizeBody
                 }
             }
@@ -377,8 +403,10 @@ Page {
                             return
                         }
                         var unit = editUnitField.text.trim()
-                        if (unit.length === 0) {
-                            editError.text = qsTr("请输入单位")
+                        if (unit.length === 0) unit = "克"   // 单位留空默认克
+                        var expiry = editExpiryField.text.trim()
+                        if (expiry.length > 0 && !/^\d{4}-\d{1,2}-\d{1,2}$/.test(expiry)) {
+                            editError.text = qsTr("过期日期格式应为 YYYY-MM-DD")
                             return
                         }
                         editError.text = ""
@@ -388,9 +416,11 @@ Page {
                             editNameField.text.trim(),
                             qty,
                             unit,
-                            editExpiryField.text.trim()
+                            expiry
                         )
-                        editQuantityField.forceActiveFocus()
+                        // 立即关闭：token 失效时守卫会弹登录页，模态对话框层级高于 StackView，会挡住登录页
+                        // （对话框已关闭，其内字段不可见，原有 forceActiveFocus 无效，已移除）
+                        editDialog.close()
                     }
                 }
             }
@@ -403,8 +433,16 @@ Page {
         title: qsTr("添加食材")
         anchors.centerIn: parent
         modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         width: Math.min(parent.width * 0.85, 340)
-        onOpened: addError.text = ""
+        // 每次打开清空全部字段：残留的上次输入（尤其过期日期）会随提交打穿服务端日期解析 → 500
+        onOpened: {
+            itemNameField.text = ""
+            itemQtyField.text = ""
+            itemUnitField.text = ""
+            expiryField.text = ""
+            addError.text = ""
+        }
 
         ColumnLayout {
             spacing: Theme.spacingSmall
@@ -431,7 +469,7 @@ Page {
                 TextField {
                     id: itemUnitField
                     Layout.fillWidth: true
-                    placeholderText: qsTr("单位 (如: 个)")
+                    placeholderText: qsTr("单位 (默认: 克)")
                     font.pointSize: Theme.fontSizeBody
                 }
             }
@@ -464,8 +502,10 @@ Page {
                         return
                     }
                     var unit = itemUnitField.text.trim()
-                    if (unit.length === 0) {
-                        addError.text = qsTr("请输入单位")
+                    if (unit.length === 0) unit = "克"   // 单位留空默认克
+                    var expiry = expiryField.text.trim()
+                    if (expiry.length > 0 && !/^\d{4}-\d{1,2}-\d{1,2}$/.test(expiry)) {
+                        addError.text = qsTr("过期日期格式应为 YYYY-MM-DD")
                         return
                     }
                     addError.text = ""
@@ -474,8 +514,10 @@ Page {
                         itemNameField.text.trim(),
                         qty,
                         unit,
-                        expiryField.text.trim()
+                        expiry
                     )
+                    // 立即关闭：未登录时守卫会弹登录页（挂起重放），模态对话框层级高于 StackView，会挡住登录页
+                    addDialog.close()
                 }
             }
         }

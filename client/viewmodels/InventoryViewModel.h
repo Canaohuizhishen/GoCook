@@ -39,6 +39,8 @@ public:
                                 const QString& unit, const QString& expiryDate = "");
     // 重新加载当前页
     Q_INVOKABLE void refresh();
+    // 清空全部数据与加载状态（登出/账号切换时调用，杜绝上一账号残留数据串台）
+    Q_INVOKABLE void clearAll();
 
 signals:
     // 数据变更

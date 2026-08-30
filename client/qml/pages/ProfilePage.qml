@@ -12,6 +12,7 @@ Page {
     signal showMyRatingsRequest()
     signal showSettingsRequest()
     signal showNotificationRequest()
+    signal showLoginRequest()
 
     // 页面创建时和每次可见时都加载最新用户资料 + 通知未读数
     Component.onCompleted: {
@@ -49,6 +50,7 @@ Page {
                 id: profileAvatar
                 Layout.alignment: Qt.AlignHCenter
                 width: 72; height: 72
+                visible: authViewModel.loggedIn
                 borderColor: Theme.dividerColor
                 borderWidth: 1.5
                 placeholderFallback: {
@@ -81,6 +83,16 @@ Page {
                 font.pointSize: Theme.fontSizeH2
                 font.weight: Theme.fontWeightMedium
                 color: Theme.textPrimary
+            }
+
+            // 游客态：登录/注册入口（点击由 Main.qml 的动作守卫弹应用内登录页）
+            CustomButton {
+                Layout.alignment: Qt.AlignHCenter
+                visible: !authViewModel.loggedIn
+                buttonText: qsTr("登录 / 注册")
+                buttonType: CustomButton.ButtonType.Primary
+                Layout.topMargin: Theme.spacingSmall
+                onClicked: showLoginRequest()
             }
 
             Text {

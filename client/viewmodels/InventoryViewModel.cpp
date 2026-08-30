@@ -1,6 +1,7 @@
 #include "InventoryViewModel.h"
 #include <DataMapper.h>
 #include <QPointer>
+#include "../api/HttpGoCookApi.h"
 
 InventoryViewModel::InventoryViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
@@ -19,6 +20,18 @@ void InventoryViewModel::refresh()
     loadInventory(1, m_pageSize);
 }
 
+void InventoryViewModel::clearAll()
+{
+    m_items.clear();
+    m_hasMore = false;
+    m_currentPage = 1;
+    m_totalPages = 0;
+    m_isLoading = false;
+    emit itemsChanged();
+    emit hasMoreChanged();
+    emit isLoadingChanged();
+}
+
 void InventoryViewModel::loadNextPage()
 {
     if (m_isLoading || !m_hasMore) return;
@@ -27,15 +40,37 @@ void InventoryViewModel::loadNextPage()
 
 void InventoryViewModel::loadInventory(int page, int size)
 {
+    if (m_isLoading) return;
     m_isLoading = true;
     emit isLoadingChanged();
 
+    // 快照当前会话（token）：响应到达时若会话已切换（登出/换号），该在途响应属于旧账号，
+    // 静默丢弃——不清状态（clearAll 与新加载已接管），避免旧账号数据串入当前界面
+    const std::string tokenAtSend = m_api->authToken();
     m_api->getInventory(page, size,
-                        [self = QPointer<InventoryViewModel>(this), page](bool success,
+                        [self = QPointer<InventoryViewModel>(this), page, tokenAtSend](bool success,
                               const gocook::models::PagedInventory& data,
                               const std::string& error) {
                             if (!self) return;
+                            // 会话已切换：过期响应作废。不清数据（clearAll/新加载已接管），
+                            // 仅复位加载标记防页面卡死（极端时序下 clearAll 可能尚未执行）
+                            if (self->m_api->authToken() != tokenAtSend) {
+                                if (self->m_isLoading) {
+                                    self->m_isLoading = false;
+                                    emit self->isLoadingChanged();
+                                }
+                                return;
+                            }
                             if (!success) {
+                                // 守卫拦截（未登录，error=请先登录）：清空上一登录态残留数据，
+                                // 避免游客看到旧库存；网络错误保留旧数据（页面静默显示）
+                                if (QString::fromStdString(error) == HttpGoCookApi::kAuthRequiredError) {
+                                    self->m_items.clear();
+                                    self->m_hasMore = false;
+                                    self->m_currentPage = 1;
+                                    emit self->itemsChanged();
+                                    emit self->hasMoreChanged();
+                                }
                                 emit self->errorOccurred(QString::fromStdString(error));
                                 self->m_isLoading = false;
                                 emit self->isLoadingChanged();

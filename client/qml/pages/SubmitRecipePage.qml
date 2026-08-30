@@ -362,6 +362,7 @@ Page {
         title: qsTr("添加食材")
         anchors.centerIn: parent
         modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         width: Math.min(parent.width * 0.85, 340)
 
         background: Rectangle {
@@ -406,6 +407,7 @@ Page {
         title: qsTr("添加步骤")
         anchors.centerIn: parent
         modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         width: Math.min(parent.width * 0.85, 340)
 
         background: Rectangle {

@@ -259,6 +259,9 @@ Page {
                 NetworkOfflineView {
                     anchors.fill: parent
                     active: recipeVM.favoritesLoadFailed && !recipeVM.favoritesLoading && displayFavorites.length === 0
+                    // 游客态失败 = 登录守卫拦截（请求未发出）：提示「登录后可用」而非服务器错误，刷新无意义
+                    message: authViewModel.loggedIn ? qsTr("服务器有点问题，请稍候再试") : qsTr("登录后可用")
+                    showRetry: authViewModel.loggedIn
                     onRetryRequested: {
                         recipeVM.loadFavorites(1, 20, currentGroupFilter)
                         recipeVM.loadFavoriteGroups()
@@ -620,7 +623,7 @@ Page {
     Dialog {
         id: moveFavGroupDialog
         modal: true; standardButtons: Dialog.NoButton
-        closePolicy: Popup.CloseOnEscape
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         x: (parent.width - width) / 2; y: (parent.height - height) / 2
         width: Math.min(parent.width * 0.8, 320)
 

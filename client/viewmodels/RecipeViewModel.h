@@ -124,6 +124,8 @@ public:
     // ===== 收藏 =====
     Q_INVOKABLE void loadFavorites(int page = 1, int size = 20, const QString &group = "");
     Q_INVOKABLE void loadMoreFavorites();
+    // 清空收藏数据与加载状态（登出/账号切换时调用，杜绝上一账号残留数据串台）
+    Q_INVOKABLE void clearFavorites();
     Q_INVOKABLE void toggleFavorite(int recipeId, int groupId = 0);   ///< groupId=0 表示默认收藏夹
     Q_INVOKABLE void loadFavoriteGroups();
     Q_INVOKABLE void createFavoriteGroup(const QString &name);
