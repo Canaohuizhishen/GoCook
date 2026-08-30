@@ -53,7 +53,7 @@ namespace {
         EXPECT_DOUBLE_EQ(j["per_serving"]["protein_g"].get<double>(), pro);
         EXPECT_DOUBLE_EQ(j["per_serving"]["fat_g"].get<double>(), fat);
         EXPECT_DOUBLE_EQ(j["per_serving"]["carbs_g"].get<double>(), carb);
-        // flat 四项与 per_serving 一致
+        // 顶部四项与 per_serving 一致
         EXPECT_DOUBLE_EQ(j["calories"].get<double>(), cal);
     }
 
@@ -585,7 +585,7 @@ TEST(RecipeNutritionTest, 未注入营养仓库回退用户手填) {
     service.submitRecipe(42, req);
     EXPECT_DOUBLE_EQ(captured["calories"].get<double>(), 123.0);
     EXPECT_DOUBLE_EQ(captured["protein"].get<double>(), 4.0);
-    // 回退形态已统一：与"有仓库但全失败"路径一致，写入 per_serving（不再产生旧 flat-only 形态）
+    // 回退形态与"有仓库但全失败"路径一致：顶部四项与 per_serving 成对写入
     EXPECT_DOUBLE_EQ(captured["per_serving"]["calories"].get<double>(), 123.0);
     EXPECT_DOUBLE_EQ(captured["per_serving"]["protein_g"].get<double>(), 4.0);
 }

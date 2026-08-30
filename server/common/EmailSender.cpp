@@ -85,7 +85,7 @@ EmailSender::SmtpConfig EmailSender::loadConfig() {
     if (host) cfg.host = host;
     if (port) {
         try { cfg.port = std::stoi(port); }
-        catch (...) {
+        catch (const std::exception&) {
             LOG_WARN("SMTP_PORT '%s' invalid, falling back to 587", port);
             cfg.port = 587;
         }

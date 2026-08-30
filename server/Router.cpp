@@ -1,6 +1,7 @@
 #include "Router.h"
 #include "common/Logger.h"
 #include "common/ErrorHelper.h"
+#include "common/UploadPaths.h"
 #include <filesystem>
 #include <fstream>
 
@@ -148,10 +149,8 @@ void Router::registerRootRoute(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerAvatarFileRoutes(httplib::Server& svr) {
-    // 上传目录：可从 GOCOOK_UPLOADS_DIR 环境变量覆盖，默认 "server/uploads"
-    const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-    std::string baseDir = envDir ? envDir : "server/uploads";
-    std::string avatarDir = std::filesystem::absolute(baseDir + "/avatars/").string();
+    // 上传目录：可从 GOCOOK_UPLOADS_DIR 环境变量覆盖，默认 "server/uploads"（规则见 common/UploadPaths.h）
+    std::string avatarDir = UploadPaths::baseDir() + "/avatars/";
     try {
         std::filesystem::create_directories(avatarDir);
     } catch (const std::exception& e) {
@@ -218,9 +217,7 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
 }
 
 void Router::registerRecipeFileRoutes(httplib::Server& svr) {
-    const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-    std::string baseDir = envDir ? envDir : "server/uploads";
-    std::string recipeDir = std::filesystem::absolute(baseDir + "/recipes/").string();
+    std::string recipeDir = UploadPaths::baseDir() + "/recipes/";
     try {
         std::filesystem::create_directories(recipeDir);
     } catch (const std::exception& e) {

@@ -318,7 +318,11 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     // ── 2. 加载用户偏好 ──
     UserPreferences prefs;
     try { prefs = userRepo_->getPreferences(userId); }
-    catch (...) { /* 未设置偏好 → 使用空默认值 */ }
+    catch (const std::exception& e) {
+        // 未设置偏好本就不抛异常，能走到这里的都是真实故障（池繁忙 503 / DB 不可用等）——
+        // 留痕并降级为空偏好，不把故障伪装成"未设置"
+        LOG_WARN("读取用户偏好失败，使用空默认值: %s", e.what());
+    }
 
     // ── 3. 加载健康档案 → 忌口集合 ──
     std::unordered_set<std::string> avoidances;
@@ -329,7 +333,10 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
             hasHealthProfile = true;
             avoidances = computeAvoidances(conditions);
         }
-    } catch (...) { /* 无健康档案 */ }
+    } catch (const std::exception& e) {
+        // 无档案时 getHealthConditions 返回空不抛异常，能走到这里的是真实故障——留痕降级
+        LOG_WARN("读取健康档案失败，按无健康档案处理: %s", e.what());
+    }
 
     // ── 4. 从仓库拉取候选（size × CANDIDATE_MULTIPLIER） ──
     int candidateSize = size * CANDIDATE_MULTIPLIER;
@@ -553,10 +560,10 @@ void RecipeServiceImpl::deleteRecipe(int userId, int recipeId) {
 // ═══════════════════════════════════════════════════════════════
 namespace {
 
-    /// 组装"回退形态"营养 JSON：有手填值 → flat 四项 + per_serving 四项（"用户可选补充"语义）；
+    /// 组装"回退形态"营养 JSON：有手填值 → 顶部四项 + per_serving 四项（"用户可选补充"语义）；
     /// 无手填 → 空对象（前端显示"暂无营养报告"）。excluded 非空时附未计入明细。
     /// 未注入营养仓库 / 营养表查询异常 / 全部食材不可换算 三条回退路径统一走这里，
-    /// 保证入库形态一致（旧 flat-only 形态不再产生）。
+    /// 保证入库形态一致：顶部四项与 per_serving 始终成对写入。
     nlohmann::json fallbackNutrition(
         const std::optional<Nutrition>& userNutrition,
         const std::vector<nlohmann::json>& excluded)
@@ -653,7 +660,7 @@ std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
     // 全部食材未收录/不可换算 → 无法自动计算：回退手填四项或空对象，并附未计入明细
     if (breakdown.empty()) return fallbackNutrition(userNutrition, excluded);
 
-    // ── 3. 组装入库 JSON（flat 四项供列表/详情，rich 结构供报告/推荐，与 seed 数据同构）──
+    // ── 3. 组装入库 JSON（顶部四项供列表/详情，rich 结构供报告/推荐，与 seed 数据同构）──
     NutritionReport::PerServing ps;
     ps.calories = round1(cal);
     ps.protein_g = round1(pro);

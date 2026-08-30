@@ -67,7 +67,7 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
     int itemId;
     try {
         itemId = std::stoi(req.matches[1]);
-    } catch (...) {
+    } catch (const std::exception&) {
         setErrorResponse(res, 400, "item_id 格式无效");
         return;
     }

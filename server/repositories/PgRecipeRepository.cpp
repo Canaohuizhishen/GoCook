@@ -3,6 +3,7 @@
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
 #include "../common/DbExecutor.h"
+#include "../common/UploadPaths.h"
 #include <filesystem>
 #include <fstream>
 
@@ -52,6 +53,36 @@ std::vector<std::string> parseTags(const std::string& jsonStr) {
     for (const auto& t : arr)
         tags.push_back(t.get<std::string>());
     return tags;
+}
+
+// 安全读取 per_serving 数值字段：缺失 / null / 非数值一律按 0 处理。
+// 写入路径恒产数字，但手改或历史数据可能混入 null/字符串，直接 .value() 会抛
+// nlohmann::json::type_error 导致整页 500，这里统一兜底为"无数据"。
+double safePerServingNum(const nlohmann::json& perServing, const char* key) {
+    if (perServing.contains(key) && perServing[key].is_number())
+        return perServing[key].get<double>();
+    return 0.0;
+}
+
+// 判定 nutrition_info JSON 是否携带可用营养数据（findById 与 findNutrition 共用，
+// 保证详情页与报告页对同一菜谱结论一致）：
+// 入库形态唯一——含 per_serving 对象且七项（热量/蛋白/脂肪/碳水/纤维/钠/维C）任一 >0 即有数据；
+// 空对象 {}、per_serving 为空对象或七项全 0、SQL NULL → 无数据（前端展示空态而非全 0）。
+// 判定须覆盖纤维/钠/维C：纯调味料（如"盐 10 克"）宏量四项全 0 但钠有真实值，
+// 只看宏量四项会把合法报告误判为"暂无营养报告"，故任一营养项 >0 即视为有数据。
+// 客户端兜底（响应缺 has_data 时按 flat calories>0 判定）仅用于旧缓存/旧服务端兼容，
+// 语义近似而非严格一致：新格式行两者结论一致（flat 与 per_serving 同源）。
+bool nutritionHasData(const nlohmann::json& nutJson) {
+    if (!nutJson.contains("per_serving") || !nutJson["per_serving"].is_object())
+        return false;
+    const auto& ps = nutJson["per_serving"];
+    return safePerServingNum(ps, "calories") > 0.0
+        || safePerServingNum(ps, "protein_g") > 0.0
+        || safePerServingNum(ps, "fat_g") > 0.0
+        || safePerServingNum(ps, "carbs_g") > 0.0
+        || safePerServingNum(ps, "fiber_g") > 0.0
+        || safePerServingNum(ps, "sodium_mg") > 0.0
+        || safePerServingNum(ps, "vitamin_c_mg") > 0.0;
 }
 
 // 把筛选条件（cuisine/meal_type/difficulty/flavor/max_time/...）逐个拼进 WHERE 骨架，
@@ -581,24 +612,16 @@ RecipeDetail PgRecipeRepository::findById(int recipeId, int userId) {
             }
         }
 
-        // 解析 nutrition_info JSONB（has_data=false 表示无可用营养数据，前端展示空态而非全 0）
-        // 判定规则与 findNutrition 完全一致，避免详情页与报告页对同一菜谱结论相反：
-        //   新格式（含 per_serving 对象）→ true；旧 flat-only 格式 → 四项任一 >0 才 true；
-        //   空对象/全 0 flat → false。
+        // 解析 nutrition_info JSONB（has_data=false 表示无可用营养数据，前端展示空态而非全 0）。
+        // 判定规则与 findNutrition 完全一致（共用 nutritionHasData，见匿名命名空间）：
+        // 含 per_serving 对象且七项任一 >0 即有数据；空对象 {} / per_serving 空对象或全 0 → 无数据。
         if (!row["nutrition_info"].is_null()) {
             auto nutJson = json::parse(row["nutrition_info"].c_str());
             detail.nutrition.calories = nutJson.value("calories", 0.0);
             detail.nutrition.protein = nutJson.value("protein", 0.0);
             detail.nutrition.fat = nutJson.value("fat", 0.0);
             detail.nutrition.carbs = nutJson.value("carbs", 0.0);
-            if (nutJson.contains("per_serving") && nutJson["per_serving"].is_object()) {
-                detail.nutrition.has_data = true;
-            } else {
-                detail.nutrition.has_data = detail.nutrition.calories > 0.0
-                    || detail.nutrition.protein > 0.0
-                    || detail.nutrition.fat > 0.0
-                    || detail.nutrition.carbs > 0.0;
-            }
+            detail.nutrition.has_data = nutritionHasData(nutJson);
         } else {
             detail.nutrition.has_data = false;
         }
@@ -1040,6 +1063,7 @@ PagedUserRatings PgRecipeRepository::findMyRatings(int userId, int page, int siz
 
 NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
     return executeDb(db_, [&](pqxx::work& txn) {
+        // 查询基础信息
         LOG_DEBUG("[SQL] findNutrition | recipeId=%d", recipeId);
         pqxx::result r = txn.exec(
             "SELECT r.id, r.name, r.nutrition_info"
@@ -1058,7 +1082,6 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
         report.recipe_name = row["name"].c_str();
 
         // 无营养数据（NULL）→ 返回 has_data=false，前端据此展示"暂无营养报告"空态；
-        // 不再返回全 0 假数据（见 ARCHITECTURE_REVIEW 方案 A）。
         if (row["nutrition_info"].is_null()) {
             report.has_data = false;
             return report;
@@ -1066,40 +1089,22 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
 
         auto nutJson = json::parse(row["nutrition_info"].c_str());
 
-        // 旧格式兼容（升级前菜谱/未注入营养仓库的旧回退路径只写 flat 四项，无 per_serving）：
-        // flat 四项任一存在且 >0 → 合成 per_serving（fiber/sodium/vitc 置 0），
-        // 使详情页与报告页的 has_data 判定一致，避免"详情有营养、报告说没有"的矛盾；
-        // 空对象/全 0 → has_data=false。
-        if (!nutJson.contains("per_serving") || !nutJson["per_serving"].is_object()) {
-            const bool hasFlat = nutJson.contains("calories") || nutJson.contains("protein")
-                || nutJson.contains("fat") || nutJson.contains("carbs");
-            const double cal = nutJson.value("calories", 0.0);
-            const double pro = nutJson.value("protein", 0.0);
-            const double fat = nutJson.value("fat", 0.0);
-            const double carb = nutJson.value("carbs", 0.0);
-            if (hasFlat && (cal > 0.0 || pro > 0.0 || fat > 0.0 || carb > 0.0)) {
-                report.per_serving.calories = cal;
-                report.per_serving.protein_g = pro;
-                report.per_serving.fat_g = fat;
-                report.per_serving.carbs_g = carb;
-                report.has_data = true;
-            } else {
-                report.has_data = false;
-            }
-            return report;
+        // 格式解析：入库形态唯一——含 per_serving 对象且七项任一 >0 即有数据
+        // （判定见匿名命名空间 nutritionHasData，与 findById 共用保证两页结论一致）；
+        // 空对象 {} / per_serving 空对象或全 0 → 无数据
+        report.has_data = nutritionHasData(nutJson);
+        if (report.has_data) {
+            const auto& perServing = nutJson["per_serving"];
+            report.per_serving.calories = safePerServingNum(perServing, "calories");
+            report.per_serving.protein_g = safePerServingNum(perServing, "protein_g");
+            report.per_serving.fat_g = safePerServingNum(perServing, "fat_g");
+            report.per_serving.carbs_g = safePerServingNum(perServing, "carbs_g");
+            report.per_serving.fiber_g = safePerServingNum(perServing, "fiber_g");
+            report.per_serving.sodium_mg = safePerServingNum(perServing, "sodium_mg");
+            report.per_serving.vitamin_c_mg = safePerServingNum(perServing, "vitamin_c_mg");
         }
 
-        // 正常路径（新格式含 per_serving）：has_data 显式置 true（模型默认已改为 false）
-        report.has_data = true;
-        const auto& perServing = nutJson["per_serving"];
-        report.per_serving.calories = perServing.value("calories", 0.0);
-        report.per_serving.protein_g = perServing.value("protein_g", 0.0);
-        report.per_serving.fat_g = perServing.value("fat_g", 0.0);
-        report.per_serving.carbs_g = perServing.value("carbs_g", 0.0);
-        report.per_serving.fiber_g = perServing.value("fiber_g", 0.0);
-        report.per_serving.sodium_mg = perServing.value("sodium_mg", 0.0);
-        report.per_serving.vitamin_c_mg = perServing.value("vitamin_c_mg", 0.0);
-
+        // 食材明细
         if (nutJson.contains("ingredients_breakdown")) {
             for (const auto& item : nutJson["ingredients_breakdown"]) {
                 NutritionBreakdownItem bi;
@@ -1112,7 +1117,7 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
             }
         }
 
-        // 未计入营养的食材（新格式恒为数组；旧数据缺省 → 空）
+        // 未计入营养的食材（恒为数组）
         if (nutJson.contains("excluded_ingredients") && nutJson["excluded_ingredients"].is_array()) {
             for (const auto& item : nutJson["excluded_ingredients"]) {
                 ExcludedIngredient ei;
@@ -1122,6 +1127,7 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
             }
         }
 
+        // 健康提示
         report.health_notes = nutJson.value("health_notes", "");
         return report;
     }, "数据库操作失败");
@@ -1150,9 +1156,8 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
         std::string filename = "recipe_" + std::to_string(recipeId)
                              + "_" + std::to_string(ts) + ext;
 
-        const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-        std::string baseDir = envDir ? envDir : "server/uploads";
-        std::string uploadDir = std::filesystem::absolute(baseDir + "/recipes/").string();
+        // 上传目录规则统一见 ../common/UploadPaths.h
+        std::string uploadDir = UploadPaths::baseDir() + "/recipes/";
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
 
@@ -1204,9 +1209,8 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
                              + "_step_" + std::to_string(stepIndex)
                              + "_" + std::to_string(ts) + ext;
 
-        const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-        std::string baseDir = envDir ? envDir : "server/uploads";
-        std::string uploadDir = std::filesystem::absolute(baseDir + "/recipes/").string();
+        // 上传目录规则统一见 ../common/UploadPaths.h
+        std::string uploadDir = UploadPaths::baseDir() + "/recipes/";
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
 
@@ -1278,17 +1282,17 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
         // 收集所有图片路径用于清理
         std::vector<std::string> filesToRemove;
 
-        std::string imageUrl = rows[0]["image_url"].as<std::string>("");
-        if (!imageUrl.empty()) {
-            // 从 /uploads/recipes/filename 提取文件名
-            auto pos = imageUrl.find_last_of('/');
-            if (pos != std::string::npos) {
-                std::string filename = imageUrl.substr(pos + 1);
-                const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-                std::string baseDir = envDir ? envDir : "server/uploads";
-                filesToRemove.push_back(
-                    std::filesystem::absolute(baseDir + "/recipes/" + filename).string());
+        try {
+            std::string imageUrl = rows[0]["image_url"].as<std::string>("");
+            if (!imageUrl.empty()) {
+                // 存储 URL → 磁盘真实路径（统一规则见 ../common/UploadPaths.h）
+                if (auto p = UploadPaths::urlToPath(imageUrl, "recipes"); !p.empty())
+                    filesToRemove.push_back(p);
             }
+        } catch (const std::exception& e) {
+            // 路径换算异常（urlToPath 内 filesystem::absolute 在工作目录失效时会抛
+            // filesystem_error）跳过主图清理，不阻塞删除主流程（与步骤图处理一致）
+            LOG_WARN("解析菜谱主图 URL 失败，跳过清理: %s", e.what());
         }
 
         // 步骤图
@@ -1300,18 +1304,16 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
                     if (step.contains("image_url") && !step["image_url"].is_null()) {
                         std::string imgUrl = step["image_url"].get<std::string>();
                         if (!imgUrl.empty()) {
-                            auto pos = imgUrl.find_last_of('/');
-                            if (pos != std::string::npos) {
-                                std::string filename = imgUrl.substr(pos + 1);
-                                const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-                                std::string baseDir = envDir ? envDir : "server/uploads";
-                                filesToRemove.push_back(
-                                    std::filesystem::absolute(baseDir + "/recipes/" + filename).string());
-                            }
+                            if (auto p = UploadPaths::urlToPath(imgUrl, "recipes"); !p.empty())
+                                filesToRemove.push_back(p);
                         }
                     }
                 }
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                // steps 数据损坏（历史遗留）或路径换算异常（urlToPath 内 filesystem::absolute
+                // 在工作目录失效时会抛 filesystem_error）均跳过步骤图清理，不阻塞删除主流程
+                LOG_WARN("解析菜谱步骤图 URL 失败，跳过清理: %s", e.what());
+            }
         }
 
         // 先提交（文件删除在提交之后——文件系统操作不能回滚）
