@@ -107,7 +107,7 @@ private:
     std::unique_ptr<gocook::repository::IInventoryRepository> inventoryRepo_; ///< 库存仓库抽象（推荐匹配用）
     std::unique_ptr<gocook::repository::INutritionRepository> nutritionRepo_; ///< 营养仓库抽象（投稿营养计算用）
 
-    // 按食材清单计算营养 JSON（flat 四项 + per_serving + breakdown + excluded_ingredients + health_notes）：
+    // 按食材清单计算营养 JSON（顶部四项 + per_serving + breakdown + excluded_ingredients + health_notes）：
     // 未注入营养仓库 / 营养表查询异常 / 全部食材不可换算 → 统一回退形态：
     // 有手填值则以手填四项入库，否则空对象；未收录/无法换算的食材写入 excluded_ingredients。
     // 返回 nullopt 仅发生在"营养表查询异常且无手填值"（无法计算也无可回退）——

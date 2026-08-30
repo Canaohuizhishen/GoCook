@@ -3,9 +3,10 @@
 // 覆盖审查缺口：
 //   · PgIngredientNutritionRepository::findByNames（VALUES+LATERAL SQL）：
 //     别名命中、规范名优先、未匹配 nullopt、按序对齐、重复入参去重、NULL 单重兜底
-//   · PgRecipeRepository::findNutrition：旧 flat-only 格式合成 per_serving（has_data=true）、
-//     空对象/全 0 flat → has_data=false、SQL NULL → has_data=false、
-//     新格式 excluded_ingredients 透传
+//   · PgRecipeRepository::findNutrition：含 per_serving 对象且七项（热量/蛋白/脂肪/碳水/
+//     纤维/钠/维C）任一 >0 → has_data=true（纯钠调味料如"盐"也判有数据）、
+//     空对象 {} / per_serving 空对象或七项全 0 → has_data=false、旧 flat-only 正数 → has_data=false、
+//     SQL NULL → has_data=false、excluded_ingredients 透传
 //
 // 连接串：默认本地开发库（与 .env / docker-compose.yml 一致，非秘密），
 // 可用环境变量 GOCOOK_TEST_DB 覆盖；探测失败即跳过（GTEST_SKIP）。
@@ -156,34 +157,53 @@ TEST_F(NutritionDbTest, NULL单重兜底为0) {
 
 // ---- PgRecipeRepository::findNutrition ----
 
-TEST_F(NutritionDbTest, 旧flat格式合成per_serving) {
+TEST_F(NutritionDbTest, 空对象为无数据) {
     PgRecipeRepository repo(testPool());
-    int id = insertRecipe(R"({"calories":350,"protein":15,"fat":20,"carbs":30})");
-    auto report = repo.findNutrition(id);
-    EXPECT_TRUE(report.has_data);
-    EXPECT_DOUBLE_EQ(report.per_serving.calories, 350.0);
-    EXPECT_DOUBLE_EQ(report.per_serving.protein_g, 15.0);
-    EXPECT_DOUBLE_EQ(report.per_serving.fat_g, 20.0);
-    EXPECT_DOUBLE_EQ(report.per_serving.carbs_g, 30.0);
-    EXPECT_DOUBLE_EQ(report.per_serving.fiber_g, 0.0);
-    EXPECT_DOUBLE_EQ(report.per_serving.sodium_mg, 0.0);
-    EXPECT_DOUBLE_EQ(report.per_serving.vitamin_c_mg, 0.0);
-
-    // 详情页 has_data 判定必须与报告页一致（同一菜谱不能"详情有营养、报告说没有"）
-    auto detail = repo.findById(id);
-    EXPECT_TRUE(detail.nutrition.has_data);
-    EXPECT_DOUBLE_EQ(detail.nutrition.calories, 350.0);
-    EXPECT_DOUBLE_EQ(detail.nutrition.protein, 15.0);
+    int id = insertRecipe("{}");
+    EXPECT_FALSE(repo.findNutrition(id).has_data);
+    EXPECT_FALSE(repo.findById(id).nutrition.has_data) << "空对象：详情页应显示空态";
 }
 
-TEST_F(NutritionDbTest, 空对象与全0flat均为无数据) {
+TEST_F(NutritionDbTest, per_serving空对象为无数据) {
     PgRecipeRepository repo(testPool());
-    int id1 = insertRecipe("{}");
-    EXPECT_FALSE(repo.findNutrition(id1).has_data);
-    EXPECT_FALSE(repo.findById(id1).nutrition.has_data) << "空对象：详情页应显示空态";
-    int id2 = insertRecipe(R"({"calories":0,"protein":0,"fat":0,"carbs":0})");
-    EXPECT_FALSE(repo.findNutrition(id2).has_data);
-    EXPECT_FALSE(repo.findById(id2).nutrition.has_data) << "全 0 flat：详情页应显示空态（与报告页一致）";
+    int id = insertRecipe(R"({"per_serving":{}})");
+    EXPECT_FALSE(repo.findNutrition(id).has_data);
+    EXPECT_FALSE(repo.findById(id).nutrition.has_data) << "per_serving 空对象：详情页应显示空态";
+}
+
+TEST_F(NutritionDbTest, per_serving全0为无数据) {
+    PgRecipeRepository repo(testPool());
+    int id = insertRecipe(
+        R"({"calories":0,"protein":0,"fat":0,"carbs":0,)"
+        R"("per_serving":{"calories":0,"protein_g":0,"fat_g":0,"carbs_g":0,)"
+        R"("fiber_g":0,"sodium_mg":0,"vitamin_c_mg":0}})");
+    EXPECT_FALSE(repo.findNutrition(id).has_data);
+    EXPECT_FALSE(repo.findById(id).nutrition.has_data) << "per_serving 全 0：详情页应显示空态";
+}
+
+TEST_F(NutritionDbTest, 宏量全0仅钠有值为有数据) {
+    // 纯调味料菜谱（如"盐 10 克"）宏量四项全 0 但钠有真实值，属合法营养报告，
+    // 不得按"全 0 占位"判为无数据（每 100g 盐钠 3875.8mg，10g 用量即上值）。
+    PgRecipeRepository repo(testPool());
+    int id = insertRecipe(
+        R"({"calories":0,"protein":0,"fat":0,"carbs":0,)"
+        R"("per_serving":{"calories":0,"protein_g":0,"fat_g":0,"carbs_g":0,)"
+        R"("fiber_g":0,"sodium_mg":3875.8,"vitamin_c_mg":0}})");
+    auto report = repo.findNutrition(id);
+    EXPECT_TRUE(report.has_data);
+    EXPECT_DOUBLE_EQ(report.per_serving.sodium_mg, 3875.8);
+    // 详情页与报告页判定一致
+    EXPECT_TRUE(repo.findById(id).nutrition.has_data) << "仅钠有值：详情页应显示营养数据";
+}
+
+TEST_F(NutritionDbTest, 旧flat格式正数为无数据) {
+    // 判定收口回归：无 per_serving 的旧 flat-only 行即使四项均为正数，两页也统一判无数据
+    // （前端展示空态而非按旧格式展示——该行为由判定收口引入，此处钉死）
+    PgRecipeRepository repo(testPool());
+    int id = insertRecipe(
+        R"({"calories":350,"protein":12.5,"fat":8.2,"carbs":40.1})");
+    EXPECT_FALSE(repo.findNutrition(id).has_data);
+    EXPECT_FALSE(repo.findById(id).nutrition.has_data) << "旧 flat-only 正数：详情页应显示空态";
 }
 
 TEST_F(NutritionDbTest, NULL营养为无数据) {

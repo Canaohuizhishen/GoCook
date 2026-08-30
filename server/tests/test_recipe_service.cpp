@@ -248,6 +248,74 @@ TEST(RecipeServiceTest, 推荐正常流程) {
     EXPECT_EQ(result.data[0].name, "麻辣火锅");
 }
 
+TEST(RecipeServiceTest, 推荐偏好读取异常降级为空偏好) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    // 库存非空（1件）
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    // 偏好读取抛业务异常（池繁忙 503）→ 降级为空偏好，不向上抛
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Throw(ServiceException("数据库连接池繁忙", 503)));
+
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(1, 1, 60);
+    candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+    EXPECT_EQ(result.data.size(), 1);
+    EXPECT_EQ(result.data[0].name, "清蒸鱼");
+}
+
+TEST(RecipeServiceTest, 推荐健康档案读取DB故障降级为无档案) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 健康档案读取抛任意 std::exception → 降级为无健康档案，不向上抛。
+    // 注意：真实 PgUserRepository::getHealthConditions 会吞掉非 ServiceException 的
+    // std::exception 返回空（见其方法注释），此用例是服务层契约测试——当前装配下
+    // 服务层 catch 实际只接得住 ServiceException（如池繁忙 503）。
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Throw(std::runtime_error("Failed to open database connection")));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(1, 1, 60);
+    candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+    EXPECT_FALSE(result.health_filter_applied);
+    EXPECT_EQ(result.data.size(), 1);
+}
+
 TEST(RecipeServiceTest, 推荐健康过滤排除禁忌菜谱) {
     auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
     auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();

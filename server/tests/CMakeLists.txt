@@ -11,6 +11,7 @@ set(TEST_SOURCES
     test_inventory_service.cpp
     test_unimplemented_services.cpp
     test_db_executor.cpp
+    test_upload_paths.cpp
     test_nutrition_integration.cpp
 )
 

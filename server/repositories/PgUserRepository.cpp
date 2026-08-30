@@ -3,6 +3,7 @@
 #include <gocook/IServices.h>
 #include "../common/Logger.h"
 #include "../common/DbExecutor.h"
+#include "../common/UploadPaths.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -274,10 +275,8 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
         std::string filename = "user_" + std::to_string(userId)
                              + "_" + std::to_string(ts) + ext;
 
-        // 按需创建上传目录（绝对路径，与 Router 文件服务路径一致）
-        const char* envDir = std::getenv("GOCOOK_UPLOADS_DIR");
-        std::string baseDir = envDir ? envDir : "server/uploads";
-        std::string uploadDir = std::filesystem::absolute(baseDir + "/avatars/").string();
+        // 按需创建上传目录（绝对路径，与 Router 文件服务路径一致，规则见 ../common/UploadPaths.h）
+        std::string uploadDir = UploadPaths::baseDir() + "/avatars/";
         std::filesystem::create_directories(uploadDir);
         std::string destPath = uploadDir + "/" + filename;
 
