@@ -8,6 +8,13 @@ Page {
     id: loginPage
     title: qsTr("登录")
 
+    // 欢迎模式（冷启动首次）：显示「跳过，先逛逛」，跳过即进入游客模式
+    property bool welcomeMode: false
+    // 应用内模式（需要登录的功能触发）：显示关闭按钮，可返回原页面（取消操作）
+    property bool inAppMode: false
+    signal skipRequested()
+    signal closeRequested()
+
     property bool showResetFlow: false
     property bool showResetForm: false
 
@@ -19,6 +26,41 @@ Page {
         resetTokenField.text = ""
         resetNewPasswordField.text = ""
         errorLabel.text = ""
+    }
+
+    // 键盘提交入口（Enter）：密码框 Enter 直接登录，邮箱 Enter 直接注册
+    function submitLogin() {
+        authViewModel.login(usernameField.text, passwordField.text)
+    }
+    function registerAction() {
+        if (emailField.visible === false) emailField.visible = true
+        else {
+            authViewModel.registerUser(
+                usernameField.text,
+                passwordField.text,
+                emailField.text
+            )
+        }
+    }
+
+    // 顶部工具行：跳过按钮固定页面右上角（欢迎模式=进入游客模式，应用内模式=取消操作）
+    RowLayout {
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.topMargin: Theme.spacingSmall
+        anchors.rightMargin: Theme.spacingSmall
+        visible: loginPage.welcomeMode || loginPage.inAppMode
+        Button {
+            flat: true
+            text: qsTr("跳过")
+            font.pointSize: Theme.fontSizeBody
+            onClicked: {
+                if (loginPage.welcomeMode)
+                    loginPage.skipRequested()
+                else
+                    loginPage.closeRequested()
+            }
+        }
     }
 
     // 居中布局
@@ -44,6 +86,8 @@ Page {
                 id: usernameField
                 placeholderText: qsTr("用户名")
                 Layout.fillWidth: true
+                Keys.onReturnPressed: passwordField.forceActiveFocus()
+                Keys.onEnterPressed: passwordField.forceActiveFocus()
             }
 
             TextField {
@@ -51,6 +95,18 @@ Page {
                 placeholderText: qsTr("密码")
                 echoMode: TextInput.Password
                 Layout.fillWidth: true
+                Keys.onReturnPressed: {
+                    if (emailField.visible)
+                        emailField.forceActiveFocus()
+                    else
+                        submitLogin()
+                }
+                Keys.onEnterPressed: {
+                    if (emailField.visible)
+                        emailField.forceActiveFocus()
+                    else
+                        submitLogin()
+                }
             }
 
             TextField {
@@ -58,31 +114,22 @@ Page {
                 visible: false
                 placeholderText: qsTr("邮箱")
                 Layout.fillWidth: true
+                Keys.onReturnPressed: registerAction()
+                Keys.onEnterPressed: registerAction()
             }
 
             CustomButton {
                 buttonText: qsTr("登录")
                 buttonType: CustomButton.ButtonType.Primary
                 Layout.fillWidth: true
-                onClicked: {
-                    authViewModel.login(usernameField.text, passwordField.text)
-                }
+                onClicked: submitLogin()
             }
 
             CustomButton {
                 buttonText: qsTr("注册")
                 buttonType: CustomButton.ButtonType.Secondary
                 Layout.fillWidth: true
-                onClicked: {
-                    if(emailField.visible === false)emailField.visible = true
-                    else {
-                        authViewModel.registerUser(
-                            usernameField.text,
-                            passwordField.text,
-                            emailField.text
-                        )
-                    }
-                }
+                onClicked: registerAction()
             }
 
             // 忘记密码链接

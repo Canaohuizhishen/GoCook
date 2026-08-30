@@ -8,7 +8,7 @@ Dialog {
     id: root
     modal: true
     standardButtons: Dialog.NoButton
-    closePolicy: Popup.CloseOnEscape
+    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     x: (parent.width - width) / 2
     y: (parent.height - height) / 2
     width: Math.min(parent.width * 0.85, 340)

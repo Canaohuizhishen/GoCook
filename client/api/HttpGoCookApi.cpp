@@ -18,6 +18,10 @@
 //  3) 其余（statusCode > 0） → 服务器问题（5xx 返回 HTML/空体等），不能误导用户去查网络
 static QString errorMessageFor(int statusCode, const QJsonDocument &doc)
 {
+    // -2 = 被登录守卫拦截（未登录且接口需登录），未发送任何请求
+    if (statusCode == -2) {
+        return HttpGoCookApi::kAuthRequiredError;
+    }
     if (statusCode <= 0) {
         return QStringLiteral("网络连接失败，请检查网络");
     }
@@ -56,7 +60,46 @@ void HttpGoCookApi::setToken(const QString &token)
         m_token = token;
         // 发射属性变更信号
         emit tokenChanged();
+        // 登录守卫联动：拿到新 token（登录成功）→ 重放挂起的 Interactive 请求；
+        // token 被清空（登出）→ 挂起请求作废，按"请先登录"回调失败
+        if (!token.isEmpty())
+            replayPendingAuthRequests();
+        else
+            clearPendingAuthRequests();
     }
+}
+
+// 登录成功后重放全部挂起的 Interactive 请求（按入队顺序；此时 token 已非空，不会再次被拦截）
+void HttpGoCookApi::replayPendingAuthRequests()
+{
+    if (m_pendingAuthRequests.empty())
+        return;
+    auto pending = std::move(m_pendingAuthRequests);
+    m_pendingAuthRequests.clear();
+    for (auto &p : pending) {
+        // 挂起时 token 为空，request 上未携带 Authorization 头——重放前补上，否则服务端返回 401
+        p.request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
+        sendRaw(AuthMode::Interactive, p.op, p.request, p.body, p.methodOverride, std::move(p.handler));
+    }
+}
+
+// 清空挂起队列：每个请求按 -2"请先登录"回调失败（登录页被关闭/跳过，或登出时）
+void HttpGoCookApi::clearPendingAuthRequests()
+{
+    if (m_pendingAuthRequests.empty())
+        return;
+    auto pending = std::move(m_pendingAuthRequests);
+    m_pendingAuthRequests.clear();
+    for (auto &p : pending) {
+        if (p.handler)
+            p.handler(-2, QByteArray());
+    }
+}
+
+// QML 可调用：取消全部挂起的 Interactive 请求（应用内登录页被关闭/跳过时）
+void HttpGoCookApi::cancelAuthQueue()
+{
+    clearPendingAuthRequests();
 }
 
 // 设置最大重试次数
@@ -78,82 +121,84 @@ void HttpGoCookApi::setRetryDelay(int delayMs)
 }
 
 // GET 请求封装（QML 版本）
-void HttpGoCookApi::get(const QString &endpoint, const QJSValue &callback)
+void HttpGoCookApi::get(const QString &endpoint, const QJSValue &callback, AuthMode authMode)
 {
     // 调用统一请求发送方法，retryCount 从 0 开始
-    sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), callback, 0);
+    sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), callback, 0, "", false, authMode);
 }
 
 // GET 请求封装（C++ 版本，std::function 回调）
 // suppressNetworkError=true：失败时不发全局 networkError（页面自行呈现离线状态）
 void HttpGoCookApi::get(const QString &endpoint,
                         std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                        bool suppressNetworkError)
+                        bool suppressNetworkError,
+                        AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), std::move(callback), 0, "", suppressNetworkError);
+    sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), std::move(callback), 0, "", suppressNetworkError, authMode);
 }
 
 // POST 请求封装（QML 版本）
-void HttpGoCookApi::post(const QString &endpoint, const QVariantMap &data, const QJSValue &callback)
+void HttpGoCookApi::post(const QString &endpoint, const QVariantMap &data, const QJSValue &callback, AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::PostOperation, endpoint, data, callback, 0);
+    sendRequest(QNetworkAccessManager::PostOperation, endpoint, data, callback, 0, "", false, authMode);
 }
 
 // POST 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::post(const QString &endpoint, const QVariantMap &data,
                          std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                         bool suppressNetworkError)
+                         bool suppressNetworkError,
+                         AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::PostOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError);
+    sendRequest(QNetworkAccessManager::PostOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError, authMode);
 }
 
 // DELETE 请求封装（QML 版本）
-void HttpGoCookApi::deleteResource(const QString &endpoint, const QVariantMap &data, const QJSValue &callback)
+void HttpGoCookApi::deleteResource(const QString &endpoint, const QVariantMap &data, const QJSValue &callback, AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::DeleteOperation, endpoint, data, callback, 0);
+    sendRequest(QNetworkAccessManager::DeleteOperation, endpoint, data, callback, 0, "", false, authMode);
 }
 
 // DELETE 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::deleteResource(const QString &endpoint, const QVariantMap &data,
                                    std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                                   bool suppressNetworkError)
+                                   bool suppressNetworkError,
+                                   AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::DeleteOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError);
+    sendRequest(QNetworkAccessManager::DeleteOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError, authMode);
 }
 
 // PUT 请求封装（QML 版本）
-void HttpGoCookApi::put(const QString &endpoint, const QVariantMap &data, const QJSValue &callback)
+void HttpGoCookApi::put(const QString &endpoint, const QVariantMap &data, const QJSValue &callback, AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, callback, 0);
+    sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, callback, 0, "", false, authMode);
 }
 
 // PUT 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::put(const QString &endpoint, const QVariantMap &data,
                         std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                        bool suppressNetworkError)
+                        bool suppressNetworkError,
+                        AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError);
+    sendRequest(QNetworkAccessManager::PutOperation, endpoint, data, std::move(callback), 0, "", suppressNetworkError, authMode);
 }
 
 // PATCH 请求封装（QML 版本）
-void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data, const QJSValue &callback)
+void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data, const QJSValue &callback, AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, callback, 0, "PATCH");
+    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, callback, 0, "PATCH", false, authMode);
 }
 
 // PATCH 请求封装（C++ 版本，std::function 回调）
 void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data,
                           std::function<void(bool, const QString&, const QJsonDocument&)> callback,
-                          bool suppressNetworkError)
+                          bool suppressNetworkError,
+                          AuthMode authMode)
 {
-    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, std::move(callback), 0, "PATCH", suppressNetworkError);
+    sendRequest(QNetworkAccessManager::CustomOperation, endpoint, data, std::move(callback), 0, "PATCH", suppressNetworkError, authMode);
 }
 
-// 内部通用请求发送（构造请求、发送，返回 QNetworkReply*）
-QNetworkReply* HttpGoCookApi::sendRequestInternal(QNetworkAccessManager::Operation op,
-                                                  const QString &endpoint,
-                                                  const QVariantMap &data,
-                                                  const QString &methodOverride)
+// 构造标准 JSON 请求（URL、15 秒超时、Content-Type、Authorization）
+QNetworkRequest HttpGoCookApi::buildRequest(const QString &endpoint, const QString &methodOverride)
 {
     // 构造完整 URL
     QUrl url(m_baseUrl + endpoint);
@@ -166,15 +211,36 @@ QNetworkReply* HttpGoCookApi::sendRequestInternal(QNetworkAccessManager::Operati
     if (!m_token.isEmpty()) {
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
     }
+    return request;
+}
 
-    // 将数据转换为 JSON 字节数组
-    QByteArray body;
-    if (!data.isEmpty()) {
-        body = QJsonDocument(QJsonObject::fromVariantMap(data)).toJson();
+// 统一底层发送原语：所有 HTTP 请求（含文件上传等手写路径）的唯一出口
+void HttpGoCookApi::sendRaw(AuthMode authMode,
+                            QNetworkAccessManager::Operation op,
+                            QNetworkRequest &request,
+                            const QByteArray &body,
+                            const QString &methodOverride,
+                            std::function<void(int statusCode, const QByteArray &responseData)> handler)
+{
+    // ===== 登录守卫 preflight：未登录且接口声明需登录 → 不发送请求 =====
+    // Interactive：挂起入队并 emit authRequired()（上层弹应用内登录页）；
+    //               登录成功（tokenChanged）后按入队顺序自动重放；登录页被关闭
+    //               （cancelAuthQueue）或登出时按 -2"请先登录"回调失败。
+    // Silent：直接按 -2 回调失败（页面呈现"登录后可用"空态）。
+    // 此处保证绝不发出未授权请求。
+    if (authMode != AuthMode::Public && m_token.isEmpty()) {
+        if (authMode == AuthMode::Interactive) {
+            m_pendingAuthRequests.push_back(
+                PendingAuthRequest{op, request, body, methodOverride, std::move(handler)});
+            emit authRequired();
+            return;
+        }
+        if (handler) handler(-2, QByteArray());
+        return;
     }
 
-    QNetworkReply *reply = nullptr;
     // 根据操作类型发送请求
+    QNetworkReply *reply = nullptr;
     switch (op) {
     case QNetworkAccessManager::GetOperation:
         reply = m_nam.get(request);
@@ -195,7 +261,28 @@ QNetworkReply* HttpGoCookApi::sendRequestInternal(QNetworkAccessManager::Operati
     default:
         break;
     }
-    return reply;
+    if (!reply) {
+        // 请求未能发出（op 非法等）：按网络层错误回调，由调用方决定文案
+        if (handler) handler(-1, QByteArray());
+        return;
+    }
+
+    // 连接请求完成信号，QPointer 守卫防止对象销毁后 λ 访问已释放内存
+    connect(reply, &QNetworkReply::finished, this, [self = QPointer<HttpGoCookApi>(this), reply, handler]() {
+        if (!self) {
+            reply->deleteLater();
+            return;
+        }
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        QByteArray responseData = reply->readAll();
+        reply->deleteLater();
+        // 401 统一触发未授权信号（全局登出/游客兜底），业务解析留给 handler
+        if (statusCode == 401) {
+            emit self->unauthorized();
+            self->invokeUnauthorizedHandler();
+        }
+        if (handler) handler(statusCode, responseData);
+    });
 }
 
 // 统一发送 HTTP 请求的实现（QJSValue 回调版本），委托给 std::function 版本
@@ -205,7 +292,8 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 const QJSValue &callback,
                                 int retryCount,
                                 const QString &methodOverride,
-                                bool suppressNetworkError)
+                                bool suppressNetworkError,
+                                AuthMode authMode)
 {
     auto wrapped = [this, callback](bool success, const QString&, const QJsonDocument& doc) {
         if (!callback.isCallable()) return;
@@ -239,7 +327,7 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
         args << jsResponse;
         QJSValue(callback).call(args);
     };
-    sendRequest(op, endpoint, data, wrapped, retryCount, methodOverride, suppressNetworkError);
+    sendRequest(op, endpoint, data, wrapped, retryCount, methodOverride, suppressNetworkError, authMode);
 }
 
 // 统一发送 HTTP 请求的实现（std::function 回调版本），retryCount 用于重试控制
@@ -249,75 +337,59 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 std::function<void(bool, const QString&, const QJsonDocument&)> callback,
                                 int retryCount,
                                 const QString &methodOverride,
-                                bool suppressNetworkError)
+                                bool suppressNetworkError,
+                                AuthMode authMode)
 {
-    QNetworkReply *reply = sendRequestInternal(op, endpoint, data, methodOverride);
-    if (!reply) {
-        // 若请求未能发出，直接回调失败（未抑制时同步补发全局网络错误信号）
-        const QString failMsg = QStringLiteral("网络连接失败，请检查网络");
-        if (!suppressNetworkError) {
-            emit networkError(failMsg);
-        }
-        if (callback) {
-            callback(false, failMsg, QJsonDocument());
-        }
-        return;
+    QNetworkRequest request = buildRequest(endpoint, methodOverride);
+    // 将数据转换为 JSON 字节数组
+    QByteArray body;
+    if (!data.isEmpty()) {
+        body = QJsonDocument(QJsonObject::fromVariantMap(data)).toJson();
     }
 
-    // 连接请求完成信号，QPointer 守卫防止对象销毁后 λ 访问已释放内存
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, op, endpoint, data, retryCount, suppressNetworkError, self = QPointer<HttpGoCookApi>(this)]() {
+    sendRaw(authMode, op, request, body, methodOverride,
+            [self = QPointer<HttpGoCookApi>(this), op, endpoint, data, callback, retryCount, methodOverride, suppressNetworkError, authMode]
+            (int statusCode, const QByteArray &responseData) {
         if (!self) return;
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        // 401 时仍要读取响应体并通过 callback 返回错误信息
-        if (statusCode == 401) {
-            emit unauthorized();
-            invokeUnauthorizedHandler();
-            QByteArray responseData = reply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
-            reply->deleteLater();
-            if (callback) {
-                // 与绕过 sendRequest 的接口一致：统一返回解析后的精确文案（doc 仍透传，门面层可继续解析）
-                callback(false, errorMessageFor(statusCode, doc), doc);
-            }
+        // -2 = 被登录守卫拦截（未登录且接口需登录）：请求未发出，静默失败（不发全局网络错误、不重试）
+        if (statusCode == -2) {
+            if (callback) callback(false, errorMessageFor(statusCode, doc), doc);
             return;
         }
 
-        if (reply->error() != QNetworkReply::NoError) {
-            // 先读取响应体——服务端可能在错误响应中返回 JSON 错误信息
-            QByteArray responseData = reply->readAll();
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
+        // 401：全局 unauthorized 信号已由 sendRaw 统一发出，此处仅回调失败（服务端精确文案）
+        if (statusCode == 401) {
+            if (callback) callback(false, errorMessageFor(statusCode, doc), doc);
+            return;
+        }
 
-            // 只对真正的网络错误（无任何 HTTP 响应，statusCode <= 0）重试 GET；
-            // 4xx/5xx 说明服务端已应答（包裹送到了），业务错误/服务器问题重试只会放大问题
-            if (op == QNetworkAccessManager::GetOperation && statusCode <= 0 && retryCount < m_maxRetries) {
-                QTimer::singleShot(m_retryDelay, this, [self, op, endpoint, data, callback, retryCount, suppressNetworkError]() {
+        // 网络层错误（无任何 HTTP 响应，statusCode<=0）：只对 GET 重试；
+        // 4xx/5xx 说明服务端已应答（包裹送到了），业务错误/服务器问题重试只会放大问题
+        if (statusCode <= 0) {
+            if (op == QNetworkAccessManager::GetOperation && retryCount < self->m_maxRetries) {
+                QTimer::singleShot(self->m_retryDelay, self, [self, op, endpoint, data, callback, retryCount, suppressNetworkError, authMode]() {
                     if (!self) return;
-                    self->sendRequest(op, endpoint, data, callback, retryCount + 1, "", suppressNetworkError);
+                    self->sendRequest(op, endpoint, data, callback, retryCount + 1, "", suppressNetworkError, authMode);
                 });
-                reply->deleteLater();
                 return;
             }
 
-            // 统一三级文案（statusCode>0 且非业务 JSON → 服务器问题，不是网络问题）
             const QString errMsg = errorMessageFor(statusCode, doc);
-
-            if (!suppressNetworkError) emit networkError(errMsg);
-            if (callback) {
-                callback(false, errMsg, doc);
-            }
-            reply->deleteLater();
+            if (!suppressNetworkError) emit self->networkError(errMsg);
+            if (callback) callback(false, errMsg, doc);
             return;
         }
 
-        QByteArray responseData = reply->readAll();
-        QJsonDocument doc = QJsonDocument::fromJson(responseData);
         bool success = (statusCode >= 200 && statusCode < 300);
-
-        if (callback) {
-            callback(success, success ? QString() : QString::fromUtf8(responseData), doc);
+        if (success) {
+            if (callback) callback(true, QString(), doc);
+        } else {
+            const QString errMsg = errorMessageFor(statusCode, doc);
+            if (!suppressNetworkError) emit self->networkError(errMsg);
+            if (callback) callback(false, errMsg, doc);
         }
-        reply->deleteLater();
     });
 }
 
@@ -422,6 +494,7 @@ void HttpGoCookApi::resetPassword(const std::string& token,
 
 // ======================= 用户相关 =======================
 void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
+    // Silent：登录态校验/加载类，未登录静默失败（checkAutoLogin 仅在本地有 token 时调用，不受影响）
     get("/api/users/me", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
         if (!success) {
             callback(false, gocook::models::UserProfile{}, errorStr.toStdString());
@@ -438,7 +511,7 @@ void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
         profile.preferences_complete = obj["preferences_complete"].toBool();
         profile.created_at = obj["created_at"].toString().toStdString();
         callback(true, profile, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& profile,
@@ -477,7 +550,7 @@ void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& pr
         profile.preferences_complete = obj["preferences_complete"].toBool();
         profile.created_at = obj["created_at"].toString().toStdString();
         if (callback) callback(true, profile, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getPreferences(PreferencesCallback callback) {
@@ -499,7 +572,7 @@ void HttpGoCookApi::getPreferences(PreferencesCallback callback) {
         if (obj.contains("health_goal"))
             prefs.health_goal = obj["health_goal"].toString().toStdString();
         if (callback) callback(true, prefs, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& prefs,
@@ -529,7 +602,7 @@ void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& pre
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileRequest& healthProfile,
@@ -571,7 +644,7 @@ void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileReque
             }
         }
         if (callback) callback(true, resp, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getHealthProfile(HealthProfileCallback callback) {
@@ -602,7 +675,7 @@ void HttpGoCookApi::getHealthProfile(HealthProfileCallback callback) {
             }
         }
         if (callback) callback(true, resp, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::uploadAvatar(const std::string& filePath,
@@ -664,26 +737,14 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
     avLog("POST " + url.toString());
 
-    QNetworkReply* reply = m_nam.post(request, fileData);
-
-    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this), avLog]() {
-        if (!self) {
-            avLog("callback: self is null");
-            return;
-        }
-
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray responseData = reply->readAll();
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
+            [callback, avLog](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        reply->deleteLater();
-
         avLog("response status: " + QString::number(statusCode));
         avLog("response body: " + QString::fromUtf8(responseData));
 
         if (statusCode == 401) {
             avLog("unauthorized (401)");
-            emit self->unauthorized();
-            self->invokeUnauthorizedHandler();
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
@@ -749,18 +810,11 @@ void HttpGoCookApi::uploadRecipeImage(int recipeId,
     if (!m_token.isEmpty())
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
 
-    QNetworkReply* reply = m_nam.post(request, fileData);
-
-    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this)]() {
-        if (!self) return;
-
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
-        reply->deleteLater();
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
+            [callback](int statusCode, const QByteArray &responseData) {
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
         if (statusCode == 401) {
-            emit self->unauthorized();
-            self->invokeUnauthorizedHandler();
             if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
@@ -837,25 +891,13 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
     siLog("POST " + url.toString() + " Content-Type=" + contentType + " Auth=" + (m_token.isEmpty() ? "NO" : "YES"));
 
-    QNetworkReply* reply = m_nam.post(request, fileData);
-
-    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this), siLog]() {
-        if (!self) {
-            siLog("callback: self is null");
-            return;
-        }
-
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray responseData = reply->readAll();
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
+            [callback, siLog](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        reply->deleteLater();
-
         siLog("response status=" + QString::number(statusCode) + " body=" + QString::fromUtf8(responseData));
 
         if (statusCode == 401) {
             siLog("unauthorized (401)");
-            emit self->unauthorized();
-            self->invokeUnauthorizedHandler();
             if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
@@ -909,7 +951,7 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteAccount(SuccessCallback callback)
@@ -926,7 +968,7 @@ void HttpGoCookApi::deleteAccount(SuccessCallback callback)
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getFavorites(int page, int size,
@@ -965,7 +1007,7 @@ void HttpGoCookApi::getFavorites(int page, int size,
             }
         }
         if (callback) callback(true, result, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback) {
@@ -986,7 +1028,7 @@ void HttpGoCookApi::getFavoriteGroups(FavoriteGroupsCallback callback) {
             groups.push_back(g);
         }
         if (callback) callback(true, groups, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::createFavoriteGroup(const gocook::models::CreateGroupRequest& request,
@@ -1005,7 +1047,7 @@ void HttpGoCookApi::createFavoriteGroup(const gocook::models::CreateGroupRequest
         group.sort_order = obj["sort_order"].toInt();
         group.count = obj["count"].toInt();
         if (callback) callback(true, group, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::updateFavoriteGroup(int groupId,
@@ -1021,7 +1063,7 @@ void HttpGoCookApi::updateFavoriteGroup(int groupId,
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteFavoriteGroup(int groupId,
@@ -1033,7 +1075,7 @@ void HttpGoCookApi::deleteFavoriteGroup(int groupId,
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::updateFavoriteItem(int favoriteId,
@@ -1053,19 +1095,12 @@ void HttpGoCookApi::updateFavoriteItem(int favoriteId,
         req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
 
     QByteArray body = QJsonDocument(QJsonObject::fromVariantMap(data)).toJson();
-    QNetworkReply *reply = m_nam.sendCustomRequest(req, "PATCH", body);
-    connect(reply, &QNetworkReply::finished, this, [reply, callback, self = QPointer<HttpGoCookApi>(this)]() {
-        if (!self) return;
-
-        QByteArray responseData = reply->readAll();
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::CustomOperation, req, body, "PATCH",
+            [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        reply->deleteLater();
 
-        // 与其它接口一致：401 触发全局登出（否则用户不知道 token 已失效）
+        // 401 全局 unauthorized 信号已由 sendRaw 统一发出（与其它接口一致：触发登出）
         if (statusCode == 401) {
-            emit self->unauthorized();
-            self->invokeUnauthorizedHandler();
             if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
@@ -1096,7 +1131,7 @@ void HttpGoCookApi::batchDeleteFavorites(const gocook::models::BatchDeleteFavori
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getNotifications(int page, int size,
@@ -1140,7 +1175,7 @@ void HttpGoCookApi::getNotifications(int page, int size,
             }
         }
         if (callback) callback(true, result, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::markNotificationRead(int notificationId,
@@ -1159,7 +1194,7 @@ void HttpGoCookApi::markNotificationRead(int notificationId,
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
@@ -1177,7 +1212,7 @@ void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteNotification(int notificationId,
@@ -1196,7 +1231,7 @@ void HttpGoCookApi::deleteNotification(int notificationId,
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 // ======================= 菜谱相关 =======================
@@ -1369,7 +1404,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
         }
 
         callback(true, result, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::searchRecipes(const std::string& keyword,
@@ -1598,7 +1633,7 @@ void HttpGoCookApi::getMyRecipeRating(int recipeId,
         r.comment = obj["comment"].toString().toStdString();
         r.created_at = obj["created_at"].toString().toStdString();
         callback(true, std::move(r), "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
@@ -1664,7 +1699,7 @@ void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& reci
         resp.id = obj["id"].toInt();
         resp.status = obj["status"].toString().toStdString();
         callback(true, resp, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
@@ -1714,7 +1749,7 @@ void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
             }
         }
         callback(true, result, "");
-    });
+    }, false, AuthMode::Silent);
 }
 
 void HttpGoCookApi::editRecipe(int recipeId,
@@ -1780,7 +1815,7 @@ void HttpGoCookApi::editRecipe(int recipeId,
         }
         if (callback)
             callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::toggleFavorite(int recipeId,
@@ -1799,7 +1834,7 @@ void HttpGoCookApi::toggleFavorite(int recipeId,
             return;
         }
         if (callback) callback(true, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::rateRecipe(int recipeId,
@@ -1811,7 +1846,7 @@ void HttpGoCookApi::rateRecipe(int recipeId,
     data["comment"] = QString::fromStdString(request.comment);
     post(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, errorMsg.toStdString());
-    });
+    }, false, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::updateRating(int recipeId, int ratingId,
@@ -1824,7 +1859,7 @@ void HttpGoCookApi::updateRating(int recipeId, int ratingId,
     data["comment"] = QString::fromStdString(request.comment);
     put(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, errorMsg.toStdString());
-    });
+    }, false, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
@@ -1833,7 +1868,7 @@ void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
     QString endpoint = QString("/api/recipes/%1/ratings/%2").arg(recipeId).arg(ratingId);
     deleteResource(endpoint, QVariantMap{}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, errorMsg.toStdString());
-    });
+    }, false, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getMyRatings(int page, int size,
@@ -1882,7 +1917,7 @@ void HttpGoCookApi::getMyRatings(int page, int size,
         }
 
         if (callback) callback(true, result, "");
-    });
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::getRecipeNutrition(int recipeId,
@@ -1980,7 +2015,7 @@ void HttpGoCookApi::getInventory(int page, int size,
             }
         }
         callback(true, result, "");
-    }, true);
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest& item,
@@ -1999,7 +2034,7 @@ void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest
         }
         int id = doc.object()["id"].toInt();
         callback(true, id, "");
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteInventoryItem(int itemId,
@@ -2007,7 +2042,7 @@ void HttpGoCookApi::deleteInventoryItem(int itemId,
     QString endpoint = QString("/api/inventory/%1").arg(itemId);
     deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         callback(success, success ? "" : errorMsg.toStdString());
-    }, true);
+    }, true, AuthMode::Interactive);
 }
 
 // ======================= 购物清单 / 膳食计划 =======================
@@ -2030,7 +2065,7 @@ void HttpGoCookApi::getShoppingLists(ShoppingListsCallback callback)
             result.push_back(std::move(summary));
         }
         if (callback) callback(true, result, "");
-    });
+    }, false, AuthMode::Silent);
 }
 
 void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListRequest& request,
@@ -2066,7 +2101,7 @@ void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListR
             }
         }
         if (callback) callback(true, list, "");
-    });
+    }, false, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getShoppingListDetail(int listId,
@@ -2098,7 +2133,7 @@ void HttpGoCookApi::getShoppingListDetail(int listId,
             }
         }
         callback(true, result, "");
-    });
+    }, false, AuthMode::Silent);
 }
 
 void HttpGoCookApi::deleteShoppingList(int listId,
@@ -2107,7 +2142,7 @@ void HttpGoCookApi::deleteShoppingList(int listId,
     QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
     deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, success ? "" : errorMsg.toStdString());
-    });
+    }, false, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
@@ -2126,17 +2161,20 @@ void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
     body["checked"] = request.checked;
     QByteArray payload = QJsonDocument(body).toJson();
 
-    QNetworkReply* reply = m_nam.sendCustomRequest(req, "PATCH", payload);
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::CustomOperation, req, payload, "PATCH",
+            [callback](int statusCode, const QByteArray &responseData) {
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        reply->deleteLater();
+        // 401 全局 unauthorized 信号已由 sendRaw 统一发出
+        if (statusCode == 401) {
+            if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
+            return;
+        }
 
         if (statusCode == 200) {
-            callback(true, "");
+            if (callback) callback(true, "");
         } else {
-            QByteArray responseData = reply->readAll();
-            callback(false, QString::fromUtf8(responseData).toStdString());
+            if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
         }
     });
 }
@@ -2164,15 +2202,17 @@ void HttpGoCookApi::batchAddShoppingItems(int listId,
     }
     QByteArray body = QJsonDocument(arr).toJson();
 
-    QNetworkReply* reply = m_nam.post(request, body);
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, body, "",
+            [callback](int statusCode, const QByteArray &responseData) {
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray responseData = reply->readAll();
-        reply->deleteLater();
+        // 401 全局 unauthorized 信号已由 sendRaw 统一发出
+        if (statusCode == 401) {
+            if (callback) callback(false, gocook::models::BatchShoppingResponse{}, errorMessageFor(statusCode, doc).toStdString());
+            return;
+        }
 
         if (statusCode == 201) {
-            QJsonDocument doc = QJsonDocument::fromJson(responseData);
             QJsonObject obj = doc.object();
             gocook::models::BatchShoppingResponse resp;
             resp.message = obj["message"].toString().toStdString();
@@ -2191,9 +2231,10 @@ void HttpGoCookApi::batchAddShoppingItems(int listId,
                     resp.items.push_back(std::move(item));
                 }
             }
-            callback(true, resp, "");
+            if (callback) callback(true, resp, "");
         } else {
-            callback(false, gocook::models::BatchShoppingResponse{}, QString::fromUtf8(responseData).toStdString());
+            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
+            if (callback) callback(false, gocook::models::BatchShoppingResponse{}, errorMessageFor(statusCode, doc).toStdString());
         }
     });
 }
@@ -2211,17 +2252,22 @@ void HttpGoCookApi::exportShoppingList(int listId,
         req.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
     }
 
-    QNetworkReply* reply = m_nam.get(req);
-    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray body = reply->readAll();
-        reply->deleteLater();
+    sendRaw(AuthMode::Interactive, QNetworkAccessManager::GetOperation, req, QByteArray(), "",
+            [callback](int statusCode, const QByteArray &responseData) {
+        QJsonDocument doc = QJsonDocument::fromJson(responseData);
+
+        // 401 全局 unauthorized 信号已由 sendRaw 统一发出
+        if (statusCode == 401) {
+            if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
+            return;
+        }
 
         if (callback) {
             if (statusCode == 200) {
-                callback(true, QString::fromUtf8(body).toStdString(), "");
+                callback(true, QString::fromUtf8(responseData).toStdString(), "");
             } else {
-                callback(false, "", QString::fromUtf8(body).toStdString());
+                // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
+                callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             }
         }
     });

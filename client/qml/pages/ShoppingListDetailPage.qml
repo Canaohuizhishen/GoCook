@@ -505,7 +505,7 @@ Page {
         title: qsTr("导出完成")
         anchors.centerIn: parent
         modal: true
-        closePolicy: Popup.CloseOnEscape
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         width: Math.min(parent.width * 0.75, 380)
         height: exportDoneLayout.implicitHeight + 80
 

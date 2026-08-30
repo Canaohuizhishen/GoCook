@@ -8,6 +8,7 @@ Item {
     id: offlineView
 
     property bool active: false
+    property bool showRetry: true
     property string message: qsTr("服务器有点问题，请稍候再试")
     signal retryRequested()
 
@@ -44,6 +45,7 @@ Item {
             rightPadding: 32
             topPadding: 8
             bottomPadding: 8
+            visible: offlineView.showRetry
 
             background: Rectangle {
                 radius: Theme.radiusMedium

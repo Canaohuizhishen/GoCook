@@ -59,6 +59,8 @@ class StubServer {
 public:
     std::atomic<int> searchReqCount{0};
     std::atomic<int> avatarReqCount{0};
+    std::atomic<int> favoriteReqCount{0};        // POST 收藏（Interactive 挂起/重放计数）
+    std::atomic<int> favoritesListReqCount{0};   // GET 收藏列表（Silent 拦截计数）
 
     StubServer()
     {
@@ -89,6 +91,17 @@ public:
         svr.Post("/api/recipes/1/steps/0/image", [](const httplib::Request&, httplib::Response& res) {
             res.status = 401;
             res.set_content(R"({"error":"无效的访问令牌"})", "application/json");
+        });
+        // 登录守卫测试用：收藏写操作成功响应 + 收藏列表成功响应
+        svr.Post("/api/recipes/1/favorite", [this](const httplib::Request&, httplib::Response& res) {
+            favoriteReqCount++;
+            res.status = 200;
+            res.set_content(R"({"message":"ok"})", "application/json");
+        });
+        svr.Get("/api/users/me/favorites", [this](const httplib::Request&, httplib::Response& res) {
+            favoritesListReqCount++;
+            res.status = 200;
+            res.set_content(R"({"pagination":{"page":1,"size":20,"total":0,"total_pages":0},"data":[]})", "application/json");
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
@@ -199,6 +212,7 @@ protected:
     {
         api.setMaxRetries(0);
         api.setRetryDelay(50); // 测试里缩短重试间隔
+        api.setToken(QString()); // 每个用例从"未登录"开始（避免上一个用例的 token 污染）
     }
 
     HttpGoCookApi api;
@@ -261,6 +275,9 @@ TEST_F(HttpApiTest, UpdateFavoriteItem401_TriggersUnauthorized)
 {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    // 模拟"已登录但 token 失效"：无 token 时 Interactive 请求会被登录守卫拦截（不发请求，见 Guard 用例），
+    // 只有带 token 才能命中服务端 401 路径
+    api.setToken(QStringLiteral("stale-token"));
 
     std::atomic<bool> unauthorizedCalled{false};
     QObject::connect(&api, &HttpGoCookApi::unauthorized, [&]() { unauthorizedCalled = true; });
@@ -286,6 +303,8 @@ TEST_F(HttpApiTest, UploadAvatar401_UnifiedMessage)
 {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    // 模拟"已登录但 token 失效"（无 token 会被登录守卫拦截，见 Guard 用例）
+    api.setToken(QStringLiteral("stale-token"));
 
     std::atomic<bool> unauthorizedCalled{false};
     QObject::connect(&api, &HttpGoCookApi::unauthorized, [&]() { unauthorizedCalled = true; });
@@ -312,6 +331,116 @@ TEST_F(HttpApiTest, UploadAvatar401_UnifiedMessage)
     EXPECT_TRUE(unauthorizedCalled.load());
     EXPECT_EQ(err, "无效的访问令牌") << "401 应返回服务端精确文案而不是硬编码\"未授权\"";
     EXPECT_EQ(stub.avatarReqCount.load(), 1);
+}
+
+// ==================== T4.1：Interactive 未登录 → 挂起 + authRequired，不发请求 ====================
+TEST_F(HttpApiTest, InteractiveGuest_SuspendsAndEmitsAuthRequired)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    std::atomic<bool> authRequiredCalled{false};
+    QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
+
+    std::atomic<bool> done{false}; // 挂起期间回调不应触发
+    api.toggleFavorite(1, 1, std::nullopt, [&](bool, const std::string&) { done = true; });
+
+    // 给事件循环一点时间：若误发请求/误回调，这里会捕捉到
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+
+    EXPECT_TRUE(authRequiredCalled.load()) << "Interactive 未登录必须触发 authRequired";
+    EXPECT_EQ(stub.favoriteReqCount.load(), 0) << "挂起期间不得发出网络请求";
+    EXPECT_FALSE(done.load()) << "挂起期间回调不得触发";
+
+    // 清理挂起队列，避免污染后续用例
+    api.cancelAuthQueue();
+    // 断开信号连接：lambda 捕获本用例栈，残留连接会在后续用例 emit 时触发悬垂 UB
+    QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
+}
+
+// ==================== T4.2：登录成功后自动重放挂起请求 ====================
+TEST_F(HttpApiTest, InteractiveGuest_ReplayAfterLogin)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    std::atomic<bool> authRequiredCalled{false};
+    QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
+
+    std::atomic<bool> done{false};
+    bool ok = false;
+    std::string err;
+    api.toggleFavorite(1, 1, std::nullopt, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_TRUE(authRequiredCalled.load());
+    EXPECT_EQ(stub.favoriteReqCount.load(), 0);
+    EXPECT_FALSE(done.load());
+
+    // 模拟登录成功：setToken → tokenChanged → 自动重放
+    api.setToken(QStringLiteral("valid-token"));
+
+    ASSERT_TRUE(waitUntil(done)) << "登录后重放超时";
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(err.empty());
+    EXPECT_EQ(stub.favoriteReqCount.load(), 1) << "重放应恰好发出 1 次请求";
+    // 断开信号连接（lambda 捕获本用例栈，残留会在后续用例 emit 时触发悬垂 UB）
+    QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
+}
+
+// ==================== T4.3：登录页取消 → 挂起请求按"请先登录"失败 ====================
+TEST_F(HttpApiTest, InteractiveGuest_CancelFailsWithLoginRequired)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    std::atomic<bool> done{false};
+    bool ok = true;
+    std::string err;
+    api.toggleFavorite(1, 1, std::nullopt, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+
+    api.cancelAuthQueue();
+
+    ASSERT_TRUE(waitUntil(done)) << "取消后回调超时";
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(err, "请先登录");
+    EXPECT_EQ(stub.favoriteReqCount.load(), 0) << "取消后不得发出请求";
+}
+
+// ==================== T4.4：Silent 未登录 → 不发请求、不发 authRequired、静默失败 ====================
+TEST_F(HttpApiTest, SilentGuest_FailsWithoutRequestOrSignal)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    std::atomic<bool> authRequiredCalled{false};
+    QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
+
+    std::atomic<bool> done{false};
+    bool ok = true;
+    std::string err;
+    api.getFavorites(1, 20, "", [&](bool s, const gocook::models::PagedFavorites&, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+
+    ASSERT_TRUE(waitUntil(done)) << "回调超时";
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(err, "请先登录");
+    EXPECT_EQ(stub.favoritesListReqCount.load(), 0) << "Silent 未登录不得发出请求";
+    EXPECT_FALSE(authRequiredCalled.load()) << "Silent 不触发登录页";
+    QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
 }
 
 // ==================== T5：断网（连接拒绝）→ 统一网络文案 ====================
@@ -448,4 +577,62 @@ TEST(HttpApiE2E, RealServerSmoke)
     ASSERT_TRUE(waitUntil(done)) << "断网请求超时";
     EXPECT_FALSE(ok);
     EXPECT_EQ(err, "网络连接失败，请检查网络");
+
+    // --- 5. 游客模式全链路（登录守卫 + 挂起 + 重放，真实服务端） ---
+    api.setBaseUrl(QString::fromUtf8(base));
+    api.setAuthToken("");   // 回到游客（无 token）
+
+    // 5.1 游客浏览公开接口：菜谱列表 + 详情（可选认证，无 token 也成功）
+    done = false;
+    ok = false;
+    api.getPublicRecipes(1, 3, {}, [&](bool s, const gocook::models::PagedRecipes&, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "游客浏览列表超时";
+    EXPECT_TRUE(ok) << "游客浏览公开列表失败: " << err;
+
+    done = false;
+    ok = false;
+    api.getRecipeDetail(1, [&](bool s, const gocook::models::RecipeDetail&, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "游客浏览详情超时";
+    EXPECT_TRUE(ok) << "游客浏览公开详情失败: " << err;
+
+    // 5.2 游客触发写操作（Interactive）→ 挂起 + authRequired，不发出请求
+    std::atomic<bool> authRequiredCalled{false};
+    QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
+    done = false;
+    ok = false;
+    api.toggleFavorite(1, std::nullopt, std::nullopt,
+                       [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    EXPECT_TRUE(authRequiredCalled.load()) << "游客写操作必须触发 authRequired";
+    EXPECT_FALSE(done.load()) << "挂起期间回调不得触发";
+
+    // 5.3 登录成功 → tokenChanged 自动重放挂起请求 → 收藏成功
+    api.setAuthToken(token);
+    ASSERT_TRUE(waitUntil(done, 15000)) << "登录后重放超时";
+    EXPECT_TRUE(ok) << "重放后的收藏应成功: " << err;
+
+    // 5.4 游客 Silent 接口：静默失败"请先登录"，不触发 authRequired
+    authRequiredCalled = false;
+    QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
+    QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
+    done = false;
+    api.setAuthToken("");   // 再次回到游客
+    api.getFavorites(1, 20, "", [&](bool s, const gocook::models::PagedFavorites&, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "游客 Silent 请求超时";
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(err, "请先登录") << "Silent 未登录应静默失败";
+    EXPECT_FALSE(authRequiredCalled.load()) << "Silent 不触发登录页";
+    QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
 }

@@ -17,6 +17,7 @@ Page {
     signal showSettingsRequest()
     signal showNotificationRequest()
     signal showShoppingListRequest()
+    signal showLoginRequest()
 
     ColumnLayout {
         anchors.fill: parent
@@ -74,7 +75,12 @@ Page {
             id: swipeView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: tabBar.currentIndex
+            // 滑动同步：滑动切页 → currentIndex 变化 → 回写 tabBar 高亮（带值比较防循环：
+            // 点击路径已由 tabBar 侧同步，回写后值相同不再触发）
+            onCurrentIndexChanged: {
+                if (tabBar.currentIndex !== swipeView.currentIndex)
+                    tabBar.currentIndex = swipeView.currentIndex
+            }
 
             RecommendPage {
                 onRecipeClicked: (recipeId) => {
@@ -110,14 +116,25 @@ Page {
                 onShowNotificationRequest: {
                     homePage.showNotificationRequest()
                 }
+                onShowLoginRequest: {
+                    homePage.showLoginRequest()
+                }
             }
         }
     }
 
     footer: TabBar {
         id: tabBar
-        currentIndex: swipeView.currentIndex
         contentHeight: 50
+        // 双向同步（事件驱动 + 带值比较防循环）：
+        //   点击 → TabBar 内部赋值 currentIndex（QML 赋值会破坏绑定，不能依赖单向绑定跟随滑动）
+        //          → 本 handler 同步内容区 setCurrentIndex
+        //   滑动 → swipeView.currentIndex 变化 → 其 onCurrentIndexChanged 回写本高亮（见 SwipeView）
+        //   回写后对方值已相同、handler 不再触发 → 无循环
+        onCurrentIndexChanged: {
+            if (swipeView.currentIndex !== tabBar.currentIndex)
+                swipeView.setCurrentIndex(tabBar.currentIndex)
+        }
 
         TabButton {
             id: homeTab

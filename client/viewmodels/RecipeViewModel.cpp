@@ -736,13 +736,33 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
     emit favoritesLoadFailedChanged();
     emit favoritesLoadingChanged();
 
+    // 快照当前会话（token）：响应到达时若会话已切换（登出/换号），该在途响应属于旧账号，
+    // 静默丢弃——不清状态（clearFavorites 与新加载已接管），避免旧账号数据串入当前界面
+    const std::string tokenAtSend = m_api->authToken();
     m_api->getFavorites(page, size, group.toStdString(),
-                        [self = QPointer<RecipeViewModel>(this), page]
+                        [self = QPointer<RecipeViewModel>(this), page, tokenAtSend]
                         (bool success, const gocook::models::PagedFavorites& data,
                          const std::string& error) {
         if (!self) return;
+        // 会话已切换：过期响应作废。不清数据（clearFavorites/新加载已接管），
+        // 仅复位加载标记防页面卡死（极端时序下 clearFavorites 可能尚未执行）
+        if (self->m_api->authToken() != tokenAtSend) {
+            if (self->m_favoritesLoading) {
+                self->m_favoritesLoading = false;
+                emit self->favoritesLoadingChanged();
+            }
+            return;
+        }
         if (!success) {
             // 页面自行呈现：有旧数据则静默显示旧数据，无数据则居中离线视图（PDD 行为）
+            // 守卫拦截（未登录，error=请先登录）：旧数据是上一登录态的私有数据，必须清空
+            if (QString::fromStdString(error) == HttpGoCookApi::kAuthRequiredError) {
+                self->m_favorites.clear();
+                self->m_favoritesPage = 1;
+                self->m_favoritesHasMore = false;
+                emit self->favoritesChanged();
+                emit self->favoritesHasMoreChanged();
+            }
             self->m_favoritesLoadFailed = true;
             emit self->favoritesLoadFailedChanged();
             self->m_favoritesLoading = false;
@@ -775,6 +795,25 @@ void RecipeViewModel::loadMoreFavorites()
 {
     if (m_favoritesLoading || !m_favoritesHasMore) return;
     loadFavorites(m_favoritesPage + 1, m_pageSize);
+}
+
+void RecipeViewModel::clearFavorites()
+{
+    m_favorites.clear();
+    m_favoritesPage = 1;
+    m_favoritesHasMore = false;
+    m_favoritesTotalPages = 0;
+    m_favoritesTotal = 0;
+    m_favoritesLoading = false;
+    m_favoritesLoadFailed = false;
+    // 收藏分组同样属于个人数据：登出后必须清空，否则游客在详情页点收藏时
+    // 分组对话框仍显示上一账号的分组（loadFavoriteGroups 失败时旧数据被保留）
+    m_favoriteGroups.clear();
+    emit favoriteGroupsChanged();
+    emit favoritesChanged();
+    emit favoritesHasMoreChanged();
+    emit favoritesLoadingChanged();
+    emit favoritesLoadFailedChanged();
 }
 
 void RecipeViewModel::toggleFavorite(int recipeId, int groupId)

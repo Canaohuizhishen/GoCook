@@ -130,6 +130,110 @@ TEST(InventoryServiceTest, 食材单位不合法拒绝) {
     }
 }
 
+// ==================== 过期日期校验边界 ====================
+
+TEST(InventoryServiceTest, 过期日期格式非法拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 1.0;
+    req.unit = "个";
+    req.expiry_date = "2026/01/01";
+
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("格式无效"));
+    }
+}
+
+TEST(InventoryServiceTest, 过期日期非闰年2月29日拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 1.0;
+    req.unit = "个";
+    req.expiry_date = "2025-02-29";
+
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("过期日期无效"));
+    }
+}
+
+TEST(InventoryServiceTest, 过期日期不存在的月日拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 1.0;
+    req.unit = "个";
+    req.expiry_date = "2026-02-31";
+
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("过期日期无效"));
+    }
+
+    req.expiry_date = "2026-04-31";
+    try {
+        service.upsertInventory(1, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_THAT(e.what(), testing::HasSubstr("过期日期无效"));
+    }
+}
+
+TEST(InventoryServiceTest, 过期日期闰年2月29日正常委派) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 1.0;
+    req.unit = "个";
+    req.expiry_date = "2024-02-29";
+
+    EXPECT_CALL(*repo, upsertInventory(1, Truly([](const auto& r) {
+        return r.expiry_date.has_value() && r.expiry_date.value() == "2024-02-29";
+    }))).WillOnce(Return(42));
+
+    EXPECT_EQ(service.upsertInventory(1, req), 42);
+}
+
+TEST(InventoryServiceTest, 过期日期合法正常委派) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
+    InventoryServiceImpl service(std::move(mock));
+
+    UpsertInventoryRequest req;
+    req.ingredient_name = "测试食材";
+    req.quantity = 1.0;
+    req.unit = "个";
+    req.expiry_date = "2026-05-10";
+
+    EXPECT_CALL(*repo, upsertInventory(1, Truly([](const auto& r) {
+        return r.expiry_date.has_value() && r.expiry_date.value() == "2026-05-10";
+    }))).WillOnce(Return(42));
+
+    EXPECT_EQ(service.upsertInventory(1, req), 42);
+}
+
 // ==================== 未实现的方法 ====================
 
 TEST(InventoryServiceTest, 购物清单列表正确委派) {

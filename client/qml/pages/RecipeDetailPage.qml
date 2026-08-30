@@ -9,6 +9,10 @@ Page {
 
     property int recipeId: 0
     property bool isFavorited: false
+    // 收藏写操作乐观状态：操作前快照 + 待确认标记。失败（含登录页跳过 → -2"请先登录"）时回滚到快照，
+    // 避免"按钮已收藏但实际未收藏"的假状态；成功/重放成功时清标记保持当前状态
+    property bool favoriteOpPending: false
+    property bool favoriteOpPrevFavorited: false
     property bool videosAttempted: false
     property bool ratingsTriggered: false
     property int newRating: 0
@@ -20,6 +24,13 @@ Page {
     readonly property var nutrition: recipeVM.recipeDetail.nutrition || {}
     readonly property real imageHeight: (flickable.width - Theme.spacingMedium * 2) * 0.5
     readonly property real navThreshold: imageHeight - navBar.height
+
+    // 收藏/取消收藏统一入口：先记录操作前快照并乐观翻转，失败时由 onFavoriteOperationFailed 回滚
+    function applyFavoriteToggle(nextFavorited) {
+        favoriteOpPending = true
+        favoriteOpPrevFavorited = isFavorited
+        isFavorited = nextFavorited
+    }
 
     Component.onCompleted: {
         if (recipeId > 0)
@@ -915,7 +926,7 @@ Page {
             onClicked: {
                 if (isFavorited) {
                     // 已收藏 → 直接取消收藏
-                    isFavorited = false
+                    applyFavoriteToggle(false)
                     recipeVM.toggleFavorite(recipeId, 0)
                 } else {
                     // 未收藏 → 弹出分组选择
@@ -950,7 +961,7 @@ Page {
             onClicked: {
                 moreMenu.close()
                 if (isFavorited) {
-                    isFavorited = false
+                    applyFavoriteToggle(false)
                     recipeVM.toggleFavorite(recipeId, 0)
                 } else {
                     recipeVM.loadFavoriteGroups()
@@ -991,6 +1002,8 @@ Page {
             noStepsText.visible = (stps.length === 0)
             if (d && d.isFavorited !== undefined)
                 isFavorited = d.isFavorited
+            // 新详情加载完成：作废旧菜谱的未决收藏操作（挂起请求重放结果不再影响当前页面）
+            favoriteOpPending = false
         }
         function onRecipeVideosChanged() {
             videosRepeater.model = recipeVM.recipeVideos || []
@@ -1013,7 +1026,21 @@ Page {
             recipeVM.loadMyRecipeRating(recipeId)
         }
         function onFavoriteOperationFailed(error) {
-            // 收藏写操作失败（toggleFavorite 已抑制全局提示，此处页内呈现，避免双弹）
+            // 收藏写操作失败（含登录页跳过 → -2"请先登录"/网络失败/服务端拒绝）：回滚乐观状态，
+            // 避免按钮显示与真实收藏状态不一致；toggleFavorite 已抑制全局提示，此处页内呈现，避免双弹
+            if (favoriteOpPending) {
+                favoriteOpPending = false
+                isFavorited = favoriteOpPrevFavorited
+            }
+            favoriteErrorBanner.text = ""
+            favoriteErrorBanner.text = error
+        }
+        function onFavoriteToggleSuccess() {
+            // 收藏写操作成功（含登录后重放成功）：状态与服务器一致，清待确认标记
+            favoriteOpPending = false
+        }
+        function onRatingError(error) {
+            // 评分/改评/删评失败提示（原为静默失败，无任何反馈）
             favoriteErrorBanner.text = ""
             favoriteErrorBanner.text = error
         }
@@ -1031,7 +1058,7 @@ Page {
         id: groupDialog
         groupsModel: recipeVM.favoriteGroups
         onGroupSelected: function(groupId) {
-            isFavorited = true
+            applyFavoriteToggle(true)
             recipeVM.toggleFavorite(recipeId, groupId)
         }
     }
