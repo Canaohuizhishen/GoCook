@@ -52,6 +52,7 @@ PagedInventory PgInventoryRepository::findInventory(int userId, int page, int si
 
 int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequest& item) {
     return executeDb(db_, [&](pqxx::work& txn) {
+        // 检查记录是否存在
         LOG_DEBUG("[SQL] upsertInventory check existing | userId=%d ing=%s", userId, item.ingredient_name.c_str());
         pqxx::result existing = txn.exec(
             "SELECT id FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
@@ -296,6 +297,7 @@ std::string PgInventoryRepository::exportShoppingList(int userId, int listId, co
         throw ServiceException("不支持的导出格式，仅支持 text", 400);   // 纯参数校验，不碰数据库，放在 executeDb 外
     }
     return executeDb(db_, [&](pqxx::work& txn) {
+        // 验证清单归属（权限 + 存在性）
         pqxx::result listRes = txn.exec(
             "SELECT name FROM shopping_lists WHERE id = $1 AND user_id = $2",
             pqxx::params{listId, userId});
@@ -304,6 +306,7 @@ std::string PgInventoryRepository::exportShoppingList(int userId, int listId, co
         }
         std::string listName = listRes[0]["name"].c_str();
 
+        // 查询清单项明细
         pqxx::result itemsRes = txn.exec(
             "SELECT ingredient_name, to_buy_quantity, unit, checked "
             "FROM shopping_list_items WHERE list_id = $1 ORDER BY id",
@@ -312,6 +315,7 @@ std::string PgInventoryRepository::exportShoppingList(int userId, int listId, co
         std::string result;
         result += "GoCook 购物清单：" + listName + "\n\n";
 
+        // 构建纯文本内容（手工拼接）
         for (const auto& row : itemsRes) {
             bool checked = row["checked"].as<bool>();
             std::string name = row["ingredient_name"].c_str();
