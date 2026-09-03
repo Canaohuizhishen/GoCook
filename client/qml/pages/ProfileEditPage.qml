@@ -39,7 +39,7 @@ Page {
     NativeFileDialog {
         id: avatarFileDialog
         onFileSelected: function(localPath) {
-            profileEditPage.dbg("NativeFileDialog onFileSelected: " + localPath)
+            profileEditPage.dbg("NativeFileDialog 已选择文件：" + localPath)
 
             pendingAvatarPath = localPath
             profileEditPage.dbg("pendingAvatarPath = " + pendingAvatarPath)
@@ -50,7 +50,7 @@ Page {
             profileEditPage.dbg("uploadAvatar 调用完毕")
         }
         onRejected: {
-            profileEditPage.dbg("NativeFileDialog onRejected (用户取消)")
+            profileEditPage.dbg("NativeFileDialog 已取消（用户取消选择）")
         }
     }
 

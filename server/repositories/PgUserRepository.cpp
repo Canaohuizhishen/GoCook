@@ -151,7 +151,7 @@ void PgUserRepository::resetPasswordAndMarkTokenUsed(
             "UPDATE password_reset_tokens SET used = true WHERE token = $1",
             pqxx::params{token});
     }, "数据库操作失败");
-    LOG_INFO("Password reset and token marked used for user %d", userId);
+    LOG_INFO("用户 %d 的密码已重置，重置令牌已标记为已使用", userId);
 }
 
 void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& profile) {
@@ -202,7 +202,7 @@ std::vector<std::string> PgUserRepository::getHealthConditions(int userId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_ERROR("getHealthConditions failed: %s", e.what());
+        LOG_ERROR("获取健康条件失败：%s", e.what());
         return {};
     }
 }
@@ -283,7 +283,7 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
         // 检查临时源文件是否存在
         bool srcExists = std::filesystem::exists(filePath);
         if (!srcExists) {
-            LOG_ERROR("Avatar source file does not exist: %s", filePath.c_str());
+            LOG_ERROR("头像源文件不存在：%s", filePath.c_str());
         }
 
         // 把文件复制到永久位置
@@ -291,7 +291,7 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
             std::filesystem::copy(filePath, destPath,
                                   std::filesystem::copy_options::overwrite_existing);
         } catch (const std::filesystem::filesystem_error& fe) {
-            LOG_ERROR("Failed to copy avatar file from %s to %s: %s",
+            LOG_ERROR("复制头像文件失败（%s → %s）：%s",
                       filePath.c_str(), destPath.c_str(), fe.what());
             throw ServiceException("头像文件保存失败");
         }
@@ -320,7 +320,7 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_WARN("Database error in uploadAvatar: %s", e.what());
+        LOG_WARN("头像上传时数据库出错：%s", e.what());
         throw ServiceException("头像上传失败");
     }
 }

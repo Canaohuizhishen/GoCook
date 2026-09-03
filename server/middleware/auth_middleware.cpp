@@ -29,11 +29,11 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
         if (decoded.has_expires_at()) {
             auto exp_time = decoded.get_expires_at();
             if (std::chrono::system_clock::now() > exp_time) {
-                throw std::runtime_error("token expired");
+                throw std::runtime_error("令牌已过期");
             }
         } else {
             // 没有 exp 字段的 Token 视为非法
-            throw std::runtime_error("token missing expiration");
+            throw std::runtime_error("令牌缺少过期时间");
         }
 
         // 6. 提取负荷中的用户信息
@@ -44,7 +44,7 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
 
     } catch (const std::exception& e) {
         // 验证失败（签名错误、过期、格式不对等）
-        LOG_WARN("JWT authentication failed: %s", e.what());
+        LOG_WARN("JWT 身份验证失败：%s", e.what());
         info.valid = false;
     }
 

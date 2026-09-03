@@ -61,10 +61,10 @@ struct Config {
         cfg.logLevel     = getEnv("GOCOOK_LOG_LEVEL",      "info");
 
         if (cfg.jwtSecret.empty()) {
-            throw std::runtime_error("GOCOOK_JWT_SECRET is required. Set it via env or .env file.(or by running server/setup.sh)");
+            throw std::runtime_error("缺少 GOCOOK_JWT_SECRET：请通过环境变量或 .env 文件设置（或运行 server/setup.sh）");
         }
         if (cfg.dbConnString.empty()) {
-            throw std::runtime_error("GOCOOK_DB_CONN_STRING is required. Set it via env or .env file.(or by running server/setup.sh)");
+            throw std::runtime_error("缺少 GOCOOK_DB_CONN_STRING：请通过环境变量或 .env 文件设置（或运行 server/setup.sh）");
         }
         return cfg;
     }

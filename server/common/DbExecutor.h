@@ -58,7 +58,7 @@ auto executeDb(Pool& pool, Func&& func,
     } catch (const gocook::services::ServiceException&) {
         throw;                                           // 业务异常原样上抛
     } catch (const std::exception& e) {
-        LOG_WARN("Database error in %s: %s", loc.function_name(), e.what());
+        LOG_WARN("数据库操作出错（调用点 %s）：%s", loc.function_name(), e.what());
         throw gocook::services::ServiceException(errorMsg);
     }
 }

@@ -320,7 +320,7 @@ Page {
     Connections {
         target: recipeVM
         function onErrorOccurred(error) {
-            console.log("MyRecipes error:", error)
+            console.log("我的菜谱页错误：", error)
         }
     }
 }

@@ -300,7 +300,7 @@ TEST(RecipeServiceTest, 推荐健康档案读取DB故障降级为无档案) {
     // std::exception 返回空（见其方法注释），此用例是服务层契约测试——当前装配下
     // 服务层 catch 实际只接得住 ServiceException（如池繁忙 503）。
     EXPECT_CALL(*userRepo, getHealthConditions(1))
-        .WillOnce(Throw(std::runtime_error("Failed to open database connection")));
+        .WillOnce(Throw(std::runtime_error("无法建立数据库连接")));
 
     PagedRecommendedRecipes candidates = makePagedRecommended(1, 1, 60);
     candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));

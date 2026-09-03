@@ -78,13 +78,13 @@ std::string UserServiceImpl::hashPassword(const std::string& plain) {
     char salt[BCRYPT_OUTPUT_SIZE];
     char *salt_result = _crypt_gensalt_blowfish_rn("$2a$", 10, random_bytes, 16, salt, sizeof(salt));
     if (!salt_result) {
-        throw ServiceException("Failed to generate password salt");
+        throw ServiceException("无法生成密码盐值");
     }
 
     char hash[BCRYPT_OUTPUT_SIZE];
     char *hash_result = _crypt_blowfish_rn(plain.c_str(), salt, hash, sizeof(hash));
     if (!hash_result) {
-        throw ServiceException("Failed to hash password");
+        throw ServiceException("密码哈希计算失败");
     }
 
     return std::string(hash_result);
@@ -122,11 +122,11 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
 LoginResponse UserServiceImpl::login(const LoginRequest& request) {
     auto authInfo = userRepo_->findByUsername(request.username);
     if (!authInfo.has_value()) {
-        throw ServiceException("Invalid username or password", 401);
+        throw ServiceException("用户名或密码错误", 401);
     }
 
     if (!validatePassword(request.password, authInfo->passwordHash)) {
-        throw ServiceException("Invalid username or password", 401);
+        throw ServiceException("用户名或密码错误", 401);
     }
 
     LoginResponse resp;
@@ -151,7 +151,7 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
     // 1. 校验用户名与邮箱是否匹配（双重验证）
     auto userIdOpt = userRepo_->findIdByUsernameAndEmail(username, email);
     if (!userIdOpt.has_value()) {
-        LOG_WARN("Password reset requested for username='%s' email='%s' — no match found",
+        LOG_WARN("密码重置请求未找到匹配账户：username='%s' email='%s'",
                  username.c_str(), email.c_str());
         throw ServiceException("用户名和邮箱不匹配", 400);
     }
@@ -181,13 +181,13 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
     if (EmailSender::isConfigured()) {
         bool sent = EmailSender::sendPasswordResetEmail(email, token);
         if (!sent) {
-            LOG_ERROR("SMTP send failed for %s", email.c_str());
+            LOG_ERROR("向 %s 发送邮件失败（SMTP 错误）", email.c_str());
             throw ServiceException("密码重置邮件发送失败，请稍后再试或联系管理员", 500);
         }
-        LOG_INFO("Password reset email sent to %s", email.c_str());
+        LOG_INFO("密码重置邮件已发送至 %s", email.c_str());
         return std::nullopt;
     } else {
-        LOG_WARN("SMTP not configured — password reset token will be returned in response (dev mode)");
+        LOG_WARN("SMTP 未配置——密码重置令牌将随响应返回（开发模式）");
         return token;
     }
 }

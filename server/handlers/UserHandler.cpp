@@ -30,7 +30,7 @@ void UserHandler::registerUser(const httplib::Request& req, httplib::Response& r
         service_.registerUser(request);
 
         res.status = 201;
-        res.body = json{{"message", "User registered successfully"}}.dump();
+        res.body = json{{"message", "用户注册成功"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

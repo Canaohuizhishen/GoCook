@@ -72,7 +72,7 @@ void RecipeHandler::searchRecipes(const httplib::Request& req, httplib::Response
         if (keyword.empty()) {
             res.status = 400;
             res.set_header("Content-Type", "application/json");
-            res.body = R"({"error":"keyword cannot be empty"})";
+            res.body = R"({"error":"搜索关键词不能为空"})";
             return;
         }
         auto pp = parsePagination(req, 20);
@@ -267,7 +267,7 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
 
         std::string newStatus = service_.editRecipe(info.userId, recipeId, updates);
         res.status = 200;
-        res.body = json{{"message", "Recipe updated"}, {"status", newStatus}}.dump();
+        res.body = json{{"message", "菜谱已更新"}, {"status", newStatus}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -289,7 +289,7 @@ void RecipeHandler::toggleFavorite(const httplib::Request& req, httplib::Respons
         }
         service_.toggleFavorite(info.userId, recipeId, groupId, isPublic);
         res.status = 200;
-        res.body = json{{"message", "Favorite toggled"}}.dump();
+        res.body = json{{"message", "收藏状态已更新"}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -387,7 +387,7 @@ void RecipeHandler::updateRating(const httplib::Request& req, httplib::Response&
         request.comment = reqJson.value("comment", "");
         service_.updateRating(info.userId, recipeId, ratingId, request);
         res.status = 200;
-        res.body = json{{"message", "Rating updated"}}.dump();
+        res.body = json{{"message", "评分已更新"}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -403,7 +403,7 @@ void RecipeHandler::deleteRating(const httplib::Request& req, httplib::Response&
         int ratingId = std::stoi(req.matches[2]);
         service_.deleteRating(info.userId, recipeId, ratingId);
         res.status = 200;
-        res.body = json{{"message", "Rating deleted"}}.dump();
+        res.body = json{{"message", "评分已删除"}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -520,7 +520,7 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
 
         res.status = 200;
         res.set_header("Content-Type", "application/json");
-        res.body = json{ {"image_url", imageUrl}, {"message", "Step image uploaded"} }.dump();
+        res.body = json{ {"image_url", imageUrl}, {"message", "步骤图已上传"} }.dump();
 
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
@@ -537,7 +537,7 @@ void RecipeHandler::deleteRecipe(const httplib::Request& req, httplib::Response&
         service_.deleteRecipe(info.userId, recipeId);
         res.status = 200;
         res.set_header("Content-Type", "application/json");
-        res.body = json{ {"message", "Recipe deleted"} }.dump();
+        res.body = json{ {"message", "菜谱已删除"} }.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

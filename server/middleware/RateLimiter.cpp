@@ -116,9 +116,9 @@ void RateLimiter::cleanupLoop()
                 }
             }
         } catch (const std::exception& e) {
-            LOG_ERROR("RateLimiter cleanup error: %s", e.what());
+            LOG_ERROR("限流器后台清理出错：%s", e.what());
         } catch (...) {
-            LOG_ERROR("RateLimiter cleanup unknown error");
+            LOG_ERROR("限流器后台清理发生未知错误");
         }
     }
 }

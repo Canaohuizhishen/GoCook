@@ -68,7 +68,7 @@ public:
         svr.Get("/api/recipes/search", [this](const httplib::Request&, httplib::Response& res) {
             searchReqCount++;
             res.status = 400;
-            res.set_content(R"({"error":"keyword cannot be empty"})", "application/json");
+            res.set_content(R"({"error":"搜索关键词不能为空"})", "application/json");
         });
         // 与真实服务端一致的 401 响应
         svr.Get("/api/me", [](const httplib::Request&, httplib::Response& res) {
@@ -241,7 +241,7 @@ TEST_F(HttpApiTest, Business400_NotRetried)
 
     ASSERT_TRUE(waitUntil(done)) << "回调超时";
     EXPECT_FALSE(ok);
-    EXPECT_EQ(err.toStdString(), "keyword cannot be empty");
+    EXPECT_EQ(err.toStdString(), "搜索关键词不能为空");
     EXPECT_EQ(cbCount, 1) << "回调只能触发一次";
     EXPECT_EQ(stub.searchReqCount.load(), 1) << "业务 400 不得被重试：服务端只应收到 1 次请求";
 }
@@ -546,7 +546,7 @@ TEST(HttpApiE2E, RealServerSmoke)
                       });
     ASSERT_TRUE(waitUntil(done)) << "搜索超时";
     EXPECT_FALSE(ok);
-    EXPECT_EQ(err, "keyword cannot be empty") << "应透传服务端 400 文案";
+    EXPECT_EQ(err, "搜索关键词不能为空") << "应透传服务端 400 文案";
     EXPECT_EQ(cbCount, 1) << "业务 400 不得重试";
 
     // --- 3. 假 token → 真实 401 + unauthorized 信号 ---
