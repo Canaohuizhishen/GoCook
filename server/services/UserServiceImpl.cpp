@@ -67,41 +67,49 @@ std::string UserServiceImpl::generateToken(int userId, const std::string& userna
 }
 
 std::string UserServiceImpl::hashPassword(const std::string& plain) {
-    char random_bytes[16];
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> distrib(0, 255);
-    for (int i = 0; i < 16; ++i) {
-        random_bytes[i] = static_cast<char>(distrib(gen));
+    // 1. 生成 16 字节（128位）的随机盐
+    unsigned char random_bytes[16];
+    if (RAND_bytes(random_bytes, sizeof(random_bytes)) != 1) {
+        throw ServiceException("无法生成安全随机盐");
     }
 
+    // 2. 把随机字节“格式化”成 bcrypt 能识别的盐字符串
     char salt[BCRYPT_OUTPUT_SIZE];
-    char *salt_result = _crypt_gensalt_blowfish_rn("$2a$", 10, random_bytes, 16, salt, sizeof(salt));
+    char *salt_result = _crypt_gensalt_blowfish_rn("$2a$", 10, reinterpret_cast<const char*>(random_bytes), 16, salt, sizeof(salt));
     if (!salt_result) {
         throw ServiceException("无法生成密码盐值");
     }
+    // 此时 salt_result 内容大概长这样： "$2a$10$abcdefghijklmnopqrstuv"（22位随机字符）
+    // 其中 "$2a$" 是算法标识， "10" 是计算成本（2^10轮哈希）
 
+    // 3. 核心哈希动作：用上面生成的盐，对明文密码做 blowfish 加密（单向散列）
     char hash[BCRYPT_OUTPUT_SIZE];
     char *hash_result = _crypt_blowfish_rn(plain.c_str(), salt, hash, sizeof(hash));
     if (!hash_result) {
         throw ServiceException("密码哈希计算失败");
     }
+    // 此时 hash_result 内容大概长这样：
+    // "$2a$10$abcdefghijklmnopqrstuvxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"（60位完整字符串）
 
+    // 注意：这个最终结果里，包含了算法、成本、盐、和最终的哈希值，四合一。
     return std::string(hash_result);
 }
 
 bool UserServiceImpl::validatePassword(const std::string& plain, const std::string& hash) {
     char output[BCRYPT_OUTPUT_SIZE];
+    // 函数内部会（直接截取 hash 的前22位字符）自动解析 hash 里的 "$2a$"、"10"、"盐"，然后用它们去加密 plain，得到的结果用于后续的比较
     char *result = _crypt_blowfish_rn(plain.c_str(), hash.c_str(), output, sizeof(output));
     if (!result) {
         return false;
     }
 
+    // 先比较长度（防止长度不一致导致下面的 memcmp 越界）
     size_t result_len = std::strlen(result);
     if (hash.size() != result_len) {
         return false;
     }
 
+    // 常量时间比较（防计时攻击）
     return CRYPTO_memcmp(hash.data(), result, result_len) == 0;
 }
 
