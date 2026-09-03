@@ -19,7 +19,7 @@ public:
      * @param page 页码
      * @param size 每页数量
      * @return 分页的公告列表
-     * @throw gocook::services::ServiceException 当前版本始终抛出 "Not implemented"
+     * @throw gocook::services::ServiceException 仓库层数据库故障时抛出
      */
     gocook::models::PagedAnnouncements getAnnouncements(int page, int size) override;
 

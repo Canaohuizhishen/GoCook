@@ -359,13 +359,13 @@ Page {
     Connections {
         target: shoppingListVM
         function onErrorOccurred(error) {
-            console.log("ShoppingList detail error:", error)
+            console.log("购物清单详情错误：", error)
         }
         function onBatchAddComplete(message) {
             feedbackToast.show(qsTr("✓ 已添加"), "#4caf50")
         }
         function onBatchAddFailed(error) {
-            console.log("Batch add failed:", error)
+            console.log("批量添加失败：", error)
         }
         function onExportReady(content) {
             var ta = textArea

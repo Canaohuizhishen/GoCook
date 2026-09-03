@@ -220,7 +220,7 @@ Page {
     Connections {
         target: recipeVM
         function onErrorOccurred(error) {
-            console.log("MyRatings error:", error)
+            console.log("我的评分页错误：", error)
         }
     }
 }

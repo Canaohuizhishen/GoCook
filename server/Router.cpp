@@ -102,7 +102,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
 
     svr.set_pre_routing_handler([this, clientIp](const httplib::Request& req, httplib::Response& res) {
         const std::string ip = clientIp(req);
-        LOG_DEBUG("%s %s from %s", req.method.c_str(), req.path.c_str(), ip.c_str());
+        LOG_DEBUG("收到请求：%s %s（来源 IP：%s）", req.method.c_str(), req.path.c_str(), ip.c_str());
         if (!rateLimiter_.isAllowed(ip, req.path)) {
             setErrorResponse(res, 429, "请求过于频繁，请稍后重试");
             return httplib::Server::HandlerResponse::Handled;
@@ -156,7 +156,7 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
     } catch (const std::exception& e) {
         LOG_WARN("无法创建头像目录 %s: %s", avatarDir.c_str(), e.what());
     }
-    LOG_INFO("Avatar directory: %s", avatarDir.c_str());
+    LOG_INFO("头像存储目录：%s", avatarDir.c_str());
 
     // 服务头像文件：GET /uploads/avatars/<filename>
     svr.Get(R"(/uploads/avatars/(.+))", [avatarDir](const httplib::Request& req, httplib::Response& res) {
@@ -165,7 +165,7 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
             // 第一层防御：拦截基本路径穿越尝试（.. 和 /）
             if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
                 res.status = 400;
-                res.set_content("Bad request", "text/plain");
+                res.set_content("请求错误", "text/plain");
                 return;
             }
             // 第二层防御：使用 weakly_canonical 验证最终路径仍在允许目录内
@@ -177,21 +177,21 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
             auto normStr = normPath.string();
             auto allowStr = allowedDir.string();
             if (normStr.rfind(allowStr, 0) != 0) {
-                LOG_WARN("Avatar path traversal blocked: %s → %s",
+                LOG_WARN("已拦截头像路径穿越请求：%s → %s",
                          filename.c_str(), normStr.c_str());
                 res.status = 400;
-                res.set_content("Bad request", "text/plain");
+                res.set_content("请求错误", "text/plain");
                 return;
             }
             if (!std::filesystem::exists(filePath)) {
                 res.status = 404;
-                res.set_content("Not found", "text/plain");
+                res.set_content("未找到", "text/plain");
                 return;
             }
             std::ifstream ifs(filePath, std::ios::binary);
             if (!ifs) {
                 res.status = 500;
-                res.set_content("Internal error", "text/plain");
+                res.set_content("服务器内部错误，请稍后重试", "text/plain");
                 return;
             }
             std::string content((std::istreambuf_iterator<char>(ifs)),
@@ -209,9 +209,9 @@ void Router::registerAvatarFileRoutes(httplib::Server& svr) {
 
             res.set_content(content, mime);
         } catch (const std::exception& e) {
-            LOG_ERROR("Error serving avatar file: %s", e.what());
+            LOG_ERROR("提供头像文件时出错：%s", e.what());
             res.status = 500;
-            res.set_content("Internal error", "text/plain");
+            res.set_content("服务器内部错误，请稍后重试", "text/plain");
         }
     });
 }
@@ -223,14 +223,14 @@ void Router::registerRecipeFileRoutes(httplib::Server& svr) {
     } catch (const std::exception& e) {
         LOG_WARN("无法创建菜谱图片目录 %s: %s", recipeDir.c_str(), e.what());
     }
-    LOG_INFO("Recipe image directory: %s", recipeDir.c_str());
+    LOG_INFO("菜谱图片存储目录：%s", recipeDir.c_str());
 
     svr.Get(R"(/uploads/recipes/(.+))", [recipeDir](const httplib::Request& req, httplib::Response& res) {
         try {
             std::string filename = req.matches[1];
             if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
                 res.status = 400;
-                res.set_content("Bad request", "text/plain");
+                res.set_content("请求错误", "text/plain");
                 return;
             }
             std::string filePath = recipeDir + "/" + filename;
@@ -242,14 +242,14 @@ void Router::registerRecipeFileRoutes(httplib::Server& svr) {
             auto allowStr = allowedDir.string();
             if (normStr.rfind(allowStr, 0) != 0) {
                 res.status = 400;
-                res.set_content("Bad request", "text/plain");
+                res.set_content("请求错误", "text/plain");
                 return;
             }
 
             std::ifstream ifs(normStr, std::ios::binary);
             if (!ifs) {
                 res.status = 404;
-                res.set_content("Not found", "text/plain");
+                res.set_content("未找到", "text/plain");
                 return;
             }
             std::string content((std::istreambuf_iterator<char>(ifs)),
@@ -269,9 +269,9 @@ void Router::registerRecipeFileRoutes(httplib::Server& svr) {
 
             res.set_content(content, mime);
         } catch (const std::exception& e) {
-            LOG_ERROR("Error serving recipe image file: %s", e.what());
+            LOG_ERROR("提供菜谱图片文件时出错：%s", e.what());
             res.status = 500;
-            res.set_content("Internal error", "text/plain");
+            res.set_content("服务器内部错误，请稍后重试", "text/plain");
         }
     });
 }
@@ -580,7 +580,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             if (userRes.empty()) {
                 res.status = 404;
                 res.set_header("Content-Type", "application/json");
-                res.body = json{{"error", "Test user 'testuser' not found. Please run seed_test_data.sql"}}.dump();
+                res.body = json{{"error", "未找到测试用户 'testuser'，请先执行 seed_test_data.sql"}}.dump();
                 return;
             }
             int testUserId = userRes[0]["id"].as<int>();
@@ -645,7 +645,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             if (userRes.empty()) {
                 res.status = 404;
                 res.set_header("Content-Type", "application/json");
-                res.body = json{{"error", "Test user 'testuser' not found"}}.dump();
+                res.body = json{{"error", "未找到测试用户 'testuser'"}}.dump();
                 return;
             }
             int uid = userRes[0]["id"].as<int>();
@@ -675,7 +675,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
 
             res.set_header("Content-Type", "application/json");
             res.status = 200;
-            res.body = json{{"message", "4 test notifications reset"}}.dump();
+            res.body = json{{"message", "已重置 4 条测试通知"}}.dump();
         } catch (const std::exception&) {
             setErrorResponse(res, 500, "服务器内部错误，请稍后重试");
         }

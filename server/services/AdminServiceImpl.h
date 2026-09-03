@@ -52,19 +52,19 @@ public:
     // ---------- 统计与日志 ----------
     // 获取运营数据统计（暂未实现，始终抛 501）
     gocook::models::StatisticsData getStatistics() override {
-        throw gocook::services::ServiceException("Not implemented", 501);
+        throw gocook::services::ServiceException("功能暂未实现", 501);
     }
     // 查询管理员操作日志（暂未实现，始终抛 501）
     gocook::models::PagedAdminLogs getAdminLogs(int page, int size,
                                                 const std::string& type = "",
                                                 int userId = 0) override {
-        throw gocook::services::ServiceException("Not implemented", 501);
+        throw gocook::services::ServiceException("功能暂未实现", 501);
     }
     // 查询全局用户行为日志（暂未实现，始终抛 501）
     gocook::models::PagedActivityLogs getActivityLogs(int page, int size,
                                                       int userId = 0,
                                                       const std::string& action = "") override {
-        throw gocook::services::ServiceException("Not implemented", 501);
+        throw gocook::services::ServiceException("功能暂未实现", 501);
     }
 
 private:

@@ -33,7 +33,7 @@ namespace {
     std::atomic<bool> gRunning{true};
 
     void signalHandler(int sig) {
-        LOG_INFO("Received signal %d, shutting down...", sig);
+        LOG_INFO("收到信号 %d，正在关闭服务……", sig);
         gRunning = false;
     }
 }
@@ -48,9 +48,9 @@ int main(int argc, char* argv[]) {
             long cliPort = std::strtol(argv[1], &end, 10);
             if (end != argv[1] && *end == '\0' && cliPort > 0 && cliPort <= 65535) {
                 cfg.port = static_cast<int>(cliPort);
-                LOG_INFO("Using CLI port argument: %d", cfg.port);
+                LOG_INFO("使用命令行端口参数：%d", cfg.port);
             } else {
-                fprintf(stderr, "Usage: %s [port]\n", argv[0]);
+                fprintf(stderr, "用法：%s [端口]\n", argv[0]);
                 fflush(stderr);
                 return 2;
             }
@@ -59,11 +59,11 @@ int main(int argc, char* argv[]) {
     auto url = (cfg.host == "0.0.0.0")
         ? "http://127.0.0.1:" + std::to_string(cfg.port) + "/"
         : "http://" + cfg.host + ":" + std::to_string(cfg.port) + "/";
-    LOG_INFO("GoCook server starting on %s", url.c_str());
+    LOG_INFO("GoCook 服务端正在启动，地址：%s", url.c_str());
 
     if (!cfg.tlsCertPath.empty()) {
-        LOG_WARN("TLS cert configured but CPPHTTPLIB_OPENSSL_SUPPORT not enabled, "
-                 "falling back to HTTP. Add -DCPPHTTPLIB_OPENSSL_SUPPORT to enable HTTPS.");
+        LOG_WARN("已配置 TLS 证书，但未启用 CPPHTTPLIB_OPENSSL_SUPPORT，将回退到 HTTP。"
+                 "如需 HTTPS，请添加 -DCPPHTTPLIB_OPENSSL_SUPPORT 后重新编译。");
     }
 
     ConnectionPool db(cfg.dbConnString, cfg.dbPoolSize);
@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
     // 请求日志：每个请求一行（方法/路径/对端 IP/状态码），运维排查必备
     // （Router 里原有的请求日志是 LOG_DEBUG 级，默认 logLevel=info 不可见）
     svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
-        LOG_INFO("HTTP %s %s from %s -> %d", req.method.c_str(), req.path.c_str(),
+        LOG_INFO("HTTP %s %s（来源 %s）→ %d", req.method.c_str(), req.path.c_str(),
                  req.remote_addr.c_str(), res.status);
     });
     // 覆盖 httplib 默认 socket 选项：Linux 下默认只设 SO_REUSEPORT，
@@ -116,32 +116,32 @@ int main(int argc, char* argv[]) {
 
     std::atomic<bool> gListenOk{true};
     std::thread serverThread([&]() {
-        LOG_INFO("Starting HTTP server on %s", url.c_str());
+        LOG_INFO("HTTP 服务开始监听 %s", url.c_str());
         if (!svr.listen(cfg.host.c_str(), cfg.port)) {
             // httplib 默认静默失败（连 stderr 都不打），必须自己报错并退出，
             // 否则主循环永久空转、进程挂死不服务（比 NetDemo ③ 更糟）。
-            LOG_ERROR("Failed to bind/listen on %s:%d (端口被占用或权限不足?)", cfg.host.c_str(), cfg.port);
+            LOG_ERROR("绑定/监听失败：%s:%d（端口被占用或权限不足）", cfg.host.c_str(), cfg.port);
             gListenOk = false;
             gRunning = false; // 唤醒主循环退出
         }
     });
 
-    LOG_INFO("Server is running. Press Ctrl+C to stop.");
+    LOG_INFO("服务已启动。按 Ctrl+C 停止。");
 
     while (gRunning) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    LOG_INFO("Stopping server...");
+    LOG_INFO("正在停止服务……");
     svr.stop();
     serverThread.join();
-    LOG_INFO("Server stopped gracefully.");
+    LOG_INFO("服务已正常停止。");
 
     fflush(stderr);
     fflush(stdout);
     _Exit(gListenOk.load() ? 0 : 1);
     } catch (const std::exception& e) {
-        fprintf(stderr, "FATAL: %s\n", e.what());
+        fprintf(stderr, "致命错误：%s\n", e.what());
         fflush(stderr);
         _Exit(1);
     }

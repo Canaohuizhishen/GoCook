@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
         &QQmlApplicationEngine::objectCreationFailed,
         &app,
         [](const QUrl &url) {
-            qCritical("CRITICAL: Failed to load QML: %s", qPrintable(url.toString()));
+            qCritical("严重错误：QML 加载失败：%s", qPrintable(url.toString()));
         });
 
     QObject::connect(
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
         &app,
         [url](QObject *obj, const QUrl &objUrl) {
             if (!obj && url == objUrl) {
-                qCritical("CRITICAL: objectCreated returned null for %s", qPrintable(url.toString()));
+                qCritical("严重错误：QML 对象创建失败（%s）", qPrintable(url.toString()));
                 QCoreApplication::exit(-1);
             }
         },

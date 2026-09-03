@@ -34,7 +34,7 @@ int sendCommand(BIO* bio, const std::string& cmd, std::string& response,
     try {
         code = (response.size() >= 3) ? std::stoi(response.substr(0, 3)) : -1;
     } catch (const std::exception& e) {
-        LOG_ERROR("Invalid SMTP response code: '%s' — %s", response.c_str(), e.what());
+        LOG_ERROR("SMTP 服务器返回无效响应码：'%s' — %s", response.c_str(), e.what());
         return -1;
     }
     // 如果响应行是 NNN- 开头（多行响应），继续读取直到 NNN 空格 开头
@@ -44,7 +44,7 @@ int sendCommand(BIO* bio, const std::string& cmd, std::string& response,
         do {
             lastLine = readLine(bio);
             if (--maxLines <= 0) {
-                LOG_WARN("SMTP multiline response exceeded 50 lines — truncating");
+                LOG_WARN("SMTP 多行响应超过 50 行，已截断");
                 break;
             }
         } while (lastLine.size() >= 4 && lastLine[3] == '-');
@@ -86,7 +86,7 @@ EmailSender::SmtpConfig EmailSender::loadConfig() {
     if (port) {
         try { cfg.port = std::stoi(port); }
         catch (const std::exception&) {
-            LOG_WARN("SMTP_PORT '%s' invalid, falling back to 587", port);
+            LOG_WARN("SMTP_PORT 环境变量值 '%s' 无效，回退到 587", port);
             cfg.port = 587;
         }
     }
@@ -103,7 +103,7 @@ bool EmailSender::sendPasswordResetEmail(const std::string& toEmail,
                                           const std::string& token) {
     auto cfg = loadConfig();
     if (!cfg.valid) {
-        LOG_WARN("SMTP not configured — password reset token logged to stderr instead of sent");
+        LOG_WARN("SMTP 未配置：密码重置令牌改为输出到 stderr，邮件不发送");
         return false;
     }
 
@@ -130,7 +130,7 @@ bool EmailSender::sendEmail(const std::string& to,
                              const std::string& body) {
     auto cfg = loadConfig();
     if (!cfg.valid) {
-        LOG_WARN("SMTP not configured, cannot send email");
+        LOG_WARN("SMTP 未配置，无法发送邮件");
         return false;
     }
     return sendRaw(cfg, to, subject, body);
@@ -146,7 +146,7 @@ static SSL_CTX* createSmtpSslCtx() {
     const SSL_METHOD* method = TLS_client_method();
     SSL_CTX* ctx = SSL_CTX_new(method);
     if (!ctx) {
-        LOG_ERROR("Failed to create SSL context");
+        LOG_ERROR("创建 SSL 上下文失败");
         return nullptr;
     }
 
@@ -154,12 +154,12 @@ static SSL_CTX* createSmtpSslCtx() {
     bool tlsInsecure = (insecureEnv && (std::string(insecureEnv) == "true"
                                          || std::string(insecureEnv) == "1"));
     if (tlsInsecure) {
-        LOG_WARN("TLS verification DISABLED via GOCOOK_SMTP_TLS_INSECURE");
+        LOG_WARN("已通过 GOCOOK_SMTP_TLS_INSECURE 关闭 TLS 证书校验");
         SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
     } else {
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
         if (!SSL_CTX_set_default_verify_paths(ctx)) {
-            LOG_WARN("Failed to load default CA paths — verification may fail");
+            LOG_WARN("加载系统 CA 证书路径失败——证书校验可能失败");
         }
     }
     return ctx;
@@ -180,18 +180,18 @@ static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
     // 2. 读取服务器问候
     std::string resp;
     sendCommand(tcpBio, "", resp);
-    LOG_DEBUG("SMTP greeting: %s", resp.c_str());
+    LOG_DEBUG("SMTP 服务器问候：%s", resp.c_str());
 
     // 3. 发送 EHLO（排空多行响应）
     if (sendCommand(tcpBio, "EHLO gocook-server", resp, true) != 250) {
-        LOG_ERROR("EHLO failed: %s", resp.c_str());
+        LOG_ERROR("EHLO 命令失败：%s", resp.c_str());
         BIO_free_all(tcpBio);
         return nullptr;
     }
 
     // 4. 发送 STARTTLS
     if (sendCommand(tcpBio, "STARTTLS", resp) != 220) {
-        LOG_ERROR("STARTTLS failed: %s", resp.c_str());
+        LOG_ERROR("STARTTLS 命令失败：%s", resp.c_str());
         BIO_free_all(tcpBio);
         return nullptr;
     }
@@ -211,14 +211,14 @@ static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
 
     // 6. 在既有 TCP 连接上进行 TLS 握手
     if (BIO_do_handshake(chain) <= 0) {
-        LOG_ERROR("STARTTLS handshake failed");
+        LOG_ERROR("STARTTLS 握手失败");
         BIO_free_all(chain);
         return nullptr;
     }
 
     // 7. 在 TLS 内重新 EHLO（RFC 3207 要求）
     if (sendCommand(chain, "EHLO gocook-server", resp, true) != 250) {
-        LOG_ERROR("EHLO inside TLS failed: %s", resp.c_str());
+        LOG_ERROR("TLS 内重新 EHLO 失败：%s", resp.c_str());
         BIO_free_all(chain);
         return nullptr;
     }
@@ -239,32 +239,32 @@ static bool smtpSendMail(BIO* bio,
 
     // 发送 AUTH LOGIN
     if (sendCommand(bio, "AUTH LOGIN", resp) != 334) {
-        LOG_ERROR("AUTH LOGIN failed: %s", resp.c_str());
+        LOG_ERROR("AUTH LOGIN 认证失败：%s", resp.c_str());
         return false;
     }
     // 用户名（base64 编码）
     if (sendCommand(bio, base64Encode(username), resp) != 334) {
-        LOG_ERROR("AUTH username failed: %s", resp.c_str());
+        LOG_ERROR("AUTH 用户名认证失败：%s", resp.c_str());
         return false;
     }
     // 密码（base64 编码）
     if (sendCommand(bio, base64Encode(password), resp) != 235) {
-        LOG_ERROR("AUTH password failed: %s", resp.c_str());
+        LOG_ERROR("AUTH 密码认证失败：%s", resp.c_str());
         return false;
     }
     // 发送 MAIL FROM
     if (sendCommand(bio, "MAIL FROM:<" + from + ">", resp) != 250) {
-        LOG_ERROR("MAIL FROM failed: %s", resp.c_str());
+        LOG_ERROR("MAIL FROM 命令失败：%s", resp.c_str());
         return false;
     }
     // 发送 RCPT TO
     if (sendCommand(bio, "RCPT TO:<" + to + ">", resp) != 250) {
-        LOG_ERROR("RCPT TO failed: %s", resp.c_str());
+        LOG_ERROR("RCPT TO 命令失败：%s", resp.c_str());
         return false;
     }
     // 发送 DATA
     if (sendCommand(bio, "DATA", resp) != 354) {
-        LOG_ERROR("DATA failed: %s", resp.c_str());
+        LOG_ERROR("DATA 命令失败：%s", resp.c_str());
         return false;
     }
 
@@ -285,7 +285,7 @@ static bool smtpSendMail(BIO* bio,
     BIO_flush(bio);
     resp = readLine(bio);
     if (resp.empty() || resp.substr(0, 3) != "250") {
-        LOG_ERROR("DATA send failed: %s", resp.c_str());
+        LOG_ERROR("邮件内容发送失败：%s", resp.c_str());
         return false;
     }
 
@@ -316,13 +316,13 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
                               to, subject, body);
             BIO_free_all(chain);
         } else {
-            LOG_ERROR("STARTTLS connection failed for %s", addr.c_str());
+            LOG_ERROR("无法连接 STARTTLS 服务器：%s", addr.c_str());
         }
     } else {
         // 隐式 TLS 模式（465+）：连接与握手一步完成
         BIO* bio = BIO_new_ssl_connect(ctx);
         if (!bio) {
-            LOG_ERROR("Failed to create SSL BIO");
+            LOG_ERROR("创建 SSL BIO 失败");
             SSL_CTX_free(ctx);
             return false;
         }
@@ -333,13 +333,13 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
         BIO_set_conn_hostname(bio, addr.c_str());
 
         if (BIO_do_connect(bio) <= 0) {
-            LOG_ERROR("Failed to connect to %s", addr.c_str());
+            LOG_ERROR("连接 %s 失败", addr.c_str());
             BIO_free_all(bio);
             SSL_CTX_free(ctx);
             return false;
         }
         if (BIO_do_handshake(bio) <= 0) {
-            LOG_ERROR("TLS handshake failed with %s", addr.c_str());
+            LOG_ERROR("与 %s 的 TLS 握手失败", addr.c_str());
             BIO_free_all(bio);
             SSL_CTX_free(ctx);
             return false;
@@ -348,12 +348,12 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
         // 读取问候 + EHLO（排空多行）
         std::string resp;
         sendCommand(bio, "", resp);
-        LOG_DEBUG("SMTP greeting: %s", resp.c_str());
+        LOG_DEBUG("SMTP 服务器问候：%s", resp.c_str());
         if (sendCommand(bio, "EHLO gocook-server", resp, true) == 250) {
             ok = smtpSendMail(bio, cfg.username, cfg.password, cfg.from,
                               to, subject, body);
         } else {
-            LOG_ERROR("EHLO failed: %s", resp.c_str());
+            LOG_ERROR("EHLO 命令失败：%s", resp.c_str());
         }
 
         BIO_free_all(bio);
@@ -362,7 +362,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
     SSL_CTX_free(ctx);
 
     if (ok) {
-        LOG_INFO("Password reset email sent to %s", to.c_str());
+        LOG_INFO("密码重置邮件已发送至 %s", to.c_str());
     }
     return ok;
 }

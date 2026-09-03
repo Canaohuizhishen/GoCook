@@ -26,9 +26,9 @@ bool ConnectionPool::isConnectionAlive(pqxx::connection& conn) {
 std::unique_ptr<pqxx::connection> ConnectionPool::createConnection() {
     auto conn = std::make_unique<pqxx::connection>(connStr_);
     if (!conn->is_open()) {
-        throw std::runtime_error("Failed to open database connection");
+        throw std::runtime_error("无法建立数据库连接");
     }
-    LOG_INFO("Database connection created (active=%d)", activeCount_ + 1);
+    LOG_INFO("已建立数据库连接（当前活跃数=%d）", activeCount_ + 1);
     return conn;
 }
 
@@ -48,7 +48,7 @@ ConnectionPool::ConnectionGuard ConnectionPool::getConnection(
         pool_.pop_front();
         pqxx::connection* ptr = raw.get();
         if (!ptr->is_open()) {   // ③ 死连接检测：数据库重启后连接已断，丢弃重建
-            LOG_WARN("Stale connection detected, discarding");
+            LOG_WARN("检测到失效的数据库连接，正在丢弃重建");
             ptr = nullptr;
             raw.reset();         //    销毁死连接 → 存活总数 -1
             --activeCount_;

@@ -31,7 +31,7 @@ inline void handleStandardException(const std::exception &e, httplib::Response &
     // 如果转出来是 nullptr，说明是系统底层异常（如内存或 SQL 错误），我就直接把它当 500 处理，绝不把内部错误信息暴露给客户端。
     auto* se = dynamic_cast<const gocook::services::ServiceException*>(&e);
     if (!se) {
-        LOG_ERROR("Unhandled exception: %s", e.what());
+        LOG_ERROR("未处理异常：%s", e.what());
         setErrorResponse(res, 500, "服务器内部错误，请稍后重试");
         return;
     }
@@ -45,7 +45,7 @@ inline void handleStandardException(const std::exception &e, httplib::Response &
         case 401: msg = "身份验证失败";         LOG_WARN("401: %s", se->what()); break;
         case 501: msg = "功能暂未实现";         LOG_WARN("501: %s", se->what()); break;
         default:  msg = "服务器内部错误，请稍后重试"; code = 500;
-                  LOG_ERROR("Unknown ServiceException: %s (code %d)", se->what(), code); break;
+                  LOG_ERROR("未识别的业务异常：%s（状态码 %d）", se->what(), code); break;
     }
     setErrorResponse(res, code, msg);
 }

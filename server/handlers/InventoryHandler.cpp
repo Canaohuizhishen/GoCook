@@ -49,7 +49,7 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
 
         int newId = service_.upsertInventory(info.userId, item);
         res.status = 201;
-        res.body = json{{"message", "Inventory updated successfully"}, {"id", newId}}.dump();
+        res.body = json{{"message", "库存已更新"}, {"id", newId}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -74,7 +74,7 @@ void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Res
     try {
         service_.deleteInventoryItem(info.userId, itemId);
         res.status = 200;
-        res.body = json{{"message", "Inventory item deleted"}}.dump();
+        res.body = json{{"message", "库存项已删除"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

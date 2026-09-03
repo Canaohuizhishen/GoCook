@@ -415,7 +415,7 @@ void HttpGoCookApi::registerUser(const gocook::models::RegisterRequest& request,
                     err = obj["error"].toString();
                 }
             }
-            callback(false, err.isEmpty() ? "Unknown error" : err.toStdString());
+            callback(false, err.isEmpty() ? "未知错误" : err.toStdString());
         }
     }, true);
 }
@@ -430,7 +430,7 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
     post("/api/login", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             callback(false, gocook::models::LoginResponse{},
-                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
             return;
         }
         if (doc.isObject()) {
@@ -441,7 +441,7 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
             resp.username = obj["username"].toString().toStdString();
             callback(true, resp, "");
         } else {
-            callback(false, gocook::models::LoginResponse{}, "Invalid response format");
+            callback(false, gocook::models::LoginResponse{}, "响应格式无效");
         }
     }, true);
 }
@@ -689,27 +689,27 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
             f.close();
         }
     };
-    avLog("=== HttpGoCookApi::uploadAvatar ===");
-    avLog("filePath: " + QString::fromStdString(filePath));
+    avLog("=== 头像上传开始 ===");
+    avLog("文件路径：" + QString::fromStdString(filePath));
 
     QFile file(QString::fromStdString(filePath));
     if (!file.exists()) {
-        avLog("ERROR: file does not exist");
+        avLog("错误：文件不存在");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "文件不存在");
         return;
     }
     if (!file.open(QIODevice::ReadOnly)) {
-        avLog("ERROR: cannot open file");
+        avLog("错误：无法打开文件");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无法打开文件");
         return;
     }
     QByteArray fileData = file.readAll();
     QString fileName = QFileInfo(file.fileName()).fileName();
     file.close();
-    avLog("fileName: " + fileName + " size: " + QString::number(fileData.size()) + " bytes");
+    avLog("文件名：" + fileName + "，大小：" + QString::number(fileData.size()) + " 字节");
 
     if (fileData.size() > 5 * 1024 * 1024) {
-        avLog("ERROR: file exceeds 5MB limit");
+        avLog("错误：文件超过 5MB 上限");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "图片大小不能超过5MB");
         return;
     }
@@ -727,7 +727,7 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
         contentType = "image/webp";
     else if (lower.endsWith(".svg") || lower.endsWith(".svgz"))
         contentType = "image/svg+xml";
-    avLog("Content-Type: " + contentType + " token set: " + (m_token.isEmpty() ? "NO" : "YES"));
+    avLog("Content-Type：" + contentType + "，是否携带令牌：" + (m_token.isEmpty() ? "否" : "是"));
 
     QUrl url(m_baseUrl + "/api/users/me/avatar");
     QNetworkRequest request(url);
@@ -735,16 +735,16 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
     request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
     if (!m_token.isEmpty())
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
-    avLog("POST " + url.toString());
+    avLog("发送 POST 请求：" + url.toString());
 
     sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
             [callback, avLog](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        avLog("response status: " + QString::number(statusCode));
-        avLog("response body: " + QString::fromUtf8(responseData));
+        avLog("响应状态码：" + QString::number(statusCode));
+        avLog("响应内容：" + QString::fromUtf8(responseData));
 
         if (statusCode == 401) {
-            avLog("unauthorized (401)");
+            avLog("未授权(401)");
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
@@ -753,7 +753,7 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
         if (!success) {
             // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
             const QString err = errorMessageFor(statusCode, doc);
-            avLog("request failed: " + err);
+            avLog("请求失败：" + err);
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, err.toStdString());
             return;
         }
@@ -763,10 +763,10 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
             gocook::models::AvatarUploadResponse resp;
             resp.avatar_id = obj["avatar_id"].toInt();
             resp.avatar_url = obj["avatar_url"].toString().toStdString();
-            avLog("SUCCESS: avatar_id=" + QString::number(resp.avatar_id) + " avatar_url=" + QString::fromStdString(resp.avatar_url));
+            avLog("成功：avatar_id=" + QString::number(resp.avatar_id) + "，avatar_url=" + QString::fromStdString(resp.avatar_url));
             if (callback) callback(true, resp, "");
         } else {
-            avLog("invalid response format (not JSON)");
+            avLog("响应格式无效(非 JSON)");
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无效的响应格式");
         }
     });
@@ -848,28 +848,28 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
             f.close();
         }
     };
-    siLog("=== uploadStepImage ===");
-    siLog("recipeId=" + QString::number(recipeId) + " stepIndex=" + QString::number(stepIndex)
-          + " filePath=" + QString::fromStdString(filePath));
+    siLog("=== 步骤图上传开始 ===");
+    siLog("菜谱 ID=" + QString::number(recipeId) + "，步骤序号=" + QString::number(stepIndex)
+          + "，文件路径=" + QString::fromStdString(filePath));
 
     QFile file(QString::fromStdString(filePath));
     if (!file.exists()) {
-        siLog("ERROR: file does not exist");
+        siLog("错误：文件不存在");
         if (callback) callback(false, "", "文件不存在");
         return;
     }
     if (!file.open(QIODevice::ReadOnly)) {
-        siLog("ERROR: cannot open file");
+        siLog("错误：无法打开文件");
         if (callback) callback(false, "", "无法打开文件");
         return;
     }
     QByteArray fileData = file.readAll();
     QString fileName = QFileInfo(file.fileName()).fileName();
     file.close();
-    siLog("fileName=" + fileName + " size=" + QString::number(fileData.size()) + " bytes");
+    siLog("文件名=" + fileName + "，大小=" + QString::number(fileData.size()) + " 字节");
 
     if (fileData.size() > 5 * 1024 * 1024) {
-        siLog("ERROR: file exceeds 5MB");
+        siLog("错误：文件超过 5MB 上限");
         if (callback) callback(false, "", "图片大小不能超过5MB");
         return;
     }
@@ -889,15 +889,15 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
     request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
     if (!m_token.isEmpty())
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
-    siLog("POST " + url.toString() + " Content-Type=" + contentType + " Auth=" + (m_token.isEmpty() ? "NO" : "YES"));
+    siLog("发送 POST 请求：" + url.toString() + "，Content-Type=" + contentType + "，是否携带令牌：" + (m_token.isEmpty() ? "否" : "是"));
 
     sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
             [callback, siLog](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        siLog("response status=" + QString::number(statusCode) + " body=" + QString::fromUtf8(responseData));
+        siLog("响应状态码=" + QString::number(statusCode) + "，响应内容=" + QString::fromUtf8(responseData));
 
         if (statusCode == 401) {
-            siLog("unauthorized (401)");
+            siLog("未授权(401)");
             if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
@@ -906,7 +906,7 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
         if (!success) {
             // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
             const QString err = errorMessageFor(statusCode, doc);
-            siLog("request failed: " + err);
+            siLog("请求失败：" + err);
             if (callback) callback(false, "", err.toStdString());
             return;
         }
@@ -914,7 +914,7 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
         std::string imageUrl;
         if (doc.isObject() && doc.object().contains("image_url"))
             imageUrl = doc.object()["image_url"].toString().toStdString();
-        siLog("SUCCESS: image_url=" + QString::fromStdString(imageUrl));
+        siLog("成功：image_url=" + QString::fromStdString(imageUrl));
         if (callback) callback(true, imageUrl, "");
     });
 }
@@ -1294,7 +1294,7 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
     get(endpoint, [callback](bool success, const QString &errorMsg, const QJsonDocument &doc) {
         if (!success) {
             callback(false, gocook::models::PagedRecipes{},
-                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1325,7 +1325,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             callback(false, gocook::models::PagedRecommendedRecipes{},
-                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1458,7 +1458,7 @@ void HttpGoCookApi::searchRecipes(const std::string& keyword,
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             callback(false, gocook::models::PagedRecipes{},
-                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1721,7 +1721,7 @@ void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
     get(endpoint, [callback](bool success, const QString &errorMsg, const QJsonDocument &doc) {
         if (!success) {
             callback(false, gocook::models::PagedMyRecipes{},
-                     errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1888,7 +1888,7 @@ void HttpGoCookApi::getMyRatings(int page, int size,
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             if (callback) callback(false, gocook::models::PagedUserRatings{},
-                                   errorMsg.isEmpty() ? "Unknown error" : errorMsg.toStdString());
+                                   errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -2277,7 +2277,7 @@ void HttpGoCookApi::exportShoppingList(int listId,
 void HttpGoCookApi::createMealPlan(const gocook::models::MealPlanRequest& planData,
                                    IntCallback callback) {
     Q_UNUSED(planData);
-    if (callback) callback(false, 0, "Not implemented");
+    if (callback) callback(false, 0, "功能暂未实现");
 }
 
 void HttpGoCookApi::getMealPlans(const std::string& startDate,
@@ -2285,7 +2285,7 @@ void HttpGoCookApi::getMealPlans(const std::string& startDate,
                                  int page, int size,
                                  MealPlansCallback callback) {
     Q_UNUSED(startDate); Q_UNUSED(endDate); Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::MealPlansResponse{}, "Not implemented");
+    if (callback) callback(false, gocook::models::MealPlansResponse{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::getMealPlanDetail(const std::string& startDate,
@@ -2293,27 +2293,27 @@ void HttpGoCookApi::getMealPlanDetail(const std::string& startDate,
                                       int page, int size,
                                       MealPlanCalendarCallback callback) {
     Q_UNUSED(startDate); Q_UNUSED(endDate); Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedCalendarDays{}, "Not implemented");
+    if (callback) callback(false, gocook::models::PagedCalendarDays{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::updateMealPlan(int planId,
                                    const gocook::models::MealPlanRequest& updates,
                                    SuccessCallback callback) {
     Q_UNUSED(planId); Q_UNUSED(updates);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::deleteMealPlan(int planId,
                                    SuccessCallback callback) {
     Q_UNUSED(planId);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::getNutritionTrend(const std::string& startDate,
                                       const std::string& endDate,
                                       NutritionTrendCallback callback) {
     Q_UNUSED(startDate); Q_UNUSED(endDate);
-    if (callback) callback(false, gocook::models::NutritionTrendResponse{}, "Not implemented");
+    if (callback) callback(false, gocook::models::NutritionTrendResponse{}, "功能暂未实现");
 }
 
 // ======================= 公告 =======================
@@ -2355,75 +2355,75 @@ void HttpGoCookApi::getUsers(int page, int size,
                              const nlohmann::json& filters,
                              PagedUsersCallback callback) {
     Q_UNUSED(page); Q_UNUSED(size); Q_UNUSED(filters);
-    if (callback) callback(false, gocook::models::PagedUsers{}, "Not implemented");
+    if (callback) callback(false, gocook::models::PagedUsers{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::createUser(const gocook::models::CreateUserRequest& userData,
                                SuccessCallback callback) {
     Q_UNUSED(userData);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::updateUser(int userId,
                                const gocook::models::UpdateUserRequest& updates,
                                SuccessCallback callback) {
     Q_UNUSED(userId); Q_UNUSED(updates);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::setUserStatus(int userId,
                                   const gocook::models::SetUserStatusRequest& request,
                                   SuccessCallback callback) {
     Q_UNUSED(userId); Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::deleteUser(int userId,
                                SuccessCallback callback) {
     Q_UNUSED(userId);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::getPendingRecipes(int page, int size,
                                       PagedPendingRecipesCallback callback) {
     Q_UNUSED(page); Q_UNUSED(size);
-    if (callback) callback(false, gocook::models::PagedPendingRecipes{}, "Not implemented");
+    if (callback) callback(false, gocook::models::PagedPendingRecipes{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::approveRecipe(int recipeId,
                                   SuccessCallback callback) {
     Q_UNUSED(recipeId);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::rejectRecipe(int recipeId,
                                  const gocook::models::RejectRecipeRequest& request,
                                  SuccessCallback callback) {
     Q_UNUSED(recipeId); Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::batchReviewRecipes(const gocook::models::BatchReviewRequest& request,
                                        BatchReviewCallback callback) {
     Q_UNUSED(request);
-    if (callback) callback(false, gocook::models::BatchReviewResponse{}, "Not implemented");
+    if (callback) callback(false, gocook::models::BatchReviewResponse{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::publishAnnouncement(const gocook::models::AnnouncementRequest& request,
                                         SuccessCallback callback) {
     Q_UNUSED(request);
-    if (callback) callback(false, "Not implemented");
+    if (callback) callback(false, "功能暂未实现");
 }
 
 void HttpGoCookApi::sendNotification(const gocook::models::NotificationRequest& notification,
                                      NotificationCallback callback) {
     Q_UNUSED(notification);
-    if (callback) callback(false, gocook::models::NotificationResponse{}, "Not implemented");
+    if (callback) callback(false, gocook::models::NotificationResponse{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::getStatistics(StatisticsCallback callback)
 {
-    if (callback) callback(false, gocook::models::StatisticsData{}, "Not implemented");
+    if (callback) callback(false, gocook::models::StatisticsData{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::resetTestNotifications(SuccessCallback callback)
@@ -2449,7 +2449,7 @@ void HttpGoCookApi::getAdminLogs(int page, int size,
     Q_UNUSED(size);
     Q_UNUSED(type);
     Q_UNUSED(userId);
-    if (callback) callback(false, gocook::models::PagedAdminLogs{}, "Not implemented");
+    if (callback) callback(false, gocook::models::PagedAdminLogs{}, "功能暂未实现");
 }
 
 void HttpGoCookApi::getActivityLogs(int page, int size,
@@ -2461,7 +2461,7 @@ void HttpGoCookApi::getActivityLogs(int page, int size,
     Q_UNUSED(size);
     Q_UNUSED(userId);
     Q_UNUSED(action);
-    if (callback) callback(false, gocook::models::PagedActivityLogs{}, "Not implemented");
+    if (callback) callback(false, gocook::models::PagedActivityLogs{}, "功能暂未实现");
 }
 
 // ======================= 令牌管理 =======================

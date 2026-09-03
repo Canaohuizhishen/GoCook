@@ -100,7 +100,7 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
             "DELETE FROM inventory WHERE id = $1 AND user_id = $2",
             pqxx::params{itemId, userId});
         if (res.affected_rows() == 0) {
-            throw ServiceException("Item not found or not owned by user", 404);
+            throw ServiceException("库存项不存在或不属于当前用户", 404);
         }
     }, "数据库操作失败");
 }
@@ -286,7 +286,7 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
             ++addedCount;
         }
 
-        result.message = "Successfully added " + std::to_string(addedCount) + " items";
+        result.message = "已成功添加 " + std::to_string(addedCount) + " 项";
         return result;
     }, "数据库操作失败");
 }

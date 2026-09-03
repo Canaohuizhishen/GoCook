@@ -39,7 +39,7 @@ struct TimeoutPool {
 struct BrokenPool {
     [[noreturn]] ConnectionPool::ConnectionGuard getConnection(
         std::chrono::milliseconds = std::chrono::milliseconds(5000)) {
-        throw std::runtime_error("could not connect to database");
+        throw std::runtime_error("无法连接数据库");
     }
 };
 

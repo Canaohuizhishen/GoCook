@@ -694,7 +694,7 @@ std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
     j["excluded_ingredients"] = excluded;   // 恒为数组（无未计入项时为空数组）
     j["health_notes"] = buildHealthNotes(ps);
 
-    LOG_DEBUG("[NUTRITION] recipe nutrition computed: %d ingredients, %zu matched, %zu excluded",
+    LOG_DEBUG("[NUTRITION] 菜谱营养计算完成：%d 个食材，%zu 个匹配，%zu 个未计入",
               static_cast<int>(ingredients.size()), breakdown.size(), excluded.size());
     return j;   // json → optional<json> 隐式转换
 }

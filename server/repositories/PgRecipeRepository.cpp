@@ -1181,7 +1181,7 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_WARN("Database error in updateRecipeImage: %s", e.what());
+        LOG_WARN("更新菜谱主图时数据库出错：%s", e.what());
         throw ServiceException("菜谱图片保存失败");
     }
 }
@@ -1248,7 +1248,7 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_WARN("Database error in updateStepImage: %s", e.what());
+        LOG_WARN("更新步骤图时数据库出错：%s", e.what());
         throw ServiceException("步骤图片保存失败");
     }
 }
@@ -1338,7 +1338,7 @@ void PgRecipeRepository::deleteRecipe(int userId, int recipeId) {
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_WARN("Database error in deleteRecipe: %s", e.what());
+        LOG_WARN("删除菜谱时数据库出错：%s", e.what());
         throw ServiceException("删除菜谱失败");
     }
 }

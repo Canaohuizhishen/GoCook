@@ -289,16 +289,16 @@ Page {
     Connections {
         target: shoppingListVM
         function onErrorOccurred(error) {
-            console.log("ShoppingList error:", error)
+            console.log("购物清单错误：", error)
         }
         function onShoppingListCreated(name) {
-            console.log("Shopping list created:", name)
+            console.log("购物清单已创建：", name)
         }
         function onShoppingListCreateFailed(error) {
-            console.log("ShoppingList create failed:", error)
+            console.log("创建购物清单失败：", error)
         }
         function onShoppingListDeleted(listId) {
-            console.log("ShoppingList deleted:", listId)
+            console.log("购物清单已删除：", listId)
         }
     }
 

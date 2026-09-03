@@ -29,11 +29,11 @@ void AuthViewModel::login(const QString &username, const QString &password)
                                         const std::string &error) {
         if (!self) return;
         if (!success) {
-            emit self->loginFailed(QString::fromStdString(error.empty() ? "Unknown error" : error));
+            emit self->loginFailed(QString::fromStdString(error.empty() ? "未知错误" : error));
             return;
         }
         if (data.token.empty() || data.user_id == 0) {
-            emit self->loginFailed("Login failed: missing token or user_id");
+            emit self->loginFailed("登录失败：响应缺少令牌或用户ID");
             return;
         }
 
@@ -61,7 +61,7 @@ void AuthViewModel::registerUser(const QString &username,
             emit self->registerSuccess();
         } else {
             emit self->registerFailed(QString::fromStdString(
-                error.empty() ? "Unknown error" : error));
+                error.empty() ? "未知错误" : error));
         }
     });
 }
@@ -153,11 +153,11 @@ void AuthViewModel::saveProfile(const QString &displayName,
         self->m_profileEmail = QString::fromStdString(profile.email);
         self->m_profilePhone = QString::fromStdString(profile.phone);
         // 记录 saveProfile 返回的 avatar_url
-        qDebug() << "saveProfile callback: avatar_url=" << QString::fromStdString(profile.avatar_url);
+        qDebug() << "saveProfile 回调：avatar_url=" << QString::fromStdString(profile.avatar_url);
         {   // 写入文件日志（不引入 QFile 头依赖）
             QFile logF("/tmp/gocook_avatar_debug.log");
             if (logF.open(QIODevice::Append | QIODevice::Text))
-                logF.write(("[AUTH-VM] saveProfile callback: avatar_url=" + QString::fromStdString(profile.avatar_url) + "\n").toUtf8());
+                logF.write(("[AUTH-VM] saveProfile 回调：avatar_url=" + QString::fromStdString(profile.avatar_url) + "\n").toUtf8());
         }
         self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
         self->m_avatarVersion++;
@@ -169,7 +169,7 @@ void AuthViewModel::saveProfile(const QString &displayName,
 }
 
 void AuthViewModel::uploadAvatar(const QString &filePath) {
-    qDebug() << "AuthViewModel::uploadAvatar called with:" << filePath;
+    qDebug() << "AuthViewModel::uploadAvatar 被调用，参数：" << filePath;
     // 同步记录到文件日志
     auto log = [](const QString& msg) {
         QFile f("/tmp/gocook_avatar_debug.log");
@@ -178,9 +178,9 @@ void AuthViewModel::uploadAvatar(const QString &filePath) {
             f.close();
         }
     };
-    log("uploadAvatar called with: " + filePath);
+    log("uploadAvatar 被调用，参数：" + filePath);
     if (!m_loggedIn) {
-        qDebug() << "uploadAvatar: not logged in, aborting";
+        qDebug() << "uploadAvatar：未登录，中止上传";
         emit avatarUploadFailed(QStringLiteral("未登录，请先登录"));
         return;
     }
@@ -189,21 +189,21 @@ void AuthViewModel::uploadAvatar(const QString &filePath) {
                          const gocook::models::AvatarUploadResponse& resp,
                          const std::string& error) {
         if (!self) {
-            qDebug() << "uploadAvatar callback: self is null";
+            qDebug() << "uploadAvatar 回调：对象已销毁(self 为空)";
             return;
         }
-        qDebug() << "uploadAvatar callback: success=" << success << "error=" << QString::fromStdString(error);
-        log("callback: success=" + QString::number(success) + " error=" + QString::fromStdString(error));
+        qDebug() << "uploadAvatar 回调：success=" << success << "，error=" << QString::fromStdString(error);
+        log("回调：success=" + QString::number(success) + "，error=" + QString::fromStdString(error));
         if (!success) {
             emit self->avatarUploadFailed(QString::fromStdString(error));
             return;
         }
-        qDebug() << "uploadAvatar callback: avatar_id=" << resp.avatar_id
-                  << " avatar_url=" << QString::fromStdString(resp.avatar_url);
-        log(QString("SUCCESS: avatar_id=%1 avatar_url=%2")
+        qDebug() << "uploadAvatar 回调：avatar_id=" << resp.avatar_id
+                  << "，avatar_url=" << QString::fromStdString(resp.avatar_url);
+        log(QString("成功：avatar_id=%1，avatar_url=%2")
             .arg(resp.avatar_id)
             .arg(QString::fromStdString(resp.avatar_url)));
-        log("m_profileAvatarUrl set to: " + QString::fromStdString(resp.avatar_url));
+        log("已设置 m_profileAvatarUrl：" + QString::fromStdString(resp.avatar_url));
         self->m_pendingAvatarId = resp.avatar_id;
         self->m_profileAvatarUrl = QString::fromStdString(resp.avatar_url);
         self->m_avatarVersion++;

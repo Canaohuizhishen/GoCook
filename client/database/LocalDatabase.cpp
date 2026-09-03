@@ -42,7 +42,7 @@ bool LocalDatabase::initialize(const QString& dbPath, const QString& connectionN
     m_db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
     m_db.setDatabaseName(dbPath);
     if (!m_db.open()) {
-        emit databaseError("Failed to open database: " + m_db.lastError().text());
+        emit databaseError("无法打开数据库：" + m_db.lastError().text());
         return false;
     }
     return createTables();
