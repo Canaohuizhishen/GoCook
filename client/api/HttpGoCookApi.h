@@ -220,6 +220,9 @@ public:
                       PagedInventoryCallback callback) override;
     void upsertInventory(const gocook::models::UpsertInventoryRequest& item,
                          IntCallback callback) override;
+    void updateInventoryItem(int itemId,
+                             const gocook::models::UpsertInventoryRequest& item,
+                             SuccessCallback callback) override;
     void deleteInventoryItem(int itemId,
                              SuccessCallback callback) override;
 

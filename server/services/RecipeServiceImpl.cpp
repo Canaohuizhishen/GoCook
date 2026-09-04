@@ -7,6 +7,8 @@
 #include <sstream>
 #include <iomanip>
 #include <cctype>
+#include <cstdio>
+#include "HealthConditionLists.h"
 #include "../common/Logger.h"
 
 using namespace gocook::models;
@@ -31,6 +33,7 @@ namespace {
     constexpr double BOOST_LIKE_FLAVOR     = 0.15;  // 菜谱风味命中用户“喜欢”列表时加的分数
     constexpr double BOOST_LIKE_TAG        = 0.10;  // 菜谱标签命中用户“喜欢”列表时加的分数
     constexpr double PENALTY_DISLIKE       = 0.50;  // 菜谱含用户“厌恶”食材时的惩罚值，厌食惩罚足够强，能翻转排名
+    constexpr double PENALTY_SOFT_HEALTH   = 0.03;  // 软档健康食材（盐/酱油/糖等可少放食材）的轻微降权值：仅提示不剔除，降权力度弱于厌恶惩罚
 
     // 流行度加分
     constexpr double BOOST_RATING_HIGH     = 0.08;  // 菜谱平均评分 >= 4.5时加的分数
@@ -47,23 +50,25 @@ namespace {
     constexpr int MAX_PER_FLAVOR    = 2;  // 同一风味（如“麻辣”）最多出现的菜谱数量
     constexpr int MAX_PER_METHOD    = 3;  // 同一烹饪方法（如“炒”）最多出现的菜谱数量
 
-    // ── 健康条件 → 禁忌食材映射 ──
-    // 注意：假设数据库健康条件使用中文 locale
-    const std::unordered_map<std::string, std::vector<std::string>> CONDITION_AVOIDANCES = {
-        {"高血压", {"盐", "酱油", "豆瓣酱", "咸菜", "腊肉", "咸鱼", "腐乳", "榨菜"}},
-        {"糖尿病", {"糖", "白糖", "冰糖", "蜂蜜", "甜面酱", "炼乳", "果酱"}},
-        {"高血脂", {"肥肉", "猪油", "黄油", "奶油", "五花肉", "油炸", "猪板油"}},
-        {"痛风",   {"海鲜", "动物内脏", "啤酒", "浓汤", "香菇", "虾", "蟹"}},
-    };
+    // ── 健康条件 → 禁忌食材映射（两档）── 名单唯一事实源：HealthConditionLists.h ──
+    // 硬档（HARD）：食材出现即整道菜剔除——高盐/高糖加工品或公认高风险食材，剔除有明确依据；
+    // 软档（SOFT）：常见调味料/调味糖源——做菜时可少放或不放，不剔除，仅提示 + 评分轻微降权。
+    // 注意：假设数据库健康条件使用中文 locale。UserService 忌口建议与 api-spec 4.2 名单
+    // 均以该头文件为准（spec 为文档快照）——改名单只动一处，勿在此地另起炉灶。
+    const std::unordered_map<std::string, std::vector<std::string>>& CONDITION_HARD_EXCLUDED =
+        gocook::health::hardExclusions();
+    const std::unordered_map<std::string, std::vector<std::string>>& CONDITION_SOFT_ADVISED =
+        gocook::health::softAdvisories();
 
-    /// 将 conditions 数组映射为禁忌食材集合（小写）
-    std::unordered_set<std::string> computeAvoidances(
+    /// 将 conditions 按某档映射表展开为禁忌食材集合（小写）
+    std::unordered_set<std::string> computeTierAvoidances(
+        const std::unordered_map<std::string, std::vector<std::string>>& tier,
         const std::vector<std::string>& conditions)
     {
         std::unordered_set<std::string> result;
         for (const auto& cond : conditions) {
-            auto it = CONDITION_AVOIDANCES.find(cond);
-            if (it != CONDITION_AVOIDANCES.end()) {
+            auto it = tier.find(cond);
+            if (it != tier.end()) {
                 for (const auto& ing : it->second) {
                     std::string lower;
                     lower.reserve(ing.size());
@@ -107,6 +112,52 @@ namespace {
             names.insert(std::move(lower));
         }
         return names;
+    }
+
+    /// 构建健康提示（整改 N3：软档食材命中 + 钠阈值按量分级）：
+    /// ① 命中软档食材（盐/酱油/糖/蜂蜜等）→ 按条件分组文案（如"含盐、酱油，高血压人群建议少盐清淡"）；
+    /// ② 高血压用户遇整道钠 ≥800mg 的菜谱，即使软档名单未命中也附钠提示（按量分级真正接入推荐；
+    ///    有盐/酱油等软命中时不再重复——提示已覆盖"少盐"语义，避免"含盐…；钠含量较高…"冗余）。
+    /// 未命中或无条件 → 返回空串（前端不展示；评分阶段据此空串跳过轻微降权）。
+    std::string buildHealthNotice(const RecommendedRecipe& rec,
+                                 const std::vector<std::string>& conditions)
+    {
+        if (conditions.empty()) return "";
+        const auto names = ingredientNames(rec);
+        // 条件 → 提示文案模板（%s 处填充命中食材名；措辞保守：少放/按需，不做绝对禁止）
+        // 模板与名单同源 HealthConditionLists.h（数组序 = 多条件命中时的文案拼接序）
+        std::string notice;
+        bool highBpSoftHit = false;  // 高血压软档是否已给出提示（决定钠阈值提示是否补充）
+        for (const auto& tmpl : gocook::health::softNoticeTemplates()) {
+            if (std::find(conditions.begin(), conditions.end(), tmpl.first) == conditions.end())
+                continue;
+            auto it = CONDITION_SOFT_ADVISED.find(tmpl.first);
+            if (it == CONDITION_SOFT_ADVISED.end()) continue;
+            std::vector<std::string> hits;
+            for (const auto& ing : it->second) {
+                std::string lower;
+                for (char c : ing) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (names.count(lower)) hits.push_back(ing);
+            }
+            if (hits.empty()) continue;
+            if (tmpl.first == "高血压") highBpSoftHit = true;
+            std::string joined;
+            for (size_t i = 0; i < hits.size(); ++i) {
+                if (i) joined += "、";
+                joined += hits[i];
+            }
+            char buf[160];
+            snprintf(buf, sizeof(buf), tmpl.second.c_str(), joined.c_str());
+            if (!notice.empty()) notice += "；";
+            notice += buf;
+        }
+        // 钠阈值补充（高血压专属；per_serving 当前语义为整道菜营养合计，文案不带"单份"字样）
+        if (!highBpSoftHit && rec.sodium_mg >= 800.0 &&
+            std::find(conditions.begin(), conditions.end(), "高血压") != conditions.end()) {
+            if (!notice.empty()) notice += "；";
+            notice += "钠含量较高，高血压人群建议少盐清淡";
+        }
+        return notice;
     }
 
     /// 将 ISO 日期字符串转为 time_t
@@ -324,14 +375,15 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
         LOG_WARN("读取用户偏好失败，使用空默认值: %s", e.what());
     }
 
-    // ── 3. 加载健康档案 → 忌口集合 ──
-    std::unordered_set<std::string> avoidances;
+    // ── 3. 加载健康档案 → 硬性禁忌集合（软档食材不参与剔除，见步骤 5 的提示逻辑） ──
+    std::unordered_set<std::string> hardAvoidances;
+    std::vector<std::string> healthConditions;
     bool hasHealthProfile = false;
     try {
-        auto conditions = userRepo_->getHealthConditions(userId);
-        if (!conditions.empty()) {
+        healthConditions = userRepo_->getHealthConditions(userId);
+        if (!healthConditions.empty()) {
             hasHealthProfile = true;
-            avoidances = computeAvoidances(conditions);
+            hardAvoidances = computeTierAvoidances(CONDITION_HARD_EXCLUDED, healthConditions);
         }
     } catch (const std::exception& e) {
         // 无档案时 getHealthConditions 返回空不抛异常，能走到这里的是真实故障——留痕降级
@@ -342,15 +394,17 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     int candidateSize = size * CANDIDATE_MULTIPLIER;
     auto raw = recipeRepo_->findRecommendedRecipes(userId, 1, candidateSize);
 
-    // ── 5. 健康过滤 ──
+    // ── 5. 健康过滤（硬档剔除 + 软档提示） ──
     std::vector<RecommendedRecipe> candidates;
     candidates.reserve(raw.data.size());
     int excludedByHealth = 0;
     for (auto& rec : raw.data) {
-        if (!avoidances.empty() && hasAvoidedIngredient(rec, avoidances)) {
+        if (!hardAvoidances.empty() && hasAvoidedIngredient(rec, hardAvoidances)) {
             ++excludedByHealth;
             continue;
         }
+        // 软档：不剔除，仅附提示文案（评分阶段据此轻微降权；空串 = 无提示，前端不展示）
+        rec.health_notice = buildHealthNotice(rec, healthConditions);
         candidates.push_back(std::move(rec));
     }
 
@@ -390,6 +444,11 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
             + popBoost        * WEIGHT_POPULARITY
             + recencyBoost    * WEIGHT_RECENCY
             + nutritionBoost  * WEIGHT_NUTRITION;
+
+        // 软档健康提示减分：命中（盐/酱油/糖等可少放食材）不剔除，仅轻微降权，提示语随卡片展示
+        if (!rec.health_notice.empty()) {
+            finalScore -= PENALTY_SOFT_HEALTH;
+        }
 
         // 钳位成 [0, 1] 之间的两位小数
         rec.match_score = std::round(std::max(0.0, std::min(1.0, finalScore)) * 100.0) / 100.0;

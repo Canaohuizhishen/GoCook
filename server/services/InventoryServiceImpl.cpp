@@ -27,6 +27,33 @@ namespace {
         }
         return day <= dim;
     }
+
+    // 添加/编辑库存项共用字段校验：数量 > 0、单位在白名单、过期日期为真实日历日期
+    void validateUpsertFields(const UpsertInventoryRequest& item) {
+        // 库存数量校验
+        if (item.quantity <= 0.0) {
+            throw ServiceException("库存数量必须大于0", 400);
+        }
+        // 食材单位校验
+        if (!validUnits().count(item.unit)) {
+            throw ServiceException("食材单位不合法", 400);
+        }
+        // 过期日期校验：非 YYYY-MM-DD 或不存在的日期（如 2026-02-31）打穿 DB 层会变成 500，这里提前转 400 可读错误
+        if (item.expiry_date.has_value()) {
+            const std::string& d = item.expiry_date.value();
+            static const std::regex dateRe(R"(^(\d{4})-(\d{1,2})-(\d{1,2})$)");
+            std::smatch m;
+            if (!std::regex_match(d, m, dateRe)) {
+                throw ServiceException("过期日期格式无效，应为 YYYY-MM-DD", 400);
+            }
+            const int year = std::stoi(m[1].str());
+            const int month = std::stoi(m[2].str());
+            const int day = std::stoi(m[3].str());
+            if (!isValidCalendarDate(year, month, day)) {
+                throw ServiceException("过期日期无效", 400);
+            }
+        }
+    }
 }
 
 PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size) {
@@ -34,30 +61,14 @@ PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size
 }
 
 int InventoryServiceImpl::upsertInventory(int userId, const UpsertInventoryRequest& item) {
-    // 库存数量校验
-    if (item.quantity <= 0.0) {
-        throw ServiceException("库存数量必须大于0", 400);
-    }
-    // 食材单位校验
-    if (!validUnits().count(item.unit)) {
-        throw ServiceException("食材单位不合法", 400);
-    }
-    // 过期日期校验：非 YYYY-MM-DD 或不存在的日期（如 2026-02-31）打穿 DB 层会变成 500，这里提前转 400 可读错误
-    if (item.expiry_date.has_value()) {
-        const std::string& d = item.expiry_date.value();
-        static const std::regex dateRe(R"(^(\d{4})-(\d{1,2})-(\d{1,2})$)");
-        std::smatch m;
-        if (!std::regex_match(d, m, dateRe)) {
-            throw ServiceException("过期日期格式无效，应为 YYYY-MM-DD", 400);
-        }
-        const int year = std::stoi(m[1].str());
-        const int month = std::stoi(m[2].str());
-        const int day = std::stoi(m[3].str());
-        if (!isValidCalendarDate(year, month, day)) {
-            throw ServiceException("过期日期无效", 400);
-        }
-    }
+    validateUpsertFields(item);
     return inventoryRepo_->upsertInventory(userId, item);
+}
+
+void InventoryServiceImpl::updateInventoryItem(int userId, int itemId,
+                                               const UpsertInventoryRequest& item) {
+    validateUpsertFields(item);
+    inventoryRepo_->updateInventoryItem(userId, itemId, item);
 }
 
 void InventoryServiceImpl::deleteInventoryItem(int userId, int itemId) {

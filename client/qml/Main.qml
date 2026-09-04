@@ -272,8 +272,8 @@ ApplicationWindow {
         id: recommendResultsPage
         RecommendResultsPage {
             property var _stackView: stackView
-            onRecipeClicked: (recipeId) => {
-                guardedPush(recipeDetailPage, {recipeId: recipeId})
+            onRecipeClicked: (recipeId, healthNotice) => {
+                guardedPush(recipeDetailPage, {recipeId: recipeId, healthNotice: healthNotice || ""})
             }
         }
     }

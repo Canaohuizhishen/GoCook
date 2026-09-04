@@ -8,7 +8,7 @@ Page {
     id: recResultsPage
     title: qsTr("智能推荐")
 
-    signal recipeClicked(int recipeId)
+    signal recipeClicked(int recipeId, string healthNotice)
 
     property string recError: ""
     property bool _dataLoaded: false
@@ -128,11 +128,12 @@ Page {
 
                     showMatch: true
                     matchScore: modelData.matchScore || 0
+                    healthNotice: modelData.healthNotice || ""
                     availableCount: modelData.matchStatus ? modelData.matchStatus["available_ingredients"].length : 0
                     missingCount: modelData.matchStatus ? modelData.matchStatus["missing_ingredients"].length : 0
 
                     onClicked: {
-                        recResultsPage.recipeClicked(modelData.id)
+                        recResultsPage.recipeClicked(modelData.id, modelData.healthNotice || "")
                     }
                     onAddMissingToCart: {
                         var name = modelData.name || ""

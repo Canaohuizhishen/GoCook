@@ -1,6 +1,7 @@
 -- ==================== GoCook 测试数据初始化脚本 ====================
 -- 说明：本脚本可重复执行，不会造成数据重复。
 -- 执行方式：docker exec -i gocook-postgres psql -U gocook -d gocookdb < ./seed_test_data.sql
+-- 开发库一键重置（推荐入口）：bash ../reset_db.sh —— 本文件为第 3 步，见 sql/README.md
 --
 -- ⚠️ 遇错即停：任何一条 INSERT 失败都会中止脚本并返回非零退出码
 -- （曾发生"菜谱外键违约但脚本仍打印成功"的静默失败——重置流程必须大声失败）
@@ -226,9 +227,10 @@ FROM (VALUES
     ('生菜', 2, '颗', '2026-04-14'::DATE),
     ('小番茄', 200, '克', '2026-04-14'::DATE)
 ) AS v(ingredient_name, quantity, unit, expiry_date)
-ON CONFLICT (user_id, ingredient_name) DO UPDATE SET
+-- 2026-09-04 起约束为三维唯一 (user_id, ingredient_name, unit)：冲突列须与约束一致。
+-- 种子语义 = 权威快照：quantity/expiry 覆盖为种子值（非服务端“添加累加”语义）。
+ON CONFLICT (user_id, ingredient_name, unit) DO UPDATE SET
     quantity = EXCLUDED.quantity,
-    unit = EXCLUDED.unit,
     expiry_date = EXCLUDED.expiry_date,
     added_at = NOW();
 

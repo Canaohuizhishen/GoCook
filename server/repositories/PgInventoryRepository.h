@@ -16,9 +16,12 @@ public:
     // 查询当前用户库存（分页）
     gocook::models::PagedInventory findInventory(int userId, int page,
                                                  int size) override;
-    // 添加/更新库存项，返回库存项 ID
+    // 添加库存项（同名同单位累加；不同单位新增行），返回库存项 ID
     int upsertInventory(int userId,
                         const gocook::models::UpsertInventoryRequest& item) override;
+    // 编辑库存项（按 id 整行替换）
+    void updateInventoryItem(int userId, int itemId,
+                             const gocook::models::UpsertInventoryRequest& item) override;
     // 删除库存项
     void deleteInventoryItem(int userId, int itemId) override;
 

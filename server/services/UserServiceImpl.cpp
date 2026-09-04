@@ -12,6 +12,7 @@
 #include "bcrypt/crypt_blowfish.h"
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
+#include "HealthConditionLists.h"
 
 #define BCRYPT_OUTPUT_SIZE 128
 
@@ -19,31 +20,46 @@ using namespace gocook::models;
 using namespace gocook::services;
 
 namespace {
+    // 把名单食材 join 成 UI 文案（“、”分隔，顺序 = 名单顺序）
+    std::string joinAvoidanceNames(const std::vector<std::string>& names) {
+        std::string s;
+        for (size_t i = 0; i < names.size(); ++i) {
+            if (i) s += "、";
+            s += names[i];
+        }
+        return s;
+    }
+
     void populateAvoidanceSuggestions(
         const std::vector<std::string>& conditions,
         std::vector<AvoidanceItem>& out)
     {
         for (const auto& c : conditions) {
+            // 食材名单一律取自 HealthConditionLists.h（唯一事实源，杜绝手抄漂移）；
+            // reason 文案属 UI 文案层，本地维护。
+            const auto& hard = gocook::health::hardExcludedFor(c);
+            const auto& soft = gocook::health::softAdvisedFor(c);
             if (c == "高血压") {
-                out.push_back({"高钠食物", "高血压患者应限制钠摄入"});
-                out.push_back({"动物内脏", "含较高胆固醇，不利于血压控制"});
-                out.push_back({"腌制食品", "含盐量高，可能导致血压升高"});
+                if (!hard.empty())
+                    out.push_back({joinAvoidanceNames(hard), "高盐加工品，推荐结果将直接排除含此类食材的菜谱"});
+                if (!soft.empty())
+                    out.push_back({joinAvoidanceNames(soft), "调味高钠，系统仅提示少放，不屏蔽菜谱"});
             } else if (c == "高血脂") {
-                out.push_back({"油炸食品", "高脂肪含量，不利于血脂控制"});
-                out.push_back({"肥肉", "饱和脂肪酸含量高"});
-                out.push_back({"动物内脏", "胆固醇含量较高"});
+                if (!hard.empty())
+                    out.push_back({joinAvoidanceNames(hard), "高脂食材，推荐结果将直接排除含此类食材的菜谱"});
             } else if (c == "糖尿病") {
-                out.push_back({"高糖食品", "含添加糖，不利于血糖控制"});
-                out.push_back({"精制米面", "升糖指数高，建议选择全谷物"});
-                out.push_back({"含糖饮料", "高糖饮品，应避免"});
+                if (!hard.empty())
+                    out.push_back({joinAvoidanceNames(hard), "高糖成品酱料，推荐结果将直接排除含此类食材的菜谱"});
+                if (!soft.empty())
+                    out.push_back({joinAvoidanceNames(soft), "调味糖源可少放或不放，系统仅提示不屏蔽"});
             } else if (c == "胃炎") {
-                out.push_back({"辛辣食物", "刺激胃黏膜，可能加重炎症"});
-                out.push_back({"生冷食物", "不易消化，增加胃负担"});
-                out.push_back({"酒精", "刺激胃黏膜，应避免饮酒"});
+                // 引擎不对胃炎做食材级过滤（辛辣/生冷无法映射食材黑名单）——纯建议口径，不声称排除
+                out.push_back({"辛辣食物", "刺激胃黏膜，可能加重炎症（系统仅作建议，不做菜谱排除）"});
+                out.push_back({"生冷食物", "不易消化，增加胃负担（系统仅作建议，不做菜谱排除）"});
+                out.push_back({"酒精", "刺激胃黏膜，应避免饮酒（系统仅作建议，不做菜谱排除）"});
             } else if (c == "痛风") {
-                out.push_back({"高嘌呤食物", "如动物内脏、浓汤等"});
-                out.push_back({"海鲜", "嘌呤含量较高"});
-                out.push_back({"啤酒", "影响尿酸排泄"});
+                if (!hard.empty())
+                    out.push_back({joinAvoidanceNames(hard), "高嘌呤/高风险食材，推荐结果将直接排除含此类食材的菜谱"});
             }
         }
     }

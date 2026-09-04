@@ -446,13 +446,25 @@ namespace gocook::services {
         virtual models::PagedInventory getInventory(int userId, int page, int size) = 0;
 
         /**
-         * @brief 添加/更新库存项（需认证），返回库存项 ID。
+         * @brief 添加库存项（需认证；同名同单位数量累加、不同单位新增行，带 expiry_date 的
+         *        追加视作新批次混入，行内到期日取最早），返回库存项 ID。
          * @param userId 用户 ID
          * @param item 库存项数据
          * @return 库存项 ID
          */
         virtual int upsertInventory(int userId,
                                     const models::UpsertInventoryRequest& item) = 0;
+
+        /**
+         * @brief 编辑库存项（按 id 整行替换，需认证；对应 PUT /api/inventory/:id）。
+         *        item 缺省 expiry_date = 清空该列；与本人另一条 (user_id, ingredient_name, unit)
+         *        重复时抛 ServiceException(409)。
+         * @param userId 用户 ID
+         * @param itemId 库存项 ID（须属于该用户，否则 404）
+         * @param item 替换后的库存项数据
+         */
+        virtual void updateInventoryItem(int userId, int itemId,
+                                         const models::UpsertInventoryRequest& item) = 0;
 
         /**
          * @brief 删除库存项（需认证）。

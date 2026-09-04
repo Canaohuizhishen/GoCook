@@ -373,12 +373,21 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
 
         // ── 数据查询：CTE 做库存匹配（推荐引擎核心）──
         std::string dataSql = R"(
-            WITH user_inv AS (
-                SELECT LOWER(ingredient_name) AS name,
+            WITH inv_names AS (
+                -- 匹配只看"有没有"：名字去重，防止同名多单位行（料酒 15毫升 + 100克）撑大计数
+                SELECT DISTINCT LOWER(ingredient_name) AS name
+                FROM inventory
+                WHERE user_id = $1
+            ),
+            inv_display AS (
+                -- 明细展示取最近录入的一行（数量/单位仅作参考展示，不作匹配依据）
+                SELECT DISTINCT ON (LOWER(ingredient_name))
+                       LOWER(ingredient_name) AS name,
                        quantity,
                        unit
                 FROM inventory
                 WHERE user_id = $1
+                ORDER BY LOWER(ingredient_name), added_at DESC
             ),
             recipe_ings AS (
                 SELECT
@@ -396,27 +405,28 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
                 SELECT
                     ri.recipe_id,
                     COUNT(*)::int AS total_count,
-                    COUNT(CASE WHEN inv.name IS NOT NULL THEN 1 END)::int AS match_count,
+                    COUNT(CASE WHEN n.name IS NOT NULL THEN 1 END)::int AS match_count,
                     jsonb_agg(
-                        CASE WHEN inv.name IS NOT NULL THEN
+                        CASE WHEN n.name IS NOT NULL THEN
                             jsonb_build_object(
                                 'name', ri.ing_original_name,
-                                'quantity', inv.quantity,
-                                'unit', inv.unit
+                                'quantity', d.quantity,
+                                'unit', d.unit
                             )
                         END
-                    ) FILTER (WHERE inv.name IS NOT NULL) AS available_json,
+                    ) FILTER (WHERE n.name IS NOT NULL) AS available_json,
                     jsonb_agg(
-                        CASE WHEN inv.name IS NULL THEN
+                        CASE WHEN n.name IS NULL THEN
                             jsonb_build_object(
                                 'name', ri.ing_original_name,
                                 'quantity', ri.ing_qty,
                                 'unit', ri.ing_unit
                             )
                         END
-                    ) FILTER (WHERE inv.name IS NULL) AS missing_json
+                    ) FILTER (WHERE n.name IS NULL) AS missing_json
                 FROM recipe_ings ri
-                LEFT JOIN user_inv inv ON ri.ing_name = inv.name
+                LEFT JOIN inv_names n ON ri.ing_name = n.name
+                LEFT JOIN inv_display d ON ri.ing_name = d.name
                 GROUP BY ri.recipe_id
             )
             SELECT
@@ -447,6 +457,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
                 COALESCE((r.nutrition_info->'per_serving'->>'protein_g')::numeric, 0) AS protein_g,
                 COALESCE((r.nutrition_info->'per_serving'->>'fat_g')::numeric, 0) AS fat_g,
                 COALESCE((r.nutrition_info->'per_serving'->>'carbs_g')::numeric, 0) AS carbs_g,
+                COALESCE((r.nutrition_info->'per_serving'->>'sodium_mg')::numeric, 0) AS sodium_mg,
                 r.submitted_at
             FROM matched m
             JOIN recipes r ON m.recipe_id = r.id
@@ -494,6 +505,7 @@ PagedRecommendedRecipes PgRecipeRepository::findRecommendedRecipes(int userId,
             rec.protein_g = row["protein_g"].as<double>(0.0);
             rec.fat_g = row["fat_g"].as<double>(0.0);
             rec.carbs_g = row["carbs_g"].as<double>(0.0);
+            rec.sodium_mg = row["sodium_mg"].as<double>(0.0);
             if (!row["submitted_at"].is_null())
                 rec.submitted_at = row["submitted_at"].c_str();
 

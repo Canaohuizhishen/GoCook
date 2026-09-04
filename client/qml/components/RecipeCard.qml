@@ -18,12 +18,22 @@ Rectangle {
     // 推荐数据（可选，默认隐藏）
     property bool showMatch: false
     property real matchScore: 0.0
+    property string healthNotice: ""  // 健康软提示全文（仅推荐模式传入）：卡片上收敛为小徽标，完整文案在详情页顶部展示（RecipeDetailPage.healthNotice）
     property int availableCount: 0
     property int missingCount: 0
     property string cartFeedback: ""
 
     signal clicked()
     signal addMissingToCart()
+
+    // 徽标文字：按文案关键词归为“少盐/控糖/注意”（单字胶囊，不占卡片高度）
+    function noticeBadgeText() {
+        var n = card.healthNotice
+        if (!n) return ""
+        if (n.indexOf("糖") >= 0) return "控糖"
+        if (n.indexOf("盐") >= 0 || n.indexOf("钠") >= 0) return "少盐"
+        return "注意"
+    }
 
     function showCartFeedback(ok) {
         cartFeedback = ok ? "done" : "fail"
@@ -37,6 +47,8 @@ Rectangle {
     }
 
     width: parent ? parent.width : 300
+    // 卡高体系（2026-09-05 徽标化方案）：普通 105 / 推荐 140 恒定。健康提示不占卡片高度——
+    // 收敛为图片左上角小徽标，完整文案透传到详情页顶部展示，列表高度/图片比例不受提示影响
     height: showMatch ? 140 : 105
     radius: Theme.radiusMedium
     color: Theme.cardBackground
@@ -79,6 +91,28 @@ Rectangle {
                 cache: false
                 asynchronous: true
 
+                // ── 健康提示徽标（推荐模式；不占卡片高度，与右上匹配度徽章对角） ──
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.margins: 3
+                    width: healthBadgeText.implicitWidth + 10
+                    height: 17
+                    radius: 8
+                    color: Theme.warningColor
+                    opacity: 0.92
+                    visible: card.showMatch && card.healthNotice !== ""
+                    Text {
+                        id: healthBadgeText
+                        anchors.centerIn: parent
+                        text: card.noticeBadgeText()
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSizeSmall - 1
+                        font.weight: Font.Bold
+                        color: Theme.isDarkMode ? "#1F1B16" : "#5D4300"
+                    }
+                }
+
                 // ── 匹配度徽章（推荐模式） ──
                 Rectangle {
                     anchors.right: parent.right
@@ -98,6 +132,21 @@ Rectangle {
                         font.weight: Font.Bold
                         color: "#fff"
                         font.family: Theme.fontFamily
+                    }
+                    // 悬停解释（桌面）：裸百分号易被误读。注意：不用 visible 绑定 MouseArea.hovered
+                    // （本环境求值异常会报 Unable to assign [undefined] to bool），改命令式 show/close
+                    MouseArea {
+                        id: badgeHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: card.clicked()
+                        onEntered: badgeTip.open()
+                        onExited: badgeTip.close()
+                    }
+                    ToolTip {
+                        id: badgeTip
+                        text: qsTr("与库存和口味的匹配度")
+                        delay: 500
                     }
                 }
 

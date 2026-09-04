@@ -1374,6 +1374,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
 
                 // RecommendedRecipe 扩展字段
                 rec.match_score = obj["match_score"].toDouble();
+                rec.health_notice = obj["health_notice"].toString().toStdString();
 
                 QJsonObject status = obj["match_status"].toObject();
                 if (status.contains("available_ingredients") && status["available_ingredients"].isArray()) {
@@ -2035,6 +2036,23 @@ void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest
         int id = doc.object()["id"].toInt();
         callback(true, id, "");
     }, true, AuthMode::Interactive);
+}
+
+void HttpGoCookApi::updateInventoryItem(int itemId,
+                                        const gocook::models::UpsertInventoryRequest& item,
+                                        SuccessCallback callback) {
+    QVariantMap data;
+    data["ingredient_name"] = QString::fromStdString(item.ingredient_name);
+    data["quantity"] = item.quantity;
+    data["unit"] = QString::fromStdString(item.unit);
+    if (item.expiry_date.has_value())
+        data["expiry_date"] = QString::fromStdString(item.expiry_date.value());
+
+    // 编辑 = 按 id 整行替换（PUT），与“添加=POST 累加”语义分离（决策 2026-09-04）
+    put(QString("/api/inventory/%1").arg(itemId), data,
+        [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+            callback(success, success ? "" : errorMsg.toStdString());
+        }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteInventoryItem(int itemId,
