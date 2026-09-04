@@ -14,6 +14,9 @@ public:
     // 查询当前用户库存
     MOCK_METHOD(gocook::models::PagedInventory, findInventory,
                 (int, int, int), (override));
+    // 查询当前用户库存（分页 + 食材名模糊过滤）
+    MOCK_METHOD(gocook::models::PagedInventory, findInventoryFiltered,
+                (int, int, int, const std::string&), (override));
     // 添加库存项（同名同单位累加；不同单位新增行），返回库存项 ID
     MOCK_METHOD(int, upsertInventory,
                 (int, const gocook::models::UpsertInventoryRequest&), (override));

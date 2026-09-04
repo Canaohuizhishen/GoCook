@@ -26,6 +26,18 @@ public:
                                                  int size) = 0;
 
     /**
+     * @brief 查询当前用户库存（分页 + 食材名模糊过滤；v2.14 库存页过滤框）。
+     *        与 findInventory 语义一致，仅多 keyword 过滤；推荐引擎等既有调用保持走 findInventory。
+     * @param userId 用户 ID
+     * @param page 页码（从 1 开始）
+     * @param size 每页数量
+     * @param keyword 食材名模糊过滤词（空串 = 不过滤；ILIKE 匹配，分页 total 同步过滤）
+     * @return 分页的库存列表
+     */
+    virtual models::PagedInventory findInventoryFiltered(
+        int userId, int page, int size, const std::string& keyword) = 0;
+
+    /**
      * @brief 添加库存项（2026-09-04 起语义：同名同单位数量累加；同名不同单位新增行）。
      *        带 expiry_date 的追加视作新批次混入：行内到期日取最早（安全下限）。
      *        实现为单语句原子 UPSERT（ON CONFLICT 累加），并发添加不丢更新。

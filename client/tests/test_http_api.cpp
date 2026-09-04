@@ -671,7 +671,7 @@ TEST(HttpApiE2E, InventoryPutEdit)
 
     const auto cleanup = [&]() {
         done = false;
-        api.getInventory(1, 100, [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
+        api.getInventory(1, 100, "", [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
             ok = s;
             err = e;
             if (s) {
@@ -753,7 +753,7 @@ TEST(HttpApiE2E, InventoryPutEdit)
     ok = false;
     bool foundA = false;
     double qtyA = 0.0;
-    api.getInventory(1, 100, [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
+    api.getInventory(1, 100, "", [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
         ok = s;
         err = e;
         if (s) {
@@ -788,7 +788,7 @@ TEST(HttpApiE2E, InventoryPutEdit)
     bool oldBGone = true;
     bool newBPresent = false;
     double qtyNewB = 0.0;
-    api.getInventory(1, 100, [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
+    api.getInventory(1, 100, "", [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
         ok = s;
         err = e;
         if (s) {

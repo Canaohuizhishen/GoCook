@@ -12,6 +12,14 @@ Page {
     property bool addPending: false
     property bool editPending: false
 
+    // 单位白名单与校验（服务端 InventoryServiceImpl::validUnits 是唯一事实源，此处为提交前拦截，
+    // 两侧清单改动须同步）：空/纯空白提交时默认 "克"（合法）；非空必须命中白名单
+    readonly property var supportedUnits: ["个", "克", "千克", "毫升", "升", "只", "条", "把", "根",
+                                          "片", "块", "袋", "包", "盒", "瓶", "碗", "勺",
+                                          "茶匙", "汤匙", "斤", "两", "磅", "份"]
+    function normalizedUnit(raw) { var t = raw.trim(); return t.length === 0 ? "克" : t }
+    function isUnitValid(raw) { return supportedUnits.indexOf(normalizedUnit(raw)) !== -1 }
+
     signal showShoppingListRequest()
 
     // 页面每次可见时刷新（首次创建与登录/登出后切回均生效），并清空上一次的状态提示，
@@ -64,6 +72,60 @@ Page {
             buttonType: CustomButton.ButtonType.Secondary
             onClicked: showShoppingListRequest()
         }
+
+        // 过滤框（v2.14）：购物清单按钮下方——按食材名模糊过滤库存，服务端 keyword 过滤（分页同步）
+        TextField {
+            id: filterField
+            // 游客无库存可滤：未登录禁用（输入只会触发需登录守卫，无实际意义）
+            enabled: authViewModel.loggedIn
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.spacingMedium
+            Layout.rightMargin: Theme.spacingMedium
+            placeholderText: qsTr("过滤...")
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSizeBody
+            color: Theme.textPrimary
+            // 给右侧自绘清除按钮留位（Qt Quick Controls 的 TextField 无 clearButtonEnabled，那是 TextArea 的属性）
+            rightPadding: 26
+            // 输入防抖：停顿 300ms 才提交过滤，避免逐键请求服务端
+            onTextChanged: filterDebounce.restart()
+
+            // 自绘清除按钮：非空时显示，点击清空（触发 onTextChanged → 防抖 → setFilterText("") 恢复全量）
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                width: 22
+                height: 22
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: "×"
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeBody
+                color: filterClearMa.pressed ? Theme.primaryColor : Theme.textHint
+                visible: filterField.text.length > 0
+                MouseArea {
+                    id: filterClearMa
+                    anchors.fill: parent
+                    onClicked: filterField.clear()
+                }
+            }
+
+            Timer {
+                id: filterDebounce
+                interval: 300
+                onTriggered: inventoryVM.setFilterText(filterField.text)
+            }
+        }
+
+        // VM 侧过滤词变化（清空按钮/clearAll/登出）同步回显输入框
+        Connections {
+            target: inventoryVM
+            function onFilterTextChanged() {
+                if (filterField.text !== inventoryVM.filterText)
+                    filterField.text = inventoryVM.filterText
+            }
+        }
     }
 
     // 内容区：按钮组下方到页面底部（空态提示 / 状态提示 / 列表）
@@ -78,7 +140,11 @@ Page {
             Layout.fillWidth: true
             Layout.leftMargin: Theme.spacingMedium
             Layout.rightMargin: Theme.spacingMedium
-            text: authViewModel.loggedIn ? qsTr("暂无库存，点击上方按钮添加食材") : qsTr("登录后查看你的库存")
+            // 空态三态：未登录 → 提示登录；已登录且过滤词非空 → 无匹配提示；否则 → 暂无库存
+            text: !authViewModel.loggedIn ? qsTr("登录后查看你的库存")
+                : (inventoryVM.filterText !== ""
+                    ? qsTr("未找到匹配「%1」的食材").arg(inventoryVM.filterText)
+                    : qsTr("暂无库存，点击上方按钮添加食材"))
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSizeBody
             color: Theme.textHint
@@ -362,6 +428,18 @@ Page {
                 }
             }
 
+            // 单位预校验提示：与添加框同规则（服务端白名单一致）
+            Text {
+                Layout.fillWidth: true
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeCaption
+                color: Theme.errorColor
+                wrapMode: Text.WordWrap
+                visible: editNameField.text.trim() !== "" && editUnitField.text.trim().length > 0
+                         && !isUnitValid(editUnitField.text)
+                text: qsTr("单位不合法，仅支持：%1").arg(supportedUnits.join("/"))
+            }
+
             TextField {
                 id: editExpiryField
                 Layout.fillWidth: true
@@ -393,7 +471,8 @@ Page {
                     Layout.fillWidth: true
                     buttonText: qsTr("保存")
                     buttonType: CustomButton.ButtonType.Primary
-                    enabled: editNameField.text.trim() !== ""
+                    // 单位非法（非空且不在白名单）→ 按钮置灰不可提交；服务端校验保留为最后防线
+                    enabled: editNameField.text.trim() !== "" && isUnitValid(editUnitField.text)
                     onClicked: {
                         if (currentEditItemId === -1) return
 
@@ -474,6 +553,18 @@ Page {
                 }
             }
 
+            // 单位预校验提示：非法且非空时说明原因（提交按钮已置灰，非法单位发不出请求）
+            Text {
+                Layout.fillWidth: true
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeCaption
+                color: Theme.errorColor
+                wrapMode: Text.WordWrap
+                visible: itemNameField.text.trim() !== "" && itemUnitField.text.trim().length > 0
+                         && !isUnitValid(itemUnitField.text)
+                text: qsTr("单位不合法，仅支持：%1").arg(supportedUnits.join("/"))
+            }
+
             TextField {
                 id: expiryField
                 Layout.fillWidth: true
@@ -493,7 +584,8 @@ Page {
             CustomButton {
                 Layout.fillWidth: true
                 buttonText: qsTr("确定添加")
-                enabled: itemNameField.text.trim() !== ""
+                // 单位非法（非空且不在白名单）→ 按钮置灰不可提交；服务端校验保留为最后防线
+                enabled: itemNameField.text.trim() !== "" && isUnitValid(itemUnitField.text)
                 onClicked: {
                     // 客户端预校验
                     var qty = parseFloat(itemQtyField.text)

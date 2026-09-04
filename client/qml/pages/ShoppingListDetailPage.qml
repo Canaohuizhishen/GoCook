@@ -470,15 +470,25 @@ Page {
     }
 
     function exportAsImage() {
-        tableColumn.grabToImage(function(result) {
+        // grabToImage 返回 bool（Qt6 QML API）：true = 抓取已发起（result 回调随后触发）；
+        // false = 页面尚未渲染/窗口不可见等，回调不会被调用——必须同步判返回值并呈现失败态，
+        // 否则抓取失败时仍是无任何反馈的静默（此前只查了回调内 saveToFile，盖不住这一通道）
+        var grabOk = tableColumn.grabToImage(function(result) {
             var listName = (shoppingListVM.currentList.name || "shopping-list").replace(/[\\/:*?\"<>|]/g, "_")
             var timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "")
             var fileName = "GoCook-" + listName + "-" + timestamp + ".png"
             var filePath = "/tmp/" + fileName
-            result.saveToFile(filePath)
-            exportDoneDialog.filePath = filePath
+            // 失败兜底：抓取结果无效或写盘失败不得假报成功（QImage::save 对空图返回 false）
+            var ok = result != null && result.saveToFile(filePath)
+            exportDoneDialog.success = ok
+            exportDoneDialog.filePath = ok ? filePath : ""
             exportDoneDialog.open()
         })
+        if (!grabOk) {
+            exportDoneDialog.success = false
+            exportDoneDialog.filePath = ""
+            exportDoneDialog.open()
+        }
     }
 
     function confirmAddItem() {
@@ -499,10 +509,10 @@ Page {
         addItemDialog.close()
     }
 
-    // ===== 导出图片完成对话框 =====
+    // ===== 导出图片结果对话框（成功显示路径 / 失败提示重试） =====
     Dialog {
         id: exportDoneDialog
-        title: qsTr("导出完成")
+        title: qsTr("导出结果")
         anchors.centerIn: parent
         modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
@@ -510,6 +520,7 @@ Page {
         height: exportDoneLayout.implicitHeight + 80
 
         property string filePath: ""
+        property bool success: true
 
         background: Rectangle {
             color: Theme.cardBackground
@@ -529,22 +540,34 @@ Page {
             anchors.topMargin: 20
 
             Text {
-                text: qsTr("图片已保存")
+                text: exportDoneDialog.success ? qsTr("图片已保存") : qsTr("导出失败")
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSizeH3
                 font.bold: true
-                color: Theme.primaryColor
+                color: exportDoneDialog.success ? Theme.primaryColor : Theme.errorColor
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
             }
 
             Text {
+                visible: exportDoneDialog.success
                 text: exportDoneDialog.filePath
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSizeBody
                 color: Theme.textSecondary
                 Layout.fillWidth: true
                 wrapMode: Text.WrapAnywhere
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
+                visible: !exportDoneDialog.success
+                text: qsTr("未能生成图片（页面尚未渲染完成，或图片保存失败），请稍后重试")
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeBody
+                color: Theme.textSecondary
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
             }
 

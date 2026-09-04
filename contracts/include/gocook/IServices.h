@@ -441,9 +441,14 @@ namespace gocook::services {
          * @param userId 用户 ID
          * @param page 页码（从 1 开始）
          * @param size 每页数量
+         * @param keyword 食材名模糊过滤词（v2.14：空串 = 不过滤）
          * @return 分页的库存列表
+         *
+         * 注：接口声明不设默认实参（纯虚接口默认参易与实现侧漂移），调用须显式传 keyword，
+         * 空串 = 不过滤；InventoryServiceImpl 实现侧保留默认实参供直接调用方省略。
          */
-        virtual models::PagedInventory getInventory(int userId, int page, int size) = 0;
+        virtual models::PagedInventory getInventory(int userId, int page, int size,
+                                                    const std::string& keyword) = 0;
 
         /**
          * @brief 添加库存项（需认证；同名同单位数量累加、不同单位新增行，带 expiry_date 的

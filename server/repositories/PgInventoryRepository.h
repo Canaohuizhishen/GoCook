@@ -16,6 +16,9 @@ public:
     // 查询当前用户库存（分页）
     gocook::models::PagedInventory findInventory(int userId, int page,
                                                  int size) override;
+    // 查询当前用户库存（分页 + 食材名模糊过滤；keyword 空串 = 不过滤）
+    gocook::models::PagedInventory findInventoryFiltered(
+        int userId, int page, int size, const std::string& keyword) override;
     // 添加库存项（同名同单位累加；不同单位新增行），返回库存项 ID
     int upsertInventory(int userId,
                         const gocook::models::UpsertInventoryRequest& item) override;
@@ -44,7 +47,7 @@ public:
     gocook::models::BatchShoppingResponse batchAddShoppingItems(
         int userId, int listId,
         const std::vector<gocook::models::BatchShoppingItem>& items) override;
-    // 导出购物清单（"text" 返回纯文本，"image" 返回 base64 图片）
+    // 导出购物清单（仅支持 "text" 纯文本；v2.13 起其他格式如 "image" 抛 400——图片导出为客户端本地能力）
     std::string exportShoppingList(int userId, int listId,
                                    const std::string& format) override;
 

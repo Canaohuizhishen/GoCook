@@ -12,22 +12,40 @@ using namespace gocook::services;
 //   方法体只剩"差异部分"（SQL + 参数 + 行→结构体映射），异常分层/事务边界由辅助函数统一保证。
 
 PagedInventory PgInventoryRepository::findInventory(int userId, int page, int size) {
+    // 无过滤查询 = 过滤查询的空词特例（SQL 单源，避免两段 SQL 漂移）
+    return findInventoryFiltered(userId, page, size, "");
+}
+
+PagedInventory PgInventoryRepository::findInventoryFiltered(int userId, int page, int size,
+                                                           const std::string& keyword) {
     return executeDb(db_, [&](pqxx::work& txn) {
         PagedInventory result;
 
-        LOG_DEBUG("[SQL] findInventory count | userId=%d", userId);
+        // 食材名模糊过滤（v2.14）：keyword 空串 = 不过滤。参数化 + 通配符转义——
+        // 用户输入里的 % _ \ 先经 replace 转义再套 ILIKE '%…%'，不会被当作 LIKE 通配符；
+        // count 与 data 两处条件一致，保证分页 total 与过滤结果同步
+        // R"(…)" 内为 SQL 原文（反斜杠无需 C++ 级转义）；raw 串终止符是 )"，
+        // SQL 以 ')' 收尾时需在末行后换行闭合，避免右括号被终止符吞掉
+        const std::string kwFilter = R"( AND ($2 = '' OR ingredient_name ILIKE '%' ||
+            replace(replace(replace($2, '\', '\\'), '%', '\%'), '_', '\_') ||
+            '%' ESCAPE '\')
+        )";
+
+        LOG_DEBUG("[SQL] findInventory count | userId=%d keyword=%s", userId, keyword.c_str());
         pqxx::result countRes = txn.exec(
-            "SELECT COUNT(*) FROM inventory WHERE user_id = $1", pqxx::params{userId});
+            R"(SELECT COUNT(*) FROM inventory WHERE user_id = $1)" + kwFilter,
+            pqxx::params{userId, keyword});
         int total = countRes[0][0].as<int>();
 
         int offset = (page > 0) ? (page - 1) * size : 0;
 
-        LOG_DEBUG("[SQL] findInventory data | userId=%d page=%d size=%d", userId, page, size);
+        LOG_DEBUG("[SQL] findInventory data | userId=%d page=%d size=%d keyword=%s",
+                  userId, page, size, keyword.c_str());
         pqxx::result rows = txn.exec(
-            "SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
-            "FROM inventory WHERE user_id = $1 "
-            "ORDER BY added_at DESC LIMIT $2 OFFSET $3",
-            pqxx::params{userId, size, offset});
+            R"(SELECT id, ingredient_name, quantity, unit, expiry_date, added_at
+               FROM inventory WHERE user_id = $1)" + kwFilter +
+            R"( ORDER BY added_at DESC LIMIT $3 OFFSET $4)",
+            pqxx::params{userId, keyword, size, offset});
 
         for (const auto& row : rows) {
             InventoryItem item;
