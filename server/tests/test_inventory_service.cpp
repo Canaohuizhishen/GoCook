@@ -3,6 +3,13 @@
 #include "../services/InventoryServiceImpl.h"
 #include "MockInventoryRepository.h"
 
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <regex>
+#include <sstream>
+#include <unordered_set>
+
 using namespace testing;
 using namespace gocook::models;
 using namespace gocook::services;
@@ -31,7 +38,7 @@ TEST(InventoryServiceTest, 获取库存正确委派) {
     InventoryServiceImpl service(std::move(mock));
 
     auto expected = makePagedInventory(2);
-    EXPECT_CALL(*repo, findInventory(1, 1, 20)).WillOnce(Return(expected));
+    EXPECT_CALL(*repo, findInventoryFiltered(1, 1, 20, "")).WillOnce(Return(expected));
 
     auto result = service.getInventory(1, 1, 20);
     EXPECT_EQ(result.data.size(), 2);
@@ -44,10 +51,23 @@ TEST(InventoryServiceTest, 库存分页参数透传) {
     auto* repo = mock.get();
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, findInventory(2, 3, 10))
+    EXPECT_CALL(*repo, findInventoryFiltered(2, 3, 10, ""))
         .WillOnce(Return(PagedInventory{}));
 
     auto result = service.getInventory(2, 3, 10);
+    EXPECT_TRUE(result.data.empty());
+}
+
+TEST(InventoryServiceTest, 库存关键字过滤透传) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
+    InventoryServiceImpl service(std::move(mock));
+
+    // 过滤词必须原样透传给仓库层（库存页过滤框场景）
+    EXPECT_CALL(*repo, findInventoryFiltered(1, 1, 20, "料酒"))
+        .WillOnce(Return(PagedInventory{}));
+
+    auto result = service.getInventory(1, 1, 20, "料酒");
     EXPECT_TRUE(result.data.empty());
 }
 
@@ -371,4 +391,56 @@ TEST(InventoryServiceTest, 导出购物清单正确委派Repositories) {
 
     auto result = service.exportShoppingList(1, 42, "text");
     EXPECT_EQ(result, "GoCook 购物清单：test\n\n[ ] item  1个\n");
+}
+
+// ==================== 单位白名单双端一致性守卫 ====================
+// InventoryServiceImpl::validUnits()（服务端唯一事实源）与客户端 InventoryPage.qml 的
+// supportedUnits（提交前拦截副本）必须逐项一致：任一单侧增/删/改单位都会在本用例失败，
+// 强制两侧同步（此前仅靠注释约束，无机制防漂移）。
+TEST(InventoryServiceTest, 单位白名单与客户端QML逐项一致) {
+    // 经 __FILE__ 逐级上溯定位仓库根下的 InventoryPage.qml：兼容 __FILE__ 为绝对/相对路径
+    // （编译命令形态不定）以及测试运行 CWD 任意的情况——找到即用，找不到给出明确错误
+    std::filesystem::path qmlPath;
+    std::filesystem::path p = std::filesystem::path(__FILE__).parent_path();
+    for (int i = 0; i < 8 && !p.empty(); ++i, p = p.parent_path()) {
+        auto cand = p / "client" / "qml" / "pages" / "InventoryPage.qml";
+        if (std::filesystem::exists(cand)) {
+            qmlPath = cand;
+            break;
+        }
+    }
+    ASSERT_FALSE(qmlPath.empty())
+        << "找不到客户端白名单源文件 client/qml/pages/InventoryPage.qml"
+        << "（已从 " << std::filesystem::path(__FILE__).parent_path()
+        << " 向上搜索 8 层；源码布局变更需同步本用例的定位逻辑）";
+
+    std::ifstream in(qmlPath);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // 拉平换行（supportedUnits 数组跨行书写，ECMAScript 正则的 . 不匹配 \n）
+    for (char& c : content)
+        if (c == '\n') c = ' ';
+
+    std::regex listRe(R"(supportedUnits:\s*\[(.*?)\])");
+    std::smatch listM;
+    ASSERT_TRUE(std::regex_search(content, listM, listRe))
+        << "InventoryPage.qml 中未找到 supportedUnits 数组（QML 结构变更需同步本用例）";
+    std::regex unitRe(R"q("([^"]*)")q");
+    std::unordered_set<std::string> qmlUnits;
+    for (std::sregex_iterator it(listM[1].first, listM[1].second, unitRe), end; it != end; ++it)
+        qmlUnits.insert((*it)[1].str());
+
+    const auto& serverUnits = InventoryServiceImpl::validUnits();
+    ASSERT_FALSE(serverUnits.empty()) << "服务端单位白名单不应为空";
+    ASSERT_FALSE(qmlUnits.empty()) << "客户端 supportedUnits 不应为空";
+
+    std::ostringstream onlyInQml, onlyInServer;
+    for (const auto& u : qmlUnits)
+        if (!serverUnits.count(u)) onlyInQml << u << " ";
+    for (const auto& u : serverUnits)
+        if (!qmlUnits.count(u)) onlyInServer << u << " ";
+    EXPECT_TRUE(onlyInQml.str().empty())
+        << "以下单位仅存在于客户端 QML（服务端缺，须两侧同步）: " << onlyInQml.str();
+    EXPECT_TRUE(onlyInServer.str().empty())
+        << "以下单位仅存在于服务端（客户端缺，须两侧同步）: " << onlyInServer.str();
+    EXPECT_EQ(serverUnits.size(), qmlUnits.size()) << "两侧单位数量不一致";
 }

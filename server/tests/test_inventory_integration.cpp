@@ -457,3 +457,61 @@ TEST_F(InventoryDbTest, 库存同名多单位行不撑大推荐计数与匹配�
     EXPECT_DOUBLE_EQ(mine->match_status.available_ingredients[0].quantity, 100.0);
     EXPECT_EQ(mine->match_status.available_ingredients[0].unit, "克");
 }
+
+// ---- findInventoryFiltered（v2.14 库存页过滤框：食材名模糊过滤 + 分页同步） ----
+
+TEST_F(InventoryDbTest, 关键字过滤仅返回匹配行且total同步) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    repo.upsertInventory(uid, makeReq("集成测试料酒", 100, "克"));
+    repo.upsertInventory(uid, makeReq("集成测试料酒", 15, "毫升"));
+    repo.upsertInventory(uid, makeReq("集成测试料酒", 1, "瓶"));
+    repo.upsertInventory(uid, makeReq("集成测试鸡蛋", 6, "个"));   // 干扰行：不含"料酒"
+
+    auto paged = repo.findInventoryFiltered(uid, 1, 50, "料酒");
+
+    ASSERT_EQ(paged.pagination.total, 3) << "total 必须与过滤结果同步";
+    ASSERT_EQ(paged.data.size(), 3u);
+    // 三行全是料酒（名称模糊匹配），干扰行（鸡蛋）被过滤
+    for (const auto& item : paged.data)
+        EXPECT_NE(item.ingredient_name.find("料酒"), std::string::npos);
+}
+
+TEST_F(InventoryDbTest, 关键字无匹配返回空结果) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    repo.upsertInventory(uid, makeReq("集成测试鸡蛋", 6, "个"));
+    repo.upsertInventory(uid, makeReq("集成测试_蛋", 6, "个"));   // 含字面下划线的行：验证 _ 按字面匹配
+
+    auto paged = repo.findInventoryFiltered(uid, 1, 50, "不存在的食材XYZ");
+    EXPECT_EQ(paged.pagination.total, 0);
+    EXPECT_TRUE(paged.data.empty());
+
+    // 同一用户带过滤词的 LIKE 通配符输入（% _ \）不得被当作通配符（转义后按字面匹配，而不是全量命中）
+    auto pagedPct = repo.findInventoryFiltered(uid, 1, 50, "%");
+    EXPECT_EQ(pagedPct.pagination.total, 0) << "输入 % 必须按字面匹配，不能命中全部";
+    auto pagedUnd = repo.findInventoryFiltered(uid, 1, 50, "_");
+    ASSERT_EQ(pagedUnd.pagination.total, 1)
+        << "输入 _ 必须按字面匹配：只命中含字面下划线的行（转义失效时会作单字符通配符全命中）";
+    EXPECT_EQ(pagedUnd.data[0].ingredient_name, "集成测试_蛋");
+    auto pagedBsl = repo.findInventoryFiltered(uid, 1, 50, "\\");
+    EXPECT_EQ(pagedBsl.pagination.total, 0)
+        << "输入 \\ 必须按字面匹配（转义失效会触发 ESCAPE 解析异常或全命中）";
+    // 对照：普通子串命中两行，证明带下划线行确实参与过滤（上一断言不是因数据缺失而通过）
+    auto pagedEgg = repo.findInventoryFiltered(uid, 1, 50, "蛋");
+    EXPECT_EQ(pagedEgg.pagination.total, 2);
+}
+
+TEST_F(InventoryDbTest, 空关键字等价于不过滤) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    repo.upsertInventory(uid, makeReq("集成测试料酒", 100, "克"));
+    repo.upsertInventory(uid, makeReq("集成测试鸡蛋", 6, "个"));
+
+    auto paged = repo.findInventoryFiltered(uid, 1, 50, "");
+    ASSERT_EQ(paged.pagination.total, 2);
+    ASSERT_EQ(paged.data.size(), 2u);
+}

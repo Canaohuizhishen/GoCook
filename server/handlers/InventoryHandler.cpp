@@ -12,6 +12,29 @@
 using json = nlohmann::json;
 using namespace gocook::models;
 
+namespace {
+    // 关键字两侧去空白：ASCII 空白 + 全角空格 U+3000（UTF-8: E3 80 80），
+    // 与客户端 QString::trimmed() 的空白集合对齐（纯空白 → 空串 = 不过滤）
+    std::string trimKeyword(const std::string& s) {
+        size_t b = 0, e = s.size();
+        while (b < e) {
+            const unsigned char c = static_cast<unsigned char>(s[b]);
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { ++b; continue; }
+            if (c == 0xE3 && b + 2 < e && static_cast<unsigned char>(s[b + 1]) == 0x80
+                && static_cast<unsigned char>(s[b + 2]) == 0x80) { b += 3; continue; }
+            break;
+        }
+        while (e > b) {
+            const unsigned char c = static_cast<unsigned char>(s[e - 1]);
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { --e; continue; }
+            if (c == 0x80 && e >= 3 && static_cast<unsigned char>(s[e - 2]) == 0x80
+                && static_cast<unsigned char>(s[e - 3]) == 0xE3) { e -= 3; continue; }
+            break;
+        }
+        return s.substr(b, e - b);
+    }
+}
+
 InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
                                    AuthMiddleware& auth)
     : service_(service), auth_(auth) {}
@@ -22,7 +45,15 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
     auto pp = parsePagination(req, 50);
 
     try {
-        auto paged = service_.getInventory(info.userId, pp.page, pp.size);
+        // 食材名模糊过滤（v2.14 keyword；v2.15 服务端收口）：可选查询参数。
+        // 统一 trim（ASCII 空白 + 全角空格，与客户端 QString::trimmed() 对齐）：
+        // 前后空白/纯空白视为不过滤；UTF-8 长度上限 100 字节（防超长请求滥用），超限返 400
+        std::string keyword = trimKeyword(
+            req.has_param("keyword") ? req.get_param_value("keyword") : std::string());
+        if (keyword.size() > 100)
+            throw gocook::services::ServiceException("过滤词过长（上限 100 字节）", 400);
+
+        auto paged = service_.getInventory(info.userId, pp.page, pp.size, keyword);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
         res.body = JsonSerializer::toJson(paged).dump();
@@ -232,12 +263,9 @@ void InventoryHandler::exportShoppingList(const httplib::Request& req, httplib::
     try {
         int listId = std::stoi(req.matches[1]);
         std::string format = req.has_param("format") ? req.get_param_value("format") : "text";
+        // 仅支持 text（v2.13）：repo 层对非 text 抛 ServiceException(400)，此处的其他分支不可达，不再设置 image/png 头
         std::string content = service_.exportShoppingList(info.userId, listId, format);
-        if (format == "text") {
-            res.set_header("Content-Type", "text/plain; charset=utf-8");
-        } else {
-            res.set_header("Content-Type", "image/png");
-        }
+        res.set_header("Content-Type", "text/plain; charset=utf-8");
         res.status = 200;
         res.body = content;
     } catch (const gocook::services::ServiceException& e) {

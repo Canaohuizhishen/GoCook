@@ -565,9 +565,11 @@ public:
      * @brief 获取当前用户的库存（分页）
      * @param page 页码
      * @param size 每页数量
+     * @param keyword 食材名模糊过滤词（v2.14 库存页过滤框；空串 = 不过滤）
      * @param callback 回调 (success, pagedResult, error)
      */
     virtual void getInventory(int page, int size,
+                              const std::string& keyword,
                               PagedInventoryCallback callback) = 0;
 
     /**

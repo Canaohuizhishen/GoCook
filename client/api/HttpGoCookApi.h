@@ -216,7 +216,7 @@ public:
                             NutritionReportCallback callback) override;
 
     // 库存管理
-    void getInventory(int page, int size,
+    void getInventory(int page, int size, const std::string& keyword,
                       PagedInventoryCallback callback) override;
     void upsertInventory(const gocook::models::UpsertInventoryRequest& item,
                          IntCallback callback) override;

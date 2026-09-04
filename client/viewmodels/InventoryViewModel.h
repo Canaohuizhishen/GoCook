@@ -16,6 +16,8 @@ class InventoryViewModel : public QObject
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)
+    // 库存页过滤词（v2.14）：非空时列表请求携带 keyword 服务端过滤；由过滤框防抖后写入
+    Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
 
 public:
     explicit InventoryViewModel(IGoCookApi *api, QObject *parent = nullptr);
@@ -23,9 +25,14 @@ public:
     QVariantList items() const;
     bool isLoading() const;
     bool hasMore() const;
+    QString filterText() const;
+    // 设置过滤词（trim 后生效）：变化时重置到第一页并按新词加载。
+    // Q_INVOKABLE：QML 过滤框防抖后直接调用（Q_PROPERTY WRITE 只支持属性赋值，
+    // 不会生成 QML 可调用的 setFilterText 函数——曾致 InventoryPage 运行时 TypeError）
+    Q_INVOKABLE void setFilterText(const QString& text);
 
     // 库存操作
-    // 加载第一页库存
+    // 加载第一页库存（开启新一轮请求：作废全部在途请求并立即发送，见 m_epoch）
     Q_INVOKABLE void loadInventory(int page = 1, int size = 50);
     // 加载下一页库存
     Q_INVOKABLE void loadNextPage();
@@ -47,15 +54,21 @@ signals:
     void itemsChanged();
     void isLoadingChanged();
     void hasMoreChanged();
+    // 过滤词变化（清空/切换账号时 UI 需同步回显）
+    void filterTextChanged();
     // 操作失败（携带错误描述）
     void errorOccurred(const QString& error);
 
 private:
     IGoCookApi *m_api;         ///< API 门面（经 HTTP 实现）
     QVariantList m_items;      ///< 当前页库存数据
+    QString m_filterText;      ///< 过滤词（空 = 不过滤）
     bool m_isLoading = false;  ///< 是否正在加载
     bool m_hasMore = false;    ///< 是否还有下一页
     int m_currentPage = 1;     ///< 当前页码
     int m_pageSize = 50;       ///< 每页数量
     int m_totalPages = 0;      ///< 总页数
+    // 请求代次：每次发起新一轮首屏请求（换词/刷新/翻页轮次重置）时递增；响应带回发送时代次，
+    // 到达时代次已落后即属过期（被更新的请求取代），静默丢弃不落数据不改状态
+    int m_epoch = 0;
 };

@@ -1980,11 +1980,14 @@ void HttpGoCookApi::getRecipeNutrition(int recipeId,
 }
 
 // ======================= 库存管理 =======================
-void HttpGoCookApi::getInventory(int page, int size,
+void HttpGoCookApi::getInventory(int page, int size, const std::string& keyword,
                                  PagedInventoryCallback callback) {
     QUrlQuery query;
     query.addQueryItem("page", QString::number(page));
     query.addQueryItem("size", QString::number(size));
+    // 库存页过滤框（v2.14）：keyword 非空才拼入查询串
+    if (!keyword.empty())
+        query.addQueryItem("keyword", QString::fromStdString(keyword));
     QString endpoint = "/api/inventory?" + query.toString(QUrl::FullyEncoded);
 
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {

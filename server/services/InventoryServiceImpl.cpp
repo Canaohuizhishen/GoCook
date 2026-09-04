@@ -5,15 +5,16 @@
 using namespace gocook::models;
 using namespace gocook::services;
 
+const std::unordered_set<std::string>& InventoryServiceImpl::validUnits() {
+    static const std::unordered_set<std::string> units = {
+        "个", "克", "千克", "毫升", "升", "只", "条", "把", "根",
+        "片", "块", "袋", "包", "盒", "瓶", "碗", "勺",
+        "茶匙", "汤匙", "斤", "两", "磅", "份"
+    };
+    return units;
+}
+
 namespace {
-    const std::unordered_set<std::string>& validUnits() {
-        static const std::unordered_set<std::string> units = {
-            "个", "克", "千克", "毫升", "升", "只", "条", "把", "根",
-            "片", "块", "袋", "包", "盒", "瓶", "碗", "勺",
-            "茶匙", "汤匙", "斤", "两", "磅", "份"
-        };
-        return units;
-    }
 
     // 真实日历校验：月/日必须构成有效日期（含闰年 2 月 29 天）。
     // 仅做月/日范围检查会放行 2026-02-31 / 2026-04-31 这类不存在日期，打穿 DB 层变 500。
@@ -35,7 +36,7 @@ namespace {
             throw ServiceException("库存数量必须大于0", 400);
         }
         // 食材单位校验
-        if (!validUnits().count(item.unit)) {
+        if (!InventoryServiceImpl::validUnits().count(item.unit)) {
             throw ServiceException("食材单位不合法", 400);
         }
         // 过期日期校验：非 YYYY-MM-DD 或不存在的日期（如 2026-02-31）打穿 DB 层会变成 500，这里提前转 400 可读错误
@@ -56,8 +57,9 @@ namespace {
     }
 }
 
-PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size) {
-    return inventoryRepo_->findInventory(userId, page, size);
+PagedInventory InventoryServiceImpl::getInventory(int userId, int page, int size,
+                                                 const std::string& keyword) {
+    return inventoryRepo_->findInventoryFiltered(userId, page, size, keyword);
 }
 
 int InventoryServiceImpl::upsertInventory(int userId, const UpsertInventoryRequest& item) {
