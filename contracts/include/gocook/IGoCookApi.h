@@ -571,12 +571,22 @@ public:
                               PagedInventoryCallback callback) = 0;
 
     /**
-     * @brief 添加/更新库存项（需认证）
+     * @brief 添加库存项（需认证；同名同单位自动累加，不同单位新增行）
      * @param item 库存项
-     * @param callback 回调 (success, id, error) 返回新建或更新后的库存项 ID
+     * @param callback 回调 (success, id, error) 返回库存项 ID
      */
     virtual void upsertInventory(const gocook::models::UpsertInventoryRequest& item,
                                  IntCallback callback) = 0;
+
+    /**
+     * @brief 编辑库存项（需认证；PUT /api/inventory/:id，按 id 整行替换）
+     * @param itemId 库存项 ID
+     * @param item 替换后的库存项数据
+     * @param callback 回调 (success, error)
+     */
+    virtual void updateInventoryItem(int itemId,
+                                     const gocook::models::UpsertInventoryRequest& item,
+                                     SuccessCallback callback) = 0;
 
     /**
      * @brief 删除库存项（需认证）

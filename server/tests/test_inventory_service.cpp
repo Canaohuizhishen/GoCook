@@ -266,6 +266,45 @@ TEST(InventoryServiceTest, 创建购物清单正确委派) {
     EXPECT_EQ(id, 42);
 }
 
+TEST(InventoryServiceTest, 编辑库存项正确委派) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
+    InventoryServiceImpl service(std::move(mock));
+
+    gocook::models::UpsertInventoryRequest req;
+    req.ingredient_name = "料酒";
+    req.quantity = 45.0;
+    req.unit = "毫升";
+
+    // 按 id 替换语义：原样透传给仓库层
+    EXPECT_CALL(*repo, updateInventoryItem(1, 7, Truly([](const auto& r) {
+        return r.ingredient_name == "料酒" && r.quantity == 45.0 && r.unit == "毫升";
+    }))).Times(1);
+
+    service.updateInventoryItem(1, 7, req);
+}
+
+TEST(InventoryServiceTest, 编辑库存项数量非法拒绝) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* repo = mock.get();
+    InventoryServiceImpl service(std::move(mock));
+
+    gocook::models::UpsertInventoryRequest req;
+    req.ingredient_name = "料酒";
+    req.quantity = 0.0;
+    req.unit = "毫升";
+
+    EXPECT_CALL(*repo, updateInventoryItem(_, _, _)).Times(0);
+
+    try {
+        service.updateInventoryItem(1, 7, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "库存数量必须大于0");
+    }
+}
+
 TEST(InventoryServiceTest, 购物清单详情正确委派) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
     auto* repo = mock.get();

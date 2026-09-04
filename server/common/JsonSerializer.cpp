@@ -60,6 +60,7 @@ json toJson(const RecipeSummary& recipe) {
 json toJson(const RecommendedRecipe& rec) {
     json item = toJson(static_cast<const RecipeSummary&>(rec));
     item["match_score"] = rec.match_score;
+    item["health_notice"] = rec.health_notice;  // 健康软提示（空串 = 无提示）
     json matchStatus;
     json available = json::array();
     for (const auto& ing : rec.match_status.available_ingredients)

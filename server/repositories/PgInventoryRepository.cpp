@@ -52,45 +52,26 @@ PagedInventory PgInventoryRepository::findInventory(int userId, int page, int si
 
 int PgInventoryRepository::upsertInventory(int userId, const UpsertInventoryRequest& item) {
     return executeDb(db_, [&](pqxx::work& txn) {
-        // 检查记录是否存在
-        LOG_DEBUG("[SQL] upsertInventory check existing | userId=%d ing=%s", userId, item.ingredient_name.c_str());
-        pqxx::result existing = txn.exec(
-            "SELECT id FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
-            pqxx::params{userId, item.ingredient_name});
-
-        if (!existing.empty()) {
-            // 已有行 → UPDATE（同用户同食材只允许一行，UNIQUE(user_id, ingredient_name) 兜底）
-            int existingId = existing[0]["id"].as<int>();
-            if (item.expiry_date.has_value()) {
-                LOG_DEBUG("[SQL] upsertInventory UPDATE (with expiry) | id=%d", existingId);
-                txn.exec(
-                    "UPDATE inventory SET quantity = $1, unit = $2, expiry_date = $3, added_at = NOW() WHERE id = $4",
-                    pqxx::params{item.quantity, item.unit, item.expiry_date.value(), existingId});
-            } else {
-                LOG_DEBUG("[SQL] upsertInventory UPDATE (no expiry) | id=%d", existingId);
-                txn.exec(
-                    "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
-                    pqxx::params{item.quantity, item.unit, existingId});
-            }
-            return existingId;
-        } else {
-            // 没有 → INSERT ... RETURNING id
-            if (item.expiry_date.has_value()) {
-                LOG_DEBUG("[SQL] upsertInventory INSERT (with expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
-                pqxx::result res = txn.exec(
-                    "INSERT INTO inventory (user_id, ingredient_name, quantity, unit, expiry_date) "
-                    "VALUES ($1, $2, $3, $4, $5) RETURNING id",
-                    pqxx::params{userId, item.ingredient_name, item.quantity, item.unit, item.expiry_date.value()});
-                return res[0][0].as<int>();
-            } else {
-                LOG_DEBUG("[SQL] upsertInventory INSERT (no expiry) | userId=%d ing=%s", userId, item.ingredient_name.c_str());
-                pqxx::result res = txn.exec(
-                    "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
-                    "VALUES ($1, $2, $3, $4) RETURNING id",
-                    pqxx::params{userId, item.ingredient_name, item.quantity, item.unit});
-                return res[0][0].as<int>();
-            }
-        }
+        // 单语句原子 UPSERT（决策 2026-09-04 语义）：同名同单位 → 数量累加；无同名同单位 →
+        // 新增行（不同单位各自成行、互不覆盖）。唯一约束 (user_id, ingredient_name, unit)
+        // 同时充当并发闸门——两请求并发添加同单位时由 ON CONFLICT 串行化，不会丢累加
+        // （旧实现 SELECT 后 UPDATE/INSERT 分两趟，check-then-act 有丢失更新窗口）。
+        // expiry 语义（混批安全下限）：带 expiry_date 追加取行内最早到期日（LEAST 忽略 NULL，
+        // 兼容 "2026-4-2" 这类非补零输入：EXCLUDED 经列类型隐式转 date 比较）；
+        // 缺省（$5 为 NULL）时 LEAST(既有, NULL) = 既有 → 不清既有日期。
+        LOG_DEBUG("[SQL] upsertInventory UPSERT | userId=%d ing=%s qty=%.1f unit=%s",
+                  userId, item.ingredient_name.c_str(), item.quantity, item.unit.c_str());
+        pqxx::result res = txn.exec(
+            "INSERT INTO inventory (user_id, ingredient_name, quantity, unit, expiry_date) "
+            "VALUES ($1, $2, $3, $4, $5) "
+            "ON CONFLICT (user_id, ingredient_name, unit) DO UPDATE SET "
+            "    quantity = inventory.quantity + EXCLUDED.quantity, "
+            "    expiry_date = LEAST(inventory.expiry_date, EXCLUDED.expiry_date), "
+            "    added_at = NOW() "
+            "RETURNING id",
+            pqxx::params{userId, item.ingredient_name, item.quantity, item.unit,
+                         item.expiry_date.has_value() ? item.expiry_date.value().c_str() : nullptr});
+        return res[0][0].as<int>();
     }, "数据库操作失败");
 }
 
@@ -102,6 +83,48 @@ void PgInventoryRepository::deleteInventoryItem(int userId, int itemId) {
             pqxx::params{itemId, userId});
         if (res.affected_rows() == 0) {
             throw ServiceException("库存项不存在或不属于当前用户", 404);
+        }
+    }, "数据库操作失败");
+}
+
+void PgInventoryRepository::updateInventoryItem(int userId, int itemId,
+                                                const UpsertInventoryRequest& item) {
+    executeDb(db_, [&](pqxx::work& txn) {
+        // 改名/改单位可能撞上本人另一条 (user_id, ingredient_name, unit)：唯一约束冲突翻译成 409，
+        // 而不是让 pqxx 异常落进 executeDb 的通用翻译变 500
+        auto execUpdate = [&](const std::string& sql, pqxx::params args) {
+            try {
+                return txn.exec(sql, args);
+            } catch (const pqxx::sql_error& e) {
+                if (e.sqlstate() == "23505")
+                    throw ServiceException("已存在同名同单位的库存条目，请直接编辑该条目", 409);
+                throw;
+            }
+        };
+
+        if (item.expiry_date.has_value()) {
+            LOG_DEBUG("[SQL] updateInventoryItem (with expiry) | id=%d userId=%d", itemId, userId);
+            auto res = execUpdate(
+                "UPDATE inventory SET ingredient_name = $1, quantity = $2, unit = $3, "
+                "expiry_date = $4, added_at = NOW() "
+                "WHERE id = $5 AND user_id = $6",
+                pqxx::params{item.ingredient_name, item.quantity, item.unit,
+                             item.expiry_date.value(), itemId, userId});
+            if (res.affected_rows() == 0) {
+                throw ServiceException("库存项不存在或不属于当前用户", 404);
+            }
+        } else {
+            LOG_DEBUG("[SQL] updateInventoryItem (no expiry) | id=%d userId=%d", itemId, userId);
+            // 整行替换语义（与 POST 累加"缺省不清"显式分离）：请求缺省 expiry_date → 清空该列，
+            // 否则"编辑去掉过期日期"永远无法生效
+            auto res = execUpdate(
+                "UPDATE inventory SET ingredient_name = $1, quantity = $2, unit = $3, "
+                "expiry_date = NULL, added_at = NOW() "
+                "WHERE id = $4 AND user_id = $5",
+                pqxx::params{item.ingredient_name, item.quantity, item.unit, itemId, userId});
+            if (res.affected_rows() == 0) {
+                throw ServiceException("库存项不存在或不属于当前用户", 404);
+            }
         }
     }, "数据库操作失败");
 }
@@ -216,29 +239,20 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
             "UPDATE shopping_list_items SET checked = $1 WHERE id = $2",
             pqxx::params{req.checked, itemId});
 
-        // 库存回流：checked 从 false → true 时触发
+        // 库存回流（api-spec 5.5 / v2.8 同步细节）：checked 从 false → true 时触发。
+        // 单语句原子 UPSERT：① 已有 同名同单位 条目 → 数量累加（保留该行自身单位，不做跨单位加法）；
+        // ② 无同名同单位条目 → 自动新建行（沿用清单项单位），同名不同单位旧行保留（spec 5.5 第 4 条）。
+        // 由唯一约束充当并发闸门，勾选与并发回流不会互相丢更新。
         if (!oldChecked && req.checked && toBuyQty > 0) {
-            // 按 user_id + ingredient_name 查找（与 upsertInventory 一致，
-            // inventory 表的 UNIQUE 约束为 (user_id, ingredient_name)）
-            pqxx::result existing = txn.exec(
-                "SELECT id, quantity FROM inventory "
-                "WHERE user_id = $1 AND ingredient_name = $2",
-                pqxx::params{userId, ingredientName});
-
-            if (!existing.empty()) {
-                // 已有库存 → 数量累加
-                int invId = existing[0]["id"].as<int>();
-                double currentQty = existing[0]["quantity"].as<double>();
-                txn.exec(
-                    "UPDATE inventory SET quantity = $1, unit = $2, added_at = NOW() WHERE id = $3",
-                    pqxx::params{currentQty + toBuyQty, unit, invId});
-            } else {
-                // 全新食材 → INSERT
-                txn.exec(
-                    "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
-                    "VALUES ($1, $2, $3, $4)",
-                    pqxx::params{userId, ingredientName, toBuyQty, unit});
-            }
+            LOG_DEBUG("[SQL] updateShoppingListItem 库存回流 UPSERT | ing=%s qty=%.1f unit=%s",
+                      ingredientName.c_str(), toBuyQty, unit.c_str());
+            txn.exec(
+                "INSERT INTO inventory (user_id, ingredient_name, quantity, unit) "
+                "VALUES ($1, $2, $3, COALESCE($4, '克')) "
+                "ON CONFLICT (user_id, ingredient_name, unit) DO UPDATE SET "
+                "    quantity = inventory.quantity + EXCLUDED.quantity, "
+                "    added_at = NOW()",
+                pqxx::params{userId, ingredientName, toBuyQty, unit});
         }
     }, "数据库操作失败");
 }

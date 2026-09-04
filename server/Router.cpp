@@ -443,6 +443,9 @@ void Router::registerInventoryRoutes(httplib::Server& svr) {
     svr.Post("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.upsertInventory(req, res);
     });
+    svr.Put(R"(/api/inventory/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.updateInventoryItem(req, res);
+    });
     svr.Delete(R"(/api/inventory/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.deleteInventory(req, res);
     });

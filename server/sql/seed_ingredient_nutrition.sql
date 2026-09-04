@@ -4,6 +4,7 @@
 --           仅供学习/演示用途，数值以 1 位小数近似，不构成医疗建议。
 -- 执行方式（幂等，可重复执行；已存在行按规范名同步修订，无需手工 DELETE）：
 --   docker exec -i gocook-postgres psql -U gocook -d gocookdb < ./seed_ingredient_nutrition.sql
+-- 开发库一键重置（推荐入口）：bash ../reset_db.sh —— 本文件为第 2 步，见 sql/README.md
 -- 约定：
 --   · 本表为系统数据，重跑种子 = 全量同步修订（ON CONFLICT DO UPDATE），
 --     营养库修正/扩充可随重跑自动应用到已灌入的库。

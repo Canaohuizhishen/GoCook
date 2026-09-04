@@ -4,6 +4,7 @@
 -- ⛔⛔⛔ 千万不要对已有数据的库手动执行——会清空菜谱/用户/库存等全部数据！
 -- ⛔⛔⛔ 旧库补表请用只增迁移脚本：./migrate_xxx.sql
 -- 执行方式：docker exec -i gocook-postgres psql -U gocook -d gocookdb < ./create_all_tables.sql
+-- 开发库一键重置（推荐入口）：bash ../reset_db.sh —— 按序执行本文件 + 两个种子脚本，见 sql/README.md
 -- ⚠️ 遇错即停：任何一条语句失败都会中止并返回非零退出码（避免静默产出残缺 schema）
 \set ON_ERROR_STOP on
 
@@ -126,10 +127,10 @@ CREATE TABLE IF NOT EXISTS inventory (
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     ingredient_name TEXT NOT NULL,
     quantity DECIMAL(10,2),
-    unit TEXT,
+    unit TEXT NOT NULL DEFAULT '克',  -- NOT NULL：NULL 单位曾使三维唯一约束失效（NULL 永不冲突）；应用层校验自始要求单位非空
     expiry_date DATE,
     added_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE (user_id, ingredient_name)
+    UNIQUE (user_id, ingredient_name, unit)  -- 三维唯一：同名不同单位各自成行；同单位同名累加由服务端保证（对齐 api-spec 5.5）
 );
 
 -- 6. 收藏分组表

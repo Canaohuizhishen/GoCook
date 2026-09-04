@@ -110,6 +110,7 @@ namespace DataMapper {
         QVariantMap item = toMap(static_cast<const gocook::models::RecipeSummary&>(recipe));
 
         item["matchScore"] = recipe.match_score;
+        item["healthNotice"] = QString::fromStdString(recipe.health_notice);
 
         // match_status
         QVariantMap status;

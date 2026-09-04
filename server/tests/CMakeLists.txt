@@ -9,6 +9,7 @@ set(TEST_SOURCES
     test_recipe_service.cpp
     test_recipe_nutrition.cpp
     test_inventory_service.cpp
+    test_inventory_integration.cpp
     test_unimplemented_services.cpp
     test_db_executor.cpp
     test_upload_paths.cpp

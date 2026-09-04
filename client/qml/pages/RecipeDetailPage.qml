@@ -9,6 +9,9 @@ Page {
 
     property int recipeId: 0
     property bool isFavorited: false
+    // 健康软提示全文（自推荐结果页透传：命中软档食材/钠阈值时的完整文案；
+    // 推荐卡上仅显示小徽标，完整提示在此处顶部展示。其他入口进入为空 → 该行隐藏）
+    property string healthNotice: ""
     // 收藏写操作乐观状态：操作前快照 + 待确认标记。失败（含登录页跳过 → -2"请先登录"）时回滚到快照，
     // 避免"按钮已收藏但实际未收藏"的假状态；成功/重放成功时清标记保持当前状态
     property bool favoriteOpPending: false
@@ -102,6 +105,31 @@ Page {
                 font.weight: Theme.fontWeightBold
                 color: Theme.textPrimary
                 wrapMode: Text.WordWrap
+            }
+
+            // 健康软提示（推荐结果页透传，菜名正下方；空则隐藏）。
+            // 高对比：两主题统一 实底琥珀 + 深棕文字（半透明浅底 + 主题色浅字在暗色主题下易糊）
+            Rectangle {
+                width: parent.width
+                visible: healthNotice !== ""
+                height: detailNoticeLabel.implicitHeight + 14
+                radius: 6
+                color: Theme.warningColor
+                Text {
+                    id: detailNoticeLabel
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: Text.AlignVCenter
+                    text: healthNotice
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSizeBody
+                    font.weight: Font.DemiBold
+                    color: "#3A2A00"
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                }
             }
 
             Flow {

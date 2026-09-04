@@ -57,6 +57,41 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
     }
 }
 
+void InventoryHandler::updateInventoryItem(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    if (req.matches.size() < 2) {
+        setErrorResponse(res, 400, "缺少 item_id 路径参数");
+        return;
+    }
+    int itemId;
+    try {
+        itemId = std::stoi(req.matches[1]);
+    } catch (const std::exception&) {
+        setErrorResponse(res, 400, "item_id 格式无效");
+        return;
+    }
+    try {
+        json reqJson = json::parse(req.body);
+        Validation::validateInventoryRequest(reqJson);
+
+        UpsertInventoryRequest item;
+        item.ingredient_name = reqJson["ingredient_name"];
+        item.quantity = reqJson["quantity"];
+        item.unit = reqJson["unit"];
+        if (reqJson.contains("expiry_date"))
+            item.expiry_date = reqJson["expiry_date"];
+
+        service_.updateInventoryItem(info.userId, itemId, item);
+        res.status = 200;
+        res.body = json{{"message", "库存项已更新"}, {"id", itemId}}.dump();
+    } catch (const gocook::services::ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
 void InventoryHandler::deleteInventory(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;

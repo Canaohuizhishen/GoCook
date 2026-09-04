@@ -114,10 +114,27 @@ void InventoryViewModel::addItem(const QString& name, double quantity,
     });
 }
 
-void InventoryViewModel::updateItem(int /*itemId*/, const QString& name, double quantity,
+void InventoryViewModel::updateItem(int itemId, const QString& name, double quantity,
                                      const QString& unit, const QString& expiryDate)
 {
-    addItem(name, quantity, unit, expiryDate);
+    gocook::models::UpsertInventoryRequest req;
+    req.ingredient_name = name.toStdString();
+    req.quantity = quantity;
+    req.unit = unit.toStdString();
+    if (!expiryDate.isEmpty())
+        req.expiry_date = expiryDate.toStdString();
+
+    // 编辑 = 按 id 整行替换（PUT /api/inventory/:id）：改名/改单位/改数量均为替换而非累加
+    // （决策 2026-09-04：添加页走 POST 累加，编辑入口走 PUT 替换）
+    m_api->updateInventoryItem(itemId, req,
+        [self = QPointer<InventoryViewModel>(this)](bool success, const std::string& error) {
+            if (!self) return;
+            if (success) {
+                self->refresh();
+            } else {
+                emit self->errorOccurred(QString::fromStdString(error));
+            }
+        });
 }
 
 void InventoryViewModel::deleteItem(int itemId)

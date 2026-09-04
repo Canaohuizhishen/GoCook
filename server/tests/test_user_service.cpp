@@ -221,21 +221,41 @@ TEST(UserServiceTest, 录入健康指标成功) {
     HealthProfileRequest req;
     req.height_cm = 175;
     req.weight_kg = 70.0;
-    req.conditions = {"高血压"};
+    req.conditions = {"高血压", "高血脂", "痛风"};
 
     auto resp = service.updateHealthProfile(42, req);
     EXPECT_GT(resp.suggested_avoidances.size(), 0);
 
-    // 验证高血压忌口建议
-    bool hasHighSodium = false;
+    // 验证高血压忌口建议（两档口径：硬排除高盐加工品 + 调味料仅提示，对齐引擎黑名单）
+    bool hasHardExclusion = false;
+    bool hasSoftAdvice = false;
     for (const auto& item : resp.suggested_avoidances) {
-        if (item.ingredient == "高钠食物") {
-            hasHighSodium = true;
-            EXPECT_EQ(item.reason, "高血压患者应限制钠摄入");
-            break;
+        if (item.ingredient == "咸菜、腊肉、咸鱼、腐乳、榨菜") {
+            hasHardExclusion = true;
+            EXPECT_EQ(item.reason, "高盐加工品，推荐结果将直接排除含此类食材的菜谱");
+        } else if (item.ingredient == "盐、酱油、豆瓣酱") {
+            hasSoftAdvice = true;
+            EXPECT_EQ(item.reason, "调味高钠，系统仅提示少放，不屏蔽菜谱");
         }
     }
-    EXPECT_TRUE(hasHighSodium);
+    EXPECT_TRUE(hasHardExclusion);
+    EXPECT_TRUE(hasSoftAdvice);
+
+    // 高血脂/痛风：文案须与引擎硬档名单逐字一致（审查修复：原文案含引擎名单外条目"动物内脏"、
+    // 漏掉 猪油/黄油/奶油/猪板油/浓汤/香菇/虾/蟹 等）
+    bool hasHyperlipidList = false;
+    bool hasGoutList = false;
+    for (const auto& item : resp.suggested_avoidances) {
+        if (item.ingredient == "肥肉、猪油、黄油、奶油、五花肉、油炸、猪板油") {
+            hasHyperlipidList = true;
+            EXPECT_EQ(item.reason, "高脂食材，推荐结果将直接排除含此类食材的菜谱");
+        } else if (item.ingredient == "海鲜、动物内脏、啤酒、浓汤、香菇、虾、蟹") {
+            hasGoutList = true;
+            EXPECT_EQ(item.reason, "高嘌呤/高风险食材，推荐结果将直接排除含此类食材的菜谱");
+        }
+    }
+    EXPECT_TRUE(hasHyperlipidList);
+    EXPECT_TRUE(hasGoutList);
 }
 
 TEST(UserServiceTest, 录入健康指标用户不存在) {

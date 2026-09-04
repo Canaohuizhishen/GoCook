@@ -26,13 +26,27 @@ public:
                                                  int size) = 0;
 
     /**
-     * @brief 添加/更新库存项（同名食材则更新数量）。
+     * @brief 添加库存项（2026-09-04 起语义：同名同单位数量累加；同名不同单位新增行）。
+     *        带 expiry_date 的追加视作新批次混入：行内到期日取最早（安全下限）。
+     *        实现为单语句原子 UPSERT（ON CONFLICT 累加），并发添加不丢更新。
      * @param userId 用户 ID
      * @param item 库存项数据
      * @return 库存项 ID
      */
     virtual int upsertInventory(int userId,
                                 const models::UpsertInventoryRequest& item) = 0;
+
+    /**
+     * @brief 编辑库存项（按 id 整行替换，对应 PUT /api/inventory/:id）。
+     *        与 upsertInventory 的“累加/新增”语义显式分离。
+     *        item 缺省 expiry_date = 清空该列（替换语义）；改名/改单位与本人
+     *        另一条 (user_id, ingredient_name, unit) 重复时抛 ServiceException(409)。
+     * @param userId 用户 ID
+     * @param itemId 库存项 ID（须属于该用户，否则 404）
+     * @param item 替换后的库存项数据
+     */
+    virtual void updateInventoryItem(int userId, int itemId,
+                                     const models::UpsertInventoryRequest& item) = 0;
 
     /**
      * @brief 删除库存项。

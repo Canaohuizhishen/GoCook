@@ -12,8 +12,10 @@ public:
 
     // 获取当前用户的库存（需要 token 验证，分页）
     void getInventory(const httplib::Request& req, httplib::Response& res);
-    // 添加或更新库存项（需要 token 验证）
+    // 添加库存项（同名同单位累加；不同单位新增行，需要 token 验证）
     void upsertInventory(const httplib::Request& req, httplib::Response& res);
+    // 编辑库存项（PUT /api/inventory/:id，按 id 整行替换）
+    void updateInventoryItem(const httplib::Request& req, httplib::Response& res);
     // 删除库存项（需要 token 验证，使用路径中的 item_id）
     void deleteInventory(const httplib::Request& req, httplib::Response& res);
 

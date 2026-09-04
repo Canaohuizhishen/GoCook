@@ -316,7 +316,7 @@ TEST(RecipeServiceTest, 推荐健康档案读取DB故障降级为无档案) {
     EXPECT_EQ(result.data.size(), 1);
 }
 
-TEST(RecipeServiceTest, 推荐健康过滤排除禁忌菜谱) {
+TEST(RecipeServiceTest, 推荐健康过滤硬排除高钠加工品) {
     auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
     auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
     auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
@@ -330,7 +330,7 @@ TEST(RecipeServiceTest, 推荐健康过滤排除禁忌菜谱) {
     EXPECT_CALL(*userRepo, getPreferences(1))
         .WillOnce(Return(UserPreferences{}));
 
-    // 高血压 → 禁忌 "酱油"
+    // 高血压 → 硬档高钠加工品 "腊肉"
     EXPECT_CALL(*userRepo, getHealthConditions(1))
         .WillOnce(Return(std::vector<std::string>{"高血压"}));
 
@@ -338,8 +338,8 @@ TEST(RecipeServiceTest, 推荐健康过滤排除禁忌菜谱) {
     auto r1 = makeRec(1, "清蒸鱼", "清淡", "蒸", 0.9, 4.5);
     candidates.data.push_back(r1);
 
-    auto r2 = makeRec(2, "红烧肉", "酱香", "炖", 0.7, 4.0);
-    r2.match_status.available_ingredients.push_back({"酱油", 10.0, "毫升"}); // 含酱油
+    auto r2 = makeRec(2, "腊味煲仔饭", "酱香", "炖", 0.7, 4.0);
+    r2.match_status.available_ingredients.push_back({"腊肉", 100.0, "克"});
     candidates.data.push_back(r2);
 
     candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
@@ -353,10 +353,150 @@ TEST(RecipeServiceTest, 推荐健康过滤排除禁忌菜谱) {
 
     auto result = service.getRecommendedRecipes(1, 1, 20);
 
-    // 红烧肉 被排除
+    // 腊味煲仔饭 被硬排除
     EXPECT_TRUE(result.health_filter_applied);
     EXPECT_EQ(result.data.size(), 2);
     EXPECT_EQ(result.pagination.total, 3); // total 为原始 COUNT，不受健康过滤样本影响
+    for (const auto& rec : result.data) {
+        EXPECT_NE(rec.name, "腊味煲仔饭");
+    }
+}
+
+TEST(RecipeServiceTest, 推荐健康软档仅提示不排除) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 高血压：酱油属软档调味料 → 保留菜谱并附提示，不剔除
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"高血压"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(3, 1, 60);
+    candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.9, 4.5));
+
+    auto r2 = makeRec(2, "红烧肉", "酱香", "炖", 0.7, 4.0);
+    r2.match_status.available_ingredients.push_back({"酱油", 10.0, "毫升"});
+    candidates.data.push_back(r2);
+
+    candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    // 无硬排除 → 不置 health_filter_applied，菜谱全保留
+    EXPECT_FALSE(result.health_filter_applied);
+    EXPECT_EQ(result.data.size(), 3);
+
+    auto redBraised = std::find_if(result.data.begin(), result.data.end(),
+        [](const RecommendedRecipe& rec) { return rec.name == "红烧肉"; });
+    ASSERT_NE(redBraised, result.data.end());
+    EXPECT_EQ(redBraised->health_notice, "含酱油，高血压人群建议少盐清淡");
+    // 未命中软档的菜谱无提示
+    auto steamedFish = std::find_if(result.data.begin(), result.data.end(),
+        [](const RecommendedRecipe& rec) { return rec.name == "清蒸鱼"; });
+    ASSERT_NE(steamedFish, result.data.end());
+    EXPECT_TRUE(steamedFish->health_notice.empty());
+}
+
+TEST(RecipeServiceTest, 推荐健康软档降权影响排序) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 糖尿病：两菜谱原始匹配度相同（0.7），含糖的因软档降权而排后
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"糖尿病"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(2, 1, 60);
+    auto plain = makeRec(1, "清炒时蔬", "清淡", "炒", 0.7, 4.0);
+    candidates.data.push_back(plain);
+
+    auto sweet = makeRec(2, "糖醋排骨", "酸甜", "烧", 0.7, 4.0);
+    sweet.match_status.missing_ingredients.push_back({"糖", 20.0, "克"});
+    candidates.data.push_back(sweet);
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    EXPECT_EQ(result.data.size(), 2);
+    EXPECT_FALSE(result.health_filter_applied);
+    // 无糖菜谱排前（0.7×0.5 vs 0.7×0.5−0.03）
+    EXPECT_EQ(result.data[0].name, "清炒时蔬");
+    EXPECT_EQ(result.data[1].name, "糖醋排骨");
+    EXPECT_EQ(result.data[1].health_notice, "含糖，糖尿病人群可选择不放或少放");
+}
+
+TEST(RecipeServiceTest, 推荐糖尿病硬排除高糖加工品) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 糖尿病：炼乳属高糖加工品 → 整道剔除
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"糖尿病"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(3, 1, 60);
+    candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.9, 4.5));
+
+    auto r2 = makeRec(2, "炼乳小方", "甜味", "烤", 0.8, 4.0);
+    r2.match_status.missing_ingredients.push_back({"炼乳", 30.0, "克"});
+    candidates.data.push_back(r2);
+
+    candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    EXPECT_TRUE(result.health_filter_applied);
+    EXPECT_EQ(result.data.size(), 2);
+    for (const auto& rec : result.data) {
+        EXPECT_NE(rec.name, "炼乳小方");
+    }
 }
 
 TEST(RecipeServiceTest, 推荐偏好厌食减分) {
@@ -823,4 +963,148 @@ TEST(RecipeServiceTest, 删除评分越权) {
         .WillOnce(Throw(ServiceException("无权限操作他人的评论", 403)));
 
     EXPECT_THROW(service.deleteRating(2, 42, 101), ServiceException);
+}
+
+// ==================== 整改 N3/N6：钠阈值提示与软档降权意图 ====================
+
+TEST(RecipeServiceTest, 推荐高血压钠含量阈值附提示并降权) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 高血压：两菜谱同基础分、均不命中软/硬名单，仅 sodium 不同（900 vs 300）
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"高血压"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(2, 1, 60);
+    auto plain = makeRec(1, "清炒时蔬", "家常", "炒", 0.7, 4.0);
+    candidates.data.push_back(plain);
+
+    auto salty = makeRec(2, "砂锅豆腐", "家常", "炖", 0.7, 4.0);
+    salty.sodium_mg = 900.0;  // 整道口径 ≥800 阈值（per_serving 语义为整道营养合计）
+    candidates.data.push_back(salty);
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    // 无硬档命中 → 全保留、不置 health_filter_applied
+    EXPECT_FALSE(result.health_filter_applied);
+    EXPECT_EQ(result.data.size(), 2);
+
+    auto plainIt = std::find_if(result.data.begin(), result.data.end(),
+        [](const RecommendedRecipe& rec) { return rec.name == "清炒时蔬"; });
+    ASSERT_NE(plainIt, result.data.end());
+    EXPECT_TRUE(plainIt->health_notice.empty()) << plainIt->health_notice;
+
+    auto saltyIt = std::find_if(result.data.begin(), result.data.end(),
+        [](const RecommendedRecipe& rec) { return rec.name == "砂锅豆腐"; });
+    ASSERT_NE(saltyIt, result.data.end());
+    EXPECT_EQ(saltyIt->health_notice, "钠含量较高，高血压人群建议少盐清淡");
+    // 钠提示走同一轻微降权通道 → 同基础分下排后
+    EXPECT_EQ(result.data[0].name, "清炒时蔬");
+    EXPECT_EQ(result.data[1].name, "砂锅豆腐");
+}
+
+TEST(RecipeServiceTest, 推荐钠阈值提示仅高血压触发) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    // 糖尿病用户同钠值：钠提示为高血压专属，不提示也不降权
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"糖尿病"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(1, 1, 60);
+    auto salty = makeRec(1, "砂锅豆腐", "家常", "炖", 0.7, 4.0);
+    salty.sodium_mg = 1200.0;
+    candidates.data.push_back(salty);
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    ASSERT_EQ(result.data.size(), 1);
+    EXPECT_TRUE(result.data[0].health_notice.empty()) << result.data[0].health_notice;
+}
+
+TEST(RecipeServiceTest, 推荐软档多食材命中仍只降权一次) {
+    // 意图锁定（整改 N6）：PENALTY_SOFT_HEALTH 为固定轻微降权——无论命中几样软档食材
+    // 只减一次；命中列表全部并入提示文案。
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{"高血压"}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(2, 1, 60);
+    auto oneHit = makeRec(1, "时蔬炒蛋", "家常", "炒", 0.7, 4.0);
+    oneHit.match_status.available_ingredients.push_back({"酱油", 10.0, "毫升"});
+    candidates.data.push_back(oneHit);
+
+    auto threeHit = makeRec(2, "家常烧豆腐", "家常", "炒", 0.7, 4.0);
+    threeHit.match_status.available_ingredients.push_back({"盐", 2.0, "克"});
+    threeHit.match_status.available_ingredients.push_back({"酱油", 10.0, "毫升"});
+    threeHit.match_status.available_ingredients.push_back({"豆瓣酱", 5.0, "克"});
+    candidates.data.push_back(threeHit);
+
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 20);
+
+    ASSERT_EQ(result.data.size(), 2);
+    auto oneIt = std::find_if(result.data.begin(), result.data.end(),
+        [](const RecommendedRecipe& rec) { return rec.name == "时蔬炒蛋"; });
+    auto threeIt = std::find_if(result.data.begin(), result.data.end(),
+        [](const RecommendedRecipe& rec) { return rec.name == "家常烧豆腐"; });
+    ASSERT_NE(oneIt, result.data.end());
+    ASSERT_NE(threeIt, result.data.end());
+
+    EXPECT_EQ(oneIt->health_notice, "含酱油，高血压人群建议少盐清淡");
+    EXPECT_EQ(threeIt->health_notice, "含盐、酱油、豆瓣酱，高血压人群建议少盐清淡");
+    // 命中 1 样与 3 样软档食材降权相同 → 同基础分下最终得分相等
+    EXPECT_EQ(oneIt->match_score, threeIt->match_score);
 }

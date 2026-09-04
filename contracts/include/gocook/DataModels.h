@@ -318,10 +318,12 @@ namespace gocook::models {
     struct RecommendedRecipe : RecipeSummary {
         double match_score = 0.0;   // 匹配度得分
         MatchStatus match_status;   // 与用户库存的匹配详情
+        std::string health_notice;  // 健康软提示文案（命中软档食材如盐/酱油/糖/蜂蜜时非空，如"含盐、酱油，高血压人群建议少盐清淡"）；空串 = 无提示（API 4.2）
         // ── 内部字段（服务端推荐引擎使用，不输出到客户端） ──
         double protein_g = 0.0;         // per_serving 蛋白质
         double fat_g = 0.0;             // per_serving 脂肪
         double carbs_g = 0.0;           // per_serving 碳水
+        double sodium_mg = 0.0;         // per_serving 钠（mg）；整道口径，供推荐引擎钠阈值提示/降权（API 4.2 v2.12）
         std::string submitted_at;       // 投稿时间 ISO 字符串
     };
 

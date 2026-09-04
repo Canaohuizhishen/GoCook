@@ -636,3 +636,176 @@ TEST(HttpApiE2E, RealServerSmoke)
     EXPECT_FALSE(authRequiredCalled.load()) << "Silent 不触发登录页";
     QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
 }
+
+// ==================== 整改 N5：库存编辑链路 PUT /api/inventory/:id E2E ====================
+// 覆盖 Router/Handler 层的 HTTP 语义：200 整行替换、409 唯一冲突（数据不变）、404 不存在。
+// 依赖真实服务端 + 种子账号 testuser/test123（与 RealServerSmoke 同门，未设 GOCOOK_E2E_BASE 即跳过）。
+TEST(HttpApiE2E, InventoryPutEdit)
+{
+    const char* base = std::getenv("GOCOOK_E2E_BASE");
+    if (!base || !*base)
+        GTEST_SKIP() << "未设置 GOCOOK_E2E_BASE，跳过真实服务端端到端测试";
+
+    HttpGoCookApi api;
+    api.setBaseUrl(QString::fromUtf8(base));
+    api.setMaxRetries(2);
+    api.setRetryDelay(50);
+
+    // --- 0. 登录 + 清场（专用前缀 E2E_ 行，幂等） ---
+    std::atomic<bool> done{false};
+    bool ok = false;
+    std::string err;
+    std::string token;
+    gocook::models::LoginRequest lr;
+    lr.username = "testuser";
+    lr.password = "test123";
+    api.login(lr, [&](bool s, const gocook::models::LoginResponse& resp, const std::string& e) {
+        ok = s;
+        token = resp.token;
+        err = e;
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "登录超时";
+    ASSERT_TRUE(ok) << "登录失败: " << err;
+    api.setAuthToken(token);
+
+    const auto cleanup = [&]() {
+        done = false;
+        api.getInventory(1, 100, [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
+            ok = s;
+            err = e;
+            if (s) {
+                for (const auto& item : data.data) {
+                    if (item.ingredient_name.rfind("E2E_", 0) == 0) {
+                        std::atomic<bool> delDone{false};
+                        api.deleteInventoryItem(item.id, [&](bool ds, const std::string&) { delDone = true; });
+                        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+                        while (!delDone.load())
+                            QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+                    }
+                }
+            }
+            done = true;
+        });
+        waitUntil(done);   // 阻塞等清场完成（回调内不放置断言宏，避免 void 返回冲突）
+    };
+    cleanup();
+    ASSERT_TRUE(ok) << "清场失败: " << err;
+
+    const std::string nameA = "E2E_料酒";
+    const std::string nameB = "E2E_土豆";
+
+    // --- 1. POST 同名同单位两次 → 累加（45），返回行 id ---
+    gocook::models::UpsertInventoryRequest postA;
+    postA.ingredient_name = nameA;
+    postA.quantity = 15.0;
+    postA.unit = "毫升";
+    int idA = -1;
+    done = false;
+    ok = false;
+    api.upsertInventory(postA, [&](bool s, int id, const std::string& e) { ok = s; idA = id; err = e; done = true; });
+    ASSERT_TRUE(waitUntil(done)) << "POST A 超时";
+    ASSERT_TRUE(ok) << "POST A 失败: " << err;
+    ASSERT_GT(idA, 0);
+
+    postA.quantity = 30.0;
+    done = false;
+    ok = false;
+    api.upsertInventory(postA, [&](bool s, int id, const std::string& e) { ok = s; idA = id; err = e; done = true; });
+    ASSERT_TRUE(waitUntil(done)) << "POST A(2) 超时";
+    ASSERT_TRUE(ok) << "POST A(2) 失败: " << err;
+
+    // --- 2. PUT 改名撞本人另一条同名同单位行 → 409，且原行数据不变 ---
+    gocook::models::UpsertInventoryRequest postB;
+    postB.ingredient_name = nameB;
+    postB.quantity = 200.0;
+    postB.unit = "克";
+    int idB = -1;
+    done = false;
+    ok = false;
+    api.upsertInventory(postB, [&](bool s, int id, const std::string& e) { ok = s; idB = id; err = e; done = true; });
+    ASSERT_TRUE(waitUntil(done)) << "POST B 超时";
+    ASSERT_TRUE(ok) << "POST B 失败: " << err;
+    ASSERT_GT(idB, 0);
+
+    gocook::models::UpsertInventoryRequest clash;
+    clash.ingredient_name = nameB;   // 撞 idB 那行（同名同单位）
+    clash.quantity = 1.0;
+    clash.unit = "克";
+    done = false;
+    ok = true;
+    api.updateInventoryItem(idA, clash, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    ASSERT_TRUE(waitUntil(done)) << "PUT 冲突超时";
+    EXPECT_FALSE(ok) << "改名撞唯一约束应 409 失败";
+    EXPECT_NE(err.find("同名同单位"), std::string::npos) << "409 文案不符: " << err;
+
+    // --- 3. PUT 不存在的 id → 404（服务端 ErrorHelper 对 404/401 统一归一为通用文案，
+    //          与 DELETE 等接口一致——细节仅入服务端日志；409 才透传具体冲突文案） ---
+    done = false;
+    ok = true;
+    api.updateInventoryItem(999999999, postB, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    ASSERT_TRUE(waitUntil(done)) << "PUT 404 超时";
+    EXPECT_FALSE(ok) << "不存在条目应 404";
+    EXPECT_EQ(err, "请求的资源不存在") << "404 应走服务端通用文案（ErrorHelper 归一策略）: " << err;
+
+    // --- 4. 回读：idA 行未被 409 改动（仍是 45 毫升 E2E_料酒） ---
+    done = false;
+    ok = false;
+    bool foundA = false;
+    double qtyA = 0.0;
+    api.getInventory(1, 100, [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
+        ok = s;
+        err = e;
+        if (s) {
+            for (const auto& item : data.data) {
+                if (item.id == idA) {
+                    foundA = true;
+                    qtyA = item.quantity;
+                }
+            }
+        }
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "回读超时";
+    ASSERT_TRUE(ok) << "回读失败: " << err;
+    EXPECT_TRUE(foundA) << "idA 行应仍存在";
+    EXPECT_DOUBLE_EQ(qtyA, 45.0) << "409 后数据必须不变（两次 POST 累加值）";
+
+    // --- 5. PUT 合法编辑 = 按 id 整行替换（改名 200→250 克，非累加） ---
+    gocook::models::UpsertInventoryRequest edit;
+    edit.ingredient_name = "E2E_土豆改";
+    edit.quantity = 250.0;
+    edit.unit = "克";
+    done = false;
+    ok = false;
+    api.updateInventoryItem(idB, edit, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    ASSERT_TRUE(waitUntil(done)) << "PUT 编辑超时";
+    ASSERT_TRUE(ok) << "PUT 编辑失败: " << err;
+
+    // 回读验证：旧行 E2E_土豆 消失、新行 E2E_土豆改 = 250（替换而非 200+250 累加）
+    done = false;
+    ok = false;
+    bool oldBGone = true;
+    bool newBPresent = false;
+    double qtyNewB = 0.0;
+    api.getInventory(1, 100, [&](bool s, const gocook::models::PagedInventory& data, const std::string& e) {
+        ok = s;
+        err = e;
+        if (s) {
+            for (const auto& item : data.data) {
+                if (item.ingredient_name == nameB) oldBGone = false;
+                if (item.ingredient_name == "E2E_土豆改") { newBPresent = true; qtyNewB = item.quantity; }
+            }
+        }
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "编辑回读超时";
+    ASSERT_TRUE(ok) << "编辑回读失败: " << err;
+    EXPECT_TRUE(oldBGone) << "整行替换后旧名不应残留";
+    EXPECT_TRUE(newBPresent) << "替换后新行应存在";
+    EXPECT_DOUBLE_EQ(qtyNewB, 250.0) << "编辑=替换语义：数量应为 250 而非 200+250";
+
+    // --- 6. 清场 ---
+    cleanup();
+    ASSERT_TRUE(ok) << "收尾清场失败: " << err;
+}
