@@ -30,7 +30,7 @@ DROP TABLE IF EXISTS users                  CASCADE;
 
 -- 1. 用户表
 CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
+    id SERIAL PRIMARY KEY, -- SERIAL：PostgreSQL 的自增整数伪类型。建表时自动创建一个 SEQUENCE（序列），插入时不写 id 列，数据库自动+1填充
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     display_name TEXT,
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     flavor TEXT,
     ingredient_type TEXT,
     view_count INT DEFAULT 0,
-    avg_rating DECIMAL(2,1) DEFAULT 0.0,
+    avg_rating DECIMAL(2,1) DEFAULT 0.0, -- 写时重算，读时直取
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
     reject_reason TEXT,
     author_id INT REFERENCES users(id),
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS recipe_videos (
     title TEXT NOT NULL,
     platform TEXT NOT NULL,
     url TEXT NOT NULL,
-    thumbnail_url TEXT,
+    thumbnail_url TEXT, -- 缩略图url
     duration_seconds INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT NOW()
 );

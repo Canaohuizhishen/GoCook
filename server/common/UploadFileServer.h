@@ -10,29 +10,22 @@
 #include "Logger.h"
 #include "UploadPaths.h"
 
-/// 上传文件服务（读取侧）路由注册：GET /uploads/<subdir>/<filename>。
-///
-/// 设计说明：
-/// · 为什么不用 httplib::set_mount_point：该方案无法按本项目的
-///   GOCOOK_UPLOADS_DIR（common/UploadPaths.h）与双层穿越防御定制，可控性差。
-/// · URL 前缀与磁盘目录都由 subdir 决定（/uploads/<subdir>/<file> ↔
-///   <上传根>/<subdir>/<file>），与 UploadPaths::urlToPath 的约定天然一致，
-///   新增业务子目录只需一行注册。
-/// · 统一语义：非法文件名（含 .. 或 /）→ 400 + 审计日志；
-///   文件不存在 → 404；存在但打不开（权限/竞态）→ 500；其余异常 → 500。
-/// · 扩展名统一小写化后匹配 MIME，避免 ".PNG" 等大写扩展名被误判为默认 jpeg。
-/// · 全部响应携带 CSP sandbox + nosniff：svg（含历史存量文件与写侧名单漏网内容）
-///   以顶级文档打开时无脚本/iframe/同源能力；作为 <img> 或由 Qt 客户端加载时
-///   浏览器不执行 CSP，不受影响。权威防线在读取侧，名单局限见
-///   ImageUploadRules.h 的 svg 名单注释。
-///
-/// 注：本表保留 image/webp 仅为兼容历史文件；写侧为何禁止上传 webp 见
-/// common/ImageUploadRules.h 的白名单注释。
+// ============================================================================
+// 文件读取侧静态文件服务
+// ============================================================================
+// 职责：注册 GET /uploads/<subdir>/<filename> 路由，将 URL 映射到磁盘文件。
+//
+// 核心安全承诺：
+//   1. 路径防御：双层校验（基础拦截 + weakly_canonical 边界锁定），防目录穿越。
+//   2. 响应加固：全量携带 CSP sandbox 与 nosniff，作为 SVG 等可执行文件的终极兜底防线。
+//   3. 规则收口：目录解析统一走 UploadPaths，支持 GOCOOK_UPLOADS_DIR 环境变量。
+//
+// 相较于 httplib::set_mount_point，本实现支持自定义环境变量与审计日志，可控性更强。
+// ============================================================================
 namespace UploadFileServer {
 
-/// 日志安全化：换行/回车控制字符替换为可见转义。
-/// 文件名来自 URL 百分号解码（httplib 在路由前解码），可携带 %0A/%0D，
-/// 直接拼进日志可被用来伪造审计日志行（log forging）。
+/// 日志安全化：将文件名中的 \r \n 转义为可见字符。
+/// 原因：URL 解码后可能携带 %0A/%0D，直接拼入日志会伪造日志行（Log Forging）。
 inline std::string escapeLogText(const std::string& s) {
     std::string out;
     out.reserve(s.size());
@@ -48,13 +41,14 @@ inline std::string escapeLogText(const std::string& s) {
 /// @param svr    目标 httplib 服务器
 /// @param subdir 业务子目录（"avatars"[头像]、"recipes"[菜谱封面/步骤图]），
 ///               同时决定 URL 前缀与磁盘子目录
-/// @param label  日志文案用的中文名称（如"头像"），为空时回退用 subdir
+/// @param label  日志文案用的中文名称（如"头像"），便于运维排查，为空时回退用 subdir
 inline void registerUploadRoutes(httplib::Server& svr,
                                  const std::string& subdir,
                                  const std::string& label = {}) {
     const std::string dir = UploadPaths::baseDir() + "/" + subdir + "/";
     const std::string display = label.empty() ? subdir : label;
 
+    // 启动时尝试创建目录（失败仅警告，不影响服务启动，请求时会返回 404）
     try {
         std::filesystem::create_directories(dir);
     } catch (const std::exception& e) {
@@ -65,31 +59,30 @@ inline void registerUploadRoutes(httplib::Server& svr,
     svr.Get("/uploads/" + subdir + "/(.+)",
             [dir, display](const httplib::Request& req, httplib::Response& res) {
         try {
-            // svg 等以顶级文档打开时可执行脚本（写侧黑名单不承诺完备，历史存量
-            // 文件亦未过滤），统一加 CSP sandbox 兜底：文档无脚本/iframe/同源访问
-            // 能力；作为 <img> 或 Qt 客户端加载时浏览器不执行 CSP，不受影响。
-            // nosniff 防止浏览器对响应做内容嗅探。
+            // 1. 安全响应头（无论成功或失败都应携带）
+            // CSP sandbox：禁止脚本/iframe/同源访问，用于兜底 SVG 等可执行文件的 XSS 风险。
+            // nosniff：防止浏览器嗅探 MIME 类型。
             res.set_header("Content-Security-Policy",
                            "sandbox; default-src 'none'; style-src 'unsafe-inline'");
             res.set_header("X-Content-Type-Options", "nosniff");
 
             const std::string filename = req.matches[1];
 
-            // 第一层防御：拦截基本路径穿越尝试（.. 和 /）
+            // 2. 第一层防御：快速拦截明显的路径穿越字符
             if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
                 res.status = 400;
                 res.set_content("请求错误", "text/plain");
                 return;
             }
-            // 第二层防御：weakly_canonical 验证最终路径（含符号链接解析）仍在允许目录内
+            // 3. 第二层防御：weakly_canonical 验证最终路径（含符号链接解析）仍在允许目录内
             const std::string filePath = dir + filename;
             const std::filesystem::path normPath = std::filesystem::weakly_canonical(filePath);
             const std::filesystem::path allowedDir = std::filesystem::weakly_canonical(dir);
             const std::string normStr = normPath.string();
             const std::string allowStr = allowedDir.string();
-            // 前缀命中后还需路径组件边界：路径相等，或下一字符必须是 '/'。
-            // 否则目录内符号链接指向 ".../avatars_xxx/..." 这类与本目录同前缀的
-            // 兄弟目录时，纯字符串前缀判断会误放行（泄露目录外文件）
+
+            // 关键点：不仅要前缀匹配，还必须检查下一个字符是 '/' 或路径相等。
+            // 防止放行 "/uploads/avatars_evil" 这类同前缀的兄弟目录（符号链接攻击）。
             const bool inside = normStr.rfind(allowStr, 0) == 0
                 && (normStr.size() == allowStr.size() || normStr[allowStr.size()] == '/');
             if (!inside) {
@@ -101,15 +94,18 @@ inline void registerUploadRoutes(httplib::Server& svr,
                 res.set_content("请求错误", "text/plain");
                 return;
             }
-            // 不存在或非常规文件（目录等）→ 404（先判存在，把"打不开"与"不存在"
-            // 区分开）：ifstream 打开目录会成功却读到空内容（200 空 body），FIFO 等
-            // 特殊文件会阻塞读取；符号链接解析到普通文件时 is_regular_file 为 true
+
+            // 4. 文件存在性与类型校验
+            // 只服务常规文件（is_regular_file）。
+            // 规避 ifstream 陷阱：读目录返回空（误报 200），读管道会挂起线程（DoS）。
             if (!std::filesystem::exists(normStr)
                 || !std::filesystem::is_regular_file(normStr)) {
                 res.status = 404;
                 res.set_content("未找到", "text/plain");
                 return;
             }
+
+            // 文件存在但无法打开（如权限问题、竞态删除） -> 500（区别于 404）
             std::ifstream ifs(normStr, std::ios::binary);
             if (!ifs) {
                 LOG_ERROR("无法打开%s文件：%s", display.c_str(), normStr.c_str());
@@ -120,7 +116,8 @@ inline void registerUploadRoutes(httplib::Server& svr,
             std::string content((std::istreambuf_iterator<char>(ifs)),
                                 std::istreambuf_iterator<char>());
 
-            // 扩展名小写化后匹配 MIME（默认按 jpeg 处理）
+            // 5. MIME 类型匹配（扩展名小写化）
+            // 解决 ".PNG" 被误判为 image/jpeg 的问题。
             auto dotPos = filename.find_last_of('.');
             std::string ext;
             if (dotPos != std::string::npos) {
@@ -131,7 +128,6 @@ inline void registerUploadRoutes(httplib::Server& svr,
             if (ext == ".png")       mime = "image/png";
             else if (ext == ".gif")  mime = "image/gif";
             else if (ext == ".bmp")  mime = "image/bmp";
-            else if (ext == ".webp") mime = "image/webp";  // 历史文件兼容（写侧禁传，见 ImageUploadRules.h）
             else if (ext == ".svg")  mime = "image/svg+xml";
 
             res.set_content(content, mime);

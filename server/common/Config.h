@@ -31,6 +31,7 @@ struct Config {
      *        GOCOOK_DB_CONN_STRING 时抛出
      */
     static Config load() {
+        // 查找 .env 文件（四层候选）
         const char* candidates[] = {".env", "../../../.env", "../../.env", "../.env"};
         bool loaded = false;
         std::string envPath;
@@ -50,6 +51,8 @@ struct Config {
         if (!loaded) {
             // .env 不存在也没关系，调用方可能通过环境变量设了
         }
+
+        // 读取环境变量（无或类型转换(std::stoi)失败使用默认值）
         Config cfg;
         cfg.host         = getEnv("GOCOOK_HOST",          "0.0.0.0");
         cfg.port         = getEnvInt("GOCOOK_PORT",        8080);
@@ -89,22 +92,28 @@ private:
         try { return std::stoi(val); } catch (...) { return defaultValue; }
     }
 
-    // 解析 .env 文件（KEY=VALUE，支持引号）并写入进程环境变量
+    // 加载 .env 文件（KEY=VALUE，支持引号）并写入进程环境变量
     static void loadEnvFile(const std::string& path) {
         std::ifstream file(path);
-        if (!file.is_open()) return;
+        if (!file.is_open()) return;           // 文件不存在就算了，允许用系统环境变量
+
         std::string line;
         while (std::getline(file, line)) {
             auto trimmed = trim(line);
-            if (trimmed.empty() || trimmed[0] == '#') continue;
+            if (trimmed.empty() || trimmed[0] == '#') continue;  // 跳过空行和注释
+
             auto eq = trimmed.find('=');
-            if (eq == std::string::npos) continue;
-            auto key = trim(trimmed.substr(0, eq));
-            auto value = trim(trimmed.substr(eq + 1));
+            if (eq == std::string::npos) continue;               // 没等号就不是合法配置行
+
+            auto key = trim(trimmed.substr(0, eq));              // 取键名
+            auto value = trim(trimmed.substr(eq + 1));           // 取值
+
+            // 如果值被引号包着，去掉首尾引号
             if (!value.empty() && (value.front() == '"' || value.front() == '\'')) {
                 value = value.substr(1, value.size() - 2);
             }
-            setenv(key.c_str(), value.c_str(), 1);
+
+            setenv(key.c_str(), value.c_str(), 1);               // 写入环境变量（覆盖同名的）
         }
     }
 

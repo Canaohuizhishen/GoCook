@@ -7,7 +7,7 @@
 /// 上传文件路径规则统一收口：
 /// 存储 URL（/uploads/<subdir>/<filename>）↔ 磁盘真实路径（<上传根目录>/<subdir>/<filename>）。
 /// 上传根目录：GOCOOK_UPLOADS_DIR 环境变量优先，默认 "server/uploads"（转为绝对路径）。
-/// 写入方（updateRecipeImage / updateStepImage / uploadAvatar）与读取方（Router 文件服务）
+/// 写入方（ PgRecipeRepository 中的 updateRecipeImage / updateStepImage / uploadAvatar）与读取方（UploadFileServer 静态文件服务）
 /// 共用本规则，避免 URL 约定散落多处、改一处漏一处。
 
 namespace UploadPaths {

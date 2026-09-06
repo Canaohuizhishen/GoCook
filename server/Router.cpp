@@ -47,17 +47,13 @@ void Router::setupRoutes(httplib::Server& svr) {
     registerAdminRoutes(svr);
     registerPublicTestRoutes(svr);
 
-    // 注册上传文件服务路由（替代 set_mount_point，更可靠且可控）：
-    // 头像与菜谱图片共用同一套静态服务实现（双层穿越防御 + MIME），
-    // URL 前缀/磁盘目录/subdir 规则见 common/UploadFileServer.h
+    // 注册静态文件服务（头像 / 菜谱图片）
+    // 替代 httplib::set_mount_point，支持 GOCOOK_UPLOADS_DIR 环境变量，
+    // 并提供双层路径穿越防御与 CSP 安全头（详见 UploadFileServer.h）。
     UploadFileServer::registerUploadRoutes(svr, "avatars", "头像");
     UploadFileServer::registerUploadRoutes(svr, "recipes", "菜谱图片");
 
-    // 请求体硬上限与业务规则单点对齐（5MB，规则见 common/ImageUploadRules.h）：
-    // httplib 在路由前就把整个请求体读入内存，handler 层再判超限挡不住超大
-    // Content-Length 请求吃内存（vendored httplib 默认上限为 size_t max）。
-    // 在 HTTP 读取层设与 kMaxImageBytes 相同的上限：恰 5MB 放行，超限先跳过
-    // body 再回 413；handler 内 TooLarge 分支保留为纵深防御。
+    // 设置请求体硬上限（与业务规则对齐，防止超大请求吃内存）
     svr.set_payload_max_length(ImageUploadRules::kMaxImageBytes);
 }
 
@@ -66,18 +62,10 @@ void Router::setupRoutes(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerRateLimiter(httplib::Server& svr) {
-    /*
-     *  客户端 IP 来源：默认按 socket 对端（remote_addr）。
-     *  反向代理部署时可设 GOCOOK_TRUST_PROXY_HEADERS=1 改用 X-Real-IP
-     *  X-Forwarded-For 首个 IP——否则 docker-proxy/nginx 后所有用户共享同一计数。
-     *  警告：该头由客户端可控，仅在可信代理之后启用。
-     */
-
-    /*
-     * 此处使用“立即执行 Lambda (IIFE)”将环境变量读取与日志输出限定在
-     * 静态局部变量初始化阶段，确保只在程序启动时执行一次：
-     * 避免每次调用 registerRateLimiter 时重复读取 getenv 及刷写警告日志。
-     */
+    // 1. 代理头信任策略（Secure by Default）
+    //    - 默认不信任 X-Forwarded-For，防止客户端伪造 IP 绕过限流。
+    //    - 必须显式设置 GOCOOK_TRUST_PROXY_HEADERS=1 才启用代理头读取。
+    //    - 使用 static IIFE(立即执行函数表达式) 仅在启动时读一次环境变量，避免每次请求调用 getenv。
     static const bool trustProxyHeaders = []() {
         const char* v = std::getenv("GOCOOK_TRUST_PROXY_HEADERS");
         bool on = v && std::string(v) == "1";
@@ -87,6 +75,10 @@ void Router::registerRateLimiter(httplib::Server& svr) {
         }
         return on;
     }();
+
+    // 2. 提取客户端真实 IP 作为限流 Key
+    //    开启信任：优先 X-Real-IP，再取 X-Forwarded-For 首个 IP 并 trim 空白。
+    //    默认或未命中：回退到 TCP 层的 remote_addr（兜底 127.0.0.1）。
     auto clientIp = [](const httplib::Request& req) -> std::string {
         if (trustProxyHeaders) {
             if (req.has_header("X-Real-IP"))
@@ -95,7 +87,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
                 const std::string& xff = req.get_header_value("X-Forwarded-For");
                 auto comma = xff.find(',');
                 std::string first = comma == std::string::npos ? xff : xff.substr(0, comma);
-                // 去掉可能的空白
+                // 去除首尾空白（防止 "client, proxy" 带空格导致 Key 异常）
                 while (!first.empty() && (first.front() == ' ' || first.front() == '\t'))
                     first.erase(first.begin());
                 while (!first.empty() && (first.back() == ' ' || first.back() == '\t'))
@@ -107,14 +99,17 @@ void Router::registerRateLimiter(httplib::Server& svr) {
         return req.remote_addr.empty() ? "127.0.0.1" : req.remote_addr;
     };
 
+    // 3. 注册前置处理钩子（全局限流中间件）
+    //    请求在路由匹配前进入，超限直接返回 429 并短路（Handled），
+    //    避免进入业务层，降低 DoS 攻击下的 CPU 开销。
     svr.set_pre_routing_handler([this, clientIp](const httplib::Request& req, httplib::Response& res) {
         const std::string ip = clientIp(req);
         LOG_DEBUG("收到请求：%s %s（来源 IP：%s）", req.method.c_str(), req.path.c_str(), ip.c_str());
         if (!rateLimiter_.isAllowed(ip, req.path)) {
             setErrorResponse(res, 429, "请求过于频繁，请稍后重试");
-            return httplib::Server::HandlerResponse::Handled;
+            return httplib::Server::HandlerResponse::Handled; // 短路
         }
-        return httplib::Server::HandlerResponse::Unhandled;
+        return httplib::Server::HandlerResponse::Unhandled;   // 放行
     });
 }
 

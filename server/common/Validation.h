@@ -20,7 +20,9 @@ inline bool hasFields(const json& j, const std::vector<std::string>& keys,
     return true;
 }
 
-/// 简单邮箱格式校验（正则）
+/// 简单邮箱格式校验（正则）（它无法匹配 IP 地址形式的邮箱（如 user@[192.168.1.1]），
+/// 也无法匹配包含中文的国际化域名（IDN）（如 用户@例子.中国），
+/// 另外，它也没校验顶级域名的合法性（com 和 xyz 都过，123 也能过））
 inline bool isValidEmail(const std::string& email) {
     static const std::regex re(R"(^[^\s@]+@[^\s@]+\.[^\s@]{2,}$)");
     return std::regex_match(email, re);
@@ -65,7 +67,9 @@ inline bool validateForgotPasswordRequest(const json& j) {
     return true;
 }
 
-/// 重置密码：token 和新密码必填，密码 ≥ 6 字符
+/// 重置密码：token 和新密码必填，密码 ≥ 6 字符，对应 “忘记密码” 流程。
+/// 调用时，用户处于未登录状态。系统不信任用户知道旧密码，而是通过“邮箱+用户名”双验证后，
+/// 颁发一个一次性重置令牌（token）来证明身份。
 inline bool validateResetPasswordRequest(const json& j) {
     if (!j.contains("token") || !j["token"].is_string() ||
         j["token"].get<std::string>().empty())
@@ -96,7 +100,9 @@ inline bool validateRating(int rating) {
     return true;
 }
 
-/// 修改密码：新旧密码必填，新密码 ≥ 6 字符
+/// 修改密码：新旧密码必填，新密码 ≥ 6 字符，对应 “账号安全” 流程。
+/// 调用时，用户处于已登录状态（JWT Token 有效）。系统需要验证用户知道当前密码（current_password），
+/// 以防止别人趁你电脑未锁屏时恶意篡改密码。
 inline bool validateChangePasswordRequest(const json& j) {
     if (!j.contains("current_password") || !j["current_password"].is_string())
         throw gocook::services::ServiceException("缺少当前密码", 400);
