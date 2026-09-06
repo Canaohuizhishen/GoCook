@@ -32,11 +32,21 @@ template <typename Pool, typename Func>
 auto executeDb(Pool& pool, Func&& func,
                const std::string& errorMsg,
                const std::source_location loc = std::source_location::current()) -> decltype(auto) {
+    // 编译期模拟调用，推导 lambda 返回值类型
     using FuncResult = std::invoke_result_t<Func, pqxx::work&>;
+
+    // 编译器检查返回类型是否正确：
+    // 1. 禁止返回引用（事务析构后悬垂）
     static_assert(!std::is_reference_v<FuncResult>,
                   "executeDb: lambda 必须按值返回——引用在事务/result 销毁后悬空");
+
+    // 2. 禁止返回裸指针如 c_str()（remove_cv_t 剥去 const 干扰后检测）
     static_assert(!std::is_pointer_v<std::remove_cv_t<FuncResult>>,
                   "executeDb: lambda 不得返回裸指针（例如 c_str()），请先拷贝成 std::string");
+
+    // 3. 禁止返回 string_view（仅视图，不拥有内存）
+    // 4. 禁止返回 pqxx::field（同是底层视图）
+    // remove_cvref_t 剥去 const/volatile/引用，露出底层真身做匹配
     static_assert(!std::is_same_v<std::remove_cvref_t<FuncResult>, std::string_view>,
                   "executeDb: lambda 不得返回 std::string_view——它只是 result 数据上的视图，"
                   "result 销毁后悬空，请拷贝成 std::string");

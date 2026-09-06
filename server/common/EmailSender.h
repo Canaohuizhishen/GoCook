@@ -7,6 +7,11 @@
  * @brief 轻量 SMTP 邮件发送器
  *
  * 使用 OpenSSL 建立 TLS 连接，通过 SMTP 协议发送邮件。
+ *
+ * 缺陷：只覆盖了最简会话流程。
+ * 它没有实现重连队列、没有处理超时重传、没有做 DKIM/SPF 签名（如果 GOCOOK_SMTP_FROM 和实际中继服务器不一致，邮件必进垃圾箱）。
+ * 所以在当前形态下，它只能配合 Gmail/163 等公共中继使用，不能作为生产级企业邮件网关。
+ *
  * 配置通过环境变量读取：
  *   GOCOOK_SMTP_HOST     — SMTP 服务器地址（默认 smtp.gmail.com）
  *   GOCOOK_SMTP_PORT         — SMTP 端口（默认 465；587 自动使用 STARTTLS）
