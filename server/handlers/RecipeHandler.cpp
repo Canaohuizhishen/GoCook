@@ -4,8 +4,8 @@
 #include <optional>
 #include <sstream>
 #include <vector>
-#include <fstream>
 #include "../common/ErrorHelper.h"
+#include "../common/ImageUploadRules.h"
 #include "../common/PaginationHelper.h"
 #include "../common/JsonSerializer.h"
 #include "../common/AuthHelper.h"
@@ -14,14 +14,6 @@
 using json = nlohmann::json;
 using namespace gocook::services;
 using namespace gocook::models;
-
-static std::string extractMime(const std::string& ct) {
-    auto p = ct.find(';');
-    std::string m = (p == std::string::npos) ? ct : ct.substr(0, p);
-    while (!m.empty() && (m.front()==' '||m.front()=='\t')) m.erase(0,1);
-    while (!m.empty() && (m.back()==' '||m.back()=='\t')) m.pop_back();
-    return m;
-}
 
 RecipeHandler::RecipeHandler(IRecipeService& service, AuthMiddleware& auth)
     : service_(service), auth_(auth) {}
@@ -423,37 +415,32 @@ void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Resp
             return;
         }
 
-        std::string contentType = extractMime(req.get_header_value("Content-Type"));
-        if (contentType != "image/jpeg" && contentType != "image/png"
-            && contentType != "image/jpg" && contentType != "image/gif"
-            && contentType != "image/bmp" && contentType != "image/svg+xml") {
-            setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG");
-            return;
-        }
+        std::string contentType = ImageUploadRules::extractMimeType(req.get_header_value("Content-Type"));
 
-        if (content.size() > 5 * 1024 * 1024) {
-            setErrorResponse(res, 400, "图片大小不能超过5MB");
-            return;
-        }
-
-        std::string ext = ".jpg";
-        if (contentType == "image/png")          ext = ".png";
-        else if (contentType == "image/gif")      ext = ".gif";
-        else if (contentType == "image/bmp")      ext = ".bmp";
-        else if (contentType == "image/svg+xml")  ext = ".svg";
-        std::string tempPath = "/tmp/gocook_recipe_" + std::to_string(recipeId)
-                             + "_" + std::to_string(std::chrono::system_clock::now()
-                                   .time_since_epoch().count()) + ext;
-
-        {
-            std::ofstream ofs(tempPath, std::ios::binary);
-            if (!ofs) {
-                setErrorResponse(res, 500, "文件写入失败");
+        // 规则校验（白名单 + 内容魔数宽容修正），输出真实落盘扩展名
+        std::string ext;
+        switch (ImageUploadRules::classifyUpload(content, contentType, ext)) {
+            case ImageUploadRules::UploadError::UnsupportedType:
+                setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG");
                 return;
-            }
-            ofs.write(content.data(), content.size());
-            ofs.close();
+            case ImageUploadRules::UploadError::TooLarge:
+                setErrorResponse(res, 400, "图片大小不能超过5MB");
+                return;
+            case ImageUploadRules::UploadError::ContentMismatch:
+                setErrorResponse(res, 400, "图片内容与格式不符，请重新选择");
+                return;
+            case ImageUploadRules::UploadError::None:
+                break;
         }
+
+        // 写临时文件（唯一命名规则见 ImageUploadRules.h）
+        auto tempPathOpt = ImageUploadRules::writeTempImageFile(
+            "recipe_" + std::to_string(recipeId), content, ext);
+        if (!tempPathOpt) {
+            setErrorResponse(res, 500, "文件写入失败");
+            return;
+        }
+        const std::string& tempPath = *tempPathOpt;
 
         auto imageUrl = service_.uploadRecipeImage(recipeId, tempPath);
 
@@ -483,38 +470,33 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
             return;
         }
 
-        std::string contentType = extractMime(req.get_header_value("Content-Type"));
-        if (contentType != "image/jpeg" && contentType != "image/png"
-            && contentType != "image/jpg" && contentType != "image/gif"
-            && contentType != "image/bmp" && contentType != "image/svg+xml") {
-            setErrorResponse(res, 400, "不支持的图片格式");
-            return;
-        }
+        std::string contentType = ImageUploadRules::extractMimeType(req.get_header_value("Content-Type"));
 
-        if (content.size() > 5 * 1024 * 1024) {
-            setErrorResponse(res, 400, "图片大小不能超过5MB");
-            return;
-        }
-
-        std::string ext = ".jpg";
-        if (contentType == "image/png")          ext = ".png";
-        else if (contentType == "image/gif")      ext = ".gif";
-        else if (contentType == "image/bmp")      ext = ".bmp";
-        else if (contentType == "image/svg+xml")  ext = ".svg";
-        std::string tempPath = "/tmp/gocook_recipe_" + std::to_string(recipeId)
-                             + "_step_" + std::to_string(stepIndex)
-                             + "_" + std::to_string(std::chrono::system_clock::now()
-                                   .time_since_epoch().count()) + ext;
-
-        {
-            std::ofstream ofs(tempPath, std::ios::binary);
-            if (!ofs) {
-                setErrorResponse(res, 500, "文件写入失败");
+        // 规则校验（白名单 + 内容魔数宽容修正），输出真实落盘扩展名
+        std::string ext;
+        switch (ImageUploadRules::classifyUpload(content, contentType, ext)) {
+            case ImageUploadRules::UploadError::UnsupportedType:
+                setErrorResponse(res, 400, "不支持的图片格式");
                 return;
-            }
-            ofs.write(content.data(), content.size());
-            ofs.close();
+            case ImageUploadRules::UploadError::TooLarge:
+                setErrorResponse(res, 400, "图片大小不能超过5MB");
+                return;
+            case ImageUploadRules::UploadError::ContentMismatch:
+                setErrorResponse(res, 400, "图片内容与格式不符，请重新选择");
+                return;
+            case ImageUploadRules::UploadError::None:
+                break;
         }
+
+        // 写临时文件（唯一命名规则见 ImageUploadRules.h）
+        auto tempPathOpt = ImageUploadRules::writeTempImageFile(
+            "recipe_" + std::to_string(recipeId) + "_step_" + std::to_string(stepIndex),
+            content, ext);
+        if (!tempPathOpt) {
+            setErrorResponse(res, 500, "文件写入失败");
+            return;
+        }
+        const std::string& tempPath = *tempPathOpt;
 
         std::string imageUrl = service_.uploadStepImage(recipeId, stepIndex, tempPath);
 

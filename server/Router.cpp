@@ -1,9 +1,8 @@
 #include "Router.h"
-#include "common/Logger.h"
 #include "common/ErrorHelper.h"
-#include "common/UploadPaths.h"
-#include <filesystem>
-#include <fstream>
+#include "common/ImageUploadRules.h"
+#include "common/Logger.h"
+#include "common/UploadFileServer.h"
 
 Router::Router(ConnectionPool& db,
                RecipeHandler& recipeHandler,
@@ -48,10 +47,18 @@ void Router::setupRoutes(httplib::Server& svr) {
     registerAdminRoutes(svr);
     registerPublicTestRoutes(svr);
 
-    // 注册头像文件服务路由（替代 set_mount_point，更可靠且可控）
-    registerAvatarFileRoutes(svr);
-    // 注册菜谱图片文件服务路由
-    registerRecipeFileRoutes(svr);
+    // 注册上传文件服务路由（替代 set_mount_point，更可靠且可控）：
+    // 头像与菜谱图片共用同一套静态服务实现（双层穿越防御 + MIME），
+    // URL 前缀/磁盘目录/subdir 规则见 common/UploadFileServer.h
+    UploadFileServer::registerUploadRoutes(svr, "avatars", "头像");
+    UploadFileServer::registerUploadRoutes(svr, "recipes", "菜谱图片");
+
+    // 请求体硬上限与业务规则单点对齐（5MB，规则见 common/ImageUploadRules.h）：
+    // httplib 在路由前就把整个请求体读入内存，handler 层再判超限挡不住超大
+    // Content-Length 请求吃内存（vendored httplib 默认上限为 size_t max）。
+    // 在 HTTP 读取层设与 kMaxImageBytes 相同的上限：恰 5MB 放行，超限先跳过
+    // body 再回 413；handler 内 TooLarge 分支保留为纵深防御。
+    svr.set_payload_max_length(ImageUploadRules::kMaxImageBytes);
 }
 
 // ============================================================
@@ -141,138 +148,6 @@ void Router::registerRootRoute(httplib::Server& svr) {
 </html>
     )";
         res.set_content(html, "text/html");
-    });
-}
-
-// ============================================================
-// 头像等静态文件服务（替代 set_mount_point）
-// ============================================================
-
-void Router::registerAvatarFileRoutes(httplib::Server& svr) {
-    // 上传目录：可从 GOCOOK_UPLOADS_DIR 环境变量覆盖，默认 "server/uploads"（规则见 common/UploadPaths.h）
-    std::string avatarDir = UploadPaths::baseDir() + "/avatars/";
-    try {
-        std::filesystem::create_directories(avatarDir);
-    } catch (const std::exception& e) {
-        LOG_WARN("无法创建头像目录 %s: %s", avatarDir.c_str(), e.what());
-    }
-    LOG_INFO("头像存储目录：%s", avatarDir.c_str());
-
-    // 服务头像文件：GET /uploads/avatars/<filename>
-    svr.Get(R"(/uploads/avatars/(.+))", [avatarDir](const httplib::Request& req, httplib::Response& res) {
-        try {
-            std::string filename = req.matches[1];
-            // 第一层防御：拦截基本路径穿越尝试（.. 和 /）
-            if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
-                res.status = 400;
-                res.set_content("请求错误", "text/plain");
-                return;
-            }
-            // 第二层防御：使用 weakly_canonical 验证最终路径仍在允许目录内
-            std::string filePath = avatarDir + "/" + filename;
-            std::filesystem::path normPath = std::filesystem::weakly_canonical(
-                std::filesystem::path(filePath));
-            std::filesystem::path allowedDir = std::filesystem::weakly_canonical(
-                std::filesystem::path(avatarDir));
-            auto normStr = normPath.string();
-            auto allowStr = allowedDir.string();
-            if (normStr.rfind(allowStr, 0) != 0) {
-                LOG_WARN("已拦截头像路径穿越请求：%s → %s",
-                         filename.c_str(), normStr.c_str());
-                res.status = 400;
-                res.set_content("请求错误", "text/plain");
-                return;
-            }
-            if (!std::filesystem::exists(filePath)) {
-                res.status = 404;
-                res.set_content("未找到", "text/plain");
-                return;
-            }
-            std::ifstream ifs(filePath, std::ios::binary);
-            if (!ifs) {
-                res.status = 500;
-                res.set_content("服务器内部错误，请稍后重试", "text/plain");
-                return;
-            }
-            std::string content((std::istreambuf_iterator<char>(ifs)),
-                                std::istreambuf_iterator<char>());
-
-            // 根据扩展名设置 MIME 类型
-            auto dot = filename.find_last_of('.');
-            std::string ext = (dot != std::string::npos) ? filename.substr(dot) : "";
-            std::string mime = "image/jpeg";
-            if (ext == ".png")       mime = "image/png";
-            else if (ext == ".gif")  mime = "image/gif";
-            else if (ext == ".bmp")  mime = "image/bmp";
-            else if (ext == ".webp") mime = "image/webp";
-            else if (ext == ".svg")  mime = "image/svg+xml";
-
-            res.set_content(content, mime);
-        } catch (const std::exception& e) {
-            LOG_ERROR("提供头像文件时出错：%s", e.what());
-            res.status = 500;
-            res.set_content("服务器内部错误，请稍后重试", "text/plain");
-        }
-    });
-}
-
-void Router::registerRecipeFileRoutes(httplib::Server& svr) {
-    std::string recipeDir = UploadPaths::baseDir() + "/recipes/";
-    try {
-        std::filesystem::create_directories(recipeDir);
-    } catch (const std::exception& e) {
-        LOG_WARN("无法创建菜谱图片目录 %s: %s", recipeDir.c_str(), e.what());
-    }
-    LOG_INFO("菜谱图片存储目录：%s", recipeDir.c_str());
-
-    svr.Get(R"(/uploads/recipes/(.+))", [recipeDir](const httplib::Request& req, httplib::Response& res) {
-        try {
-            std::string filename = req.matches[1];
-            if (filename.find("..") != std::string::npos || filename.find('/') != std::string::npos) {
-                res.status = 400;
-                res.set_content("请求错误", "text/plain");
-                return;
-            }
-            std::string filePath = recipeDir + "/" + filename;
-            std::filesystem::path normPath = std::filesystem::weakly_canonical(
-                std::filesystem::path(filePath));
-            std::filesystem::path allowedDir = std::filesystem::weakly_canonical(
-                std::filesystem::path(recipeDir));
-            auto normStr = normPath.string();
-            auto allowStr = allowedDir.string();
-            if (normStr.rfind(allowStr, 0) != 0) {
-                res.status = 400;
-                res.set_content("请求错误", "text/plain");
-                return;
-            }
-
-            std::ifstream ifs(normStr, std::ios::binary);
-            if (!ifs) {
-                res.status = 404;
-                res.set_content("未找到", "text/plain");
-                return;
-            }
-            std::string content((std::istreambuf_iterator<char>(ifs)),
-                                std::istreambuf_iterator<char>());
-
-            auto dotPos = filename.find_last_of('.');
-            std::string ext;
-            if (dotPos != std::string::npos) {
-                for (char c : filename.substr(dotPos)) ext += std::tolower(static_cast<unsigned char>(c));
-            }
-            std::string mime = "image/jpeg";
-            if (ext == ".png")       mime = "image/png";
-            else if (ext == ".gif")  mime = "image/gif";
-            else if (ext == ".bmp")  mime = "image/bmp";
-            else if (ext == ".webp") mime = "image/webp";
-            else if (ext == ".svg")  mime = "image/svg+xml";
-
-            res.set_content(content, mime);
-        } catch (const std::exception& e) {
-            LOG_ERROR("提供菜谱图片文件时出错：%s", e.what());
-            res.status = 500;
-            res.set_content("服务器内部错误，请稍后重试", "text/plain");
-        }
     });
 }
 
