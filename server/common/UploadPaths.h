@@ -18,7 +18,9 @@ inline std::string baseDir() {
     return std::filesystem::absolute(envDir ? envDir : "server/uploads").string();
 }
 
-/// 存储 URL → 磁盘真实路径；URL 不含 '/'（取不到文件名）时返回空串，调用方应跳过
+/// 存储 URL → 磁盘真实路径；URL 不含 '/'（取不到文件名）时返回空串，调用方应跳过。
+/// subdir（业务类别："avatars"[用户头像]、"recipes"[菜谱封面图与步骤图]，
+/// 步骤图与封面同存 recipes，无独立 steps 子目录）
 inline std::string urlToPath(const std::string& url, const std::string& subdir) {
     auto pos = url.find_last_of('/');
     if (pos == std::string::npos) return {};

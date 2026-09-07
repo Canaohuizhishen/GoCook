@@ -13,6 +13,8 @@ set(TEST_SOURCES
     test_unimplemented_services.cpp
     test_db_executor.cpp
     test_upload_paths.cpp
+    test_upload_file_server.cpp
+    test_image_upload_rules.cpp
     test_nutrition_integration.cpp
 )
 

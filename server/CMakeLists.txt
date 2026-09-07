@@ -55,6 +55,8 @@ set(SERVER_LIB_SOURCES
     common/EmailSender.h common/EmailSender.cpp
     common/JsonSerializer.h common/JsonSerializer.cpp
     common/Validation.h
+    common/ImageUploadRules.h
+    common/UploadFileServer.h
     common/UploadPaths.h
     common/Config.h
     common/Logger.h

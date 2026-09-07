@@ -57,10 +57,6 @@ private:
     void registerRateLimiter(httplib::Server& svr);
     // 注册根路由（健康检查）
     void registerRootRoute(httplib::Server& svr);
-    // 注册头像静态文件路由
-    void registerAvatarFileRoutes(httplib::Server& svr);
-    // 注册菜谱图片静态文件路由
-    void registerRecipeFileRoutes(httplib::Server& svr);
     // 注册认证相关路由（注册/登录/密码重置）
     void registerAuthRoutes(httplib::Server& svr);
     // 注册菜谱相关路由
