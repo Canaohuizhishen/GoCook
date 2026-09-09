@@ -63,7 +63,7 @@ bool waitUntil(const Fn& fn, int timeoutMs = 5000)
 }
 
 // 库存桩服务：GET /api/inventory 带可选延迟（模拟慢网络下的在途请求）；
-// 分页可配置：totalPages>1 时首页返 1 行数据、后续页返空数据（VM 翻页/过滤翻页断言用）
+// 分页可配置：totalPages>1 时首页返 1 行番茄、后续页返 1 行土豆（VM 翻页/过滤翻页断言用）
 class InventoryStubServer {
 public:
     std::atomic<int> inventoryReqCount{0};
@@ -126,6 +126,15 @@ public:
         if (port <= 0)
             throw std::runtime_error("InventoryStubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
+
+        // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running()
+        // 显式暴露启动失败；同时消除“端口已绑定但尚未开始监听”的竞态窗口
+        for (int i = 0; i < 200; ++i) {
+            if (svr.is_running())
+                return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        throw std::runtime_error("InventoryStubServer: failed to start");
     }
 
     ~InventoryStubServer()
