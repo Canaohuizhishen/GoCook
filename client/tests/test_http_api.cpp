@@ -108,6 +108,15 @@ public:
         if (port <= 0)
             throw std::runtime_error("StubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
+
+        // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running()
+        // 显式暴露启动失败；同时消除“端口已绑定但尚未开始监听”的竞态窗口
+        for (int i = 0; i < 200; ++i) {
+            if (svr.is_running())
+                return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        throw std::runtime_error("StubServer: failed to start");
     }
 
     ~StubServer()
