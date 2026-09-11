@@ -346,6 +346,13 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
     if (!data.isEmpty()) {
         body = QJsonDocument(QJsonObject::fromVariantMap(data)).toJson();
     }
+    // 无请求体的 DELETE/PATCH（经 sendCustomRequest 发送的自定义方法）：Qt 不会写 Content-Length 头，
+    // 而服务端 httplib 把 DELETE 一律视为“有内容”请求：无 Content-Length 时读体逻辑会阻塞等待请求体，
+    // 响应永不返回（客户端挂到 15s 传输超时）。发一个最小 JSON 体“{}”保证 Content-Length 恒存在。
+    if (body.isEmpty() && (op == QNetworkAccessManager::DeleteOperation ||
+                           op == QNetworkAccessManager::CustomOperation)) {
+        body = QByteArrayLiteral("{}");
+    }
 
     sendRaw(authMode, op, request, body, methodOverride,
             [self = QPointer<HttpGoCookApi>(this), op, endpoint, data, callback, retryCount, methodOverride, suppressNetworkError, authMode]
