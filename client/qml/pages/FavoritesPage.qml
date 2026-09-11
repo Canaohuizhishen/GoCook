@@ -148,7 +148,7 @@ Page {
                             // "全部" 按钮
                             Button {
                                 height: 30
-                                text: qsTr("全部") + " (" + recipeVM.favoritesTotalCount + ")"
+                                text: qsTr("全部") + " (" + recipeVM.favoritesAllCount + ")"
                                 flat: true
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSizeCaption

@@ -43,7 +43,7 @@ class RecipeViewModel : public QObject
     Q_PROPERTY(bool myRatingsLoading READ myRatingsLoading NOTIFY myRatingsLoadingChanged)
     Q_PROPERTY(bool myRatingsHasMore READ myRatingsHasMore NOTIFY myRatingsHasMoreChanged)
     Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
-    Q_PROPERTY(int favoritesTotalCount READ favoritesTotalCount NOTIFY favoritesChanged)   ///< 总数变化复用 favoritesChanged 通知
+    Q_PROPERTY(int favoritesAllCount READ favoritesAllCount NOTIFY favoriteGroupsChanged)   ///< 「全部」总数=Σ 分组 count（含合成默认收藏夹），只随分组数据变化，不受列表筛选覆盖
     Q_PROPERTY(bool favoritesHasMore READ favoritesHasMore NOTIFY favoritesHasMoreChanged)
     Q_PROPERTY(bool favoritesLoading READ favoritesLoading NOTIFY favoritesLoadingChanged)
     Q_PROPERTY(QVariantList favoriteGroups READ favoriteGroups NOTIFY favoriteGroupsChanged)
@@ -80,7 +80,7 @@ public:
     bool myRatingsLoading() const;
     bool myRatingsHasMore() const;
     QVariantList favorites() const { return m_favorites; }
-    int favoritesTotalCount() const { return m_favoritesTotal; }
+    int favoritesAllCount() const;   ///< 派生计算：Σ favoriteGroups[*].count（cpp 实现）
     bool favoritesHasMore() const { return m_favoritesHasMore; }
     bool favoritesLoading() const { return m_favoritesLoading; }
     QVariantList favoriteGroups() const { return m_favoriteGroups; }
@@ -216,6 +216,7 @@ private:
     bool m_searchHasMore = false;
     bool m_searchPerformed = false;
     int m_searchPage = 1;
+    int m_searchPageSize = 20;   ///< 首屏请求的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
     int m_searchTotalPages = 0;
     QString m_lastKeyword;
 
@@ -256,8 +257,9 @@ private:
     QVariantList m_favorites;
     QVariantList m_favoriteGroups;
     int m_favoritesPage = 1;
+    int m_favoritesPageSize = 20;      ///< 首屏加载的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
+    QString m_favoritesGroupFilter;    ///< 当前筛选分组（""=全部）：续页须沿用，否则加载到未筛选数据
     int m_favoritesTotalPages = 0;
-    int m_favoritesTotal = 0;
     bool m_favoritesHasMore = false;
     bool m_favoritesLoading = false;
     bool m_favoritesLoadFailed = false; ///< 收藏加载失败（页面显示居中离线视图或静默保留旧数据）

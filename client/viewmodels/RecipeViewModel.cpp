@@ -28,6 +28,16 @@ bool RecipeViewModel::searchLoading() const { return m_searchLoading; }
 bool RecipeViewModel::searchHasMore() const { return m_searchHasMore; }
 bool RecipeViewModel::searchPerformed() const { return m_searchPerformed; }
 
+// 「全部」总数：Σ 各分组 count。服务端分组列表含合成的"默认收藏夹"组（其 count 即未分组收藏数），
+// 故求和恒等于全量收藏数；纯派生计算，不受收藏列表的筛选查询覆盖
+int RecipeViewModel::favoritesAllCount() const
+{
+    int total = 0;
+    for (const QVariant& group : m_favoriteGroups)
+        total += group.toMap().value("count").toInt();
+    return total;
+}
+
 void RecipeViewModel::setHealthFilterApplied(bool applied)
 {
     if (m_healthFilterApplied != applied) {
@@ -296,6 +306,7 @@ void RecipeViewModel::searchRecipes(const QString& keyword, int page, int size)
 
     m_lastKeyword = keyword;
     m_searchPage = page;
+    m_searchPageSize = size;   // 记录页大小：searchNextPage 续页沿用（服务端 offset=(page-1)*size）
     m_searchLoading = true;
     if (page == 1) {
         m_searchPerformed = false;
@@ -340,7 +351,7 @@ void RecipeViewModel::searchNextPage()
 {
     if (m_searchLoading || !m_searchHasMore)
         return;
-    searchRecipes(m_lastKeyword, m_searchPage + 1, m_pageSize);
+    searchRecipes(m_lastKeyword, m_searchPage + 1, m_searchPageSize);
 }
 
 void RecipeViewModel::resetSearch()
@@ -731,6 +742,8 @@ void RecipeViewModel::loadMyRatingsNextPage()
 void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
 {
     if (m_favoritesLoading) return;
+    m_favoritesGroupFilter = group;   // 记录筛选与页大小：loadMoreFavorites 续页必须沿用一致参数
+    m_favoritesPageSize = size;
     m_favoritesLoading = true;
     m_favoritesLoadFailed = false;
     emit favoritesLoadFailedChanged();
@@ -781,7 +794,6 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
 
         self->m_favoritesPage = data.pagination.page;
         self->m_favoritesTotalPages = data.pagination.total_pages;
-        self->m_favoritesTotal = data.pagination.total;
         self->m_favoritesHasMore = (self->m_favoritesPage < self->m_favoritesTotalPages);
 
         emit self->favoritesChanged();
@@ -794,7 +806,7 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
 void RecipeViewModel::loadMoreFavorites()
 {
     if (m_favoritesLoading || !m_favoritesHasMore) return;
-    loadFavorites(m_favoritesPage + 1, m_pageSize);
+    loadFavorites(m_favoritesPage + 1, m_favoritesPageSize, m_favoritesGroupFilter);
 }
 
 void RecipeViewModel::clearFavorites()
@@ -803,7 +815,6 @@ void RecipeViewModel::clearFavorites()
     m_favoritesPage = 1;
     m_favoritesHasMore = false;
     m_favoritesTotalPages = 0;
-    m_favoritesTotal = 0;
     m_favoritesLoading = false;
     m_favoritesLoadFailed = false;
     // 收藏分组同样属于个人数据：登出后必须清空，否则游客在详情页点收藏时
@@ -889,17 +900,14 @@ void RecipeViewModel::deleteFavoriteGroup(int groupId)
     // 乐观删除：保存旧列表用于回滚
     QVariantList oldGroups = m_favoriteGroups;
     QVariantList oldFavorites = m_favorites;
-    int oldTotal = m_favoritesTotal;
 
     // 找到目标分组的信息
     QString groupName;
-    int groupCount = 0;
     int groupIdx = -1;
     for (int i = 0; i < m_favoriteGroups.size(); ++i) {
         auto map = m_favoriteGroups[i].toMap();
         if (map.value("id").toInt() == groupId) {
             groupName = map.value("name").toString();
-            groupCount = map.value("count").toInt();
             groupIdx = i;
             break;
         }
@@ -917,14 +925,13 @@ void RecipeViewModel::deleteFavoriteGroup(int groupId)
                 remaining.append(v);
         }
         m_favorites = remaining;
-        m_favoritesTotal = qMax(0, m_favoritesTotal - groupCount);
         emit favoritesChanged();
     }
 
     // 3. 发 API 请求
     m_api->deleteFavoriteGroup(groupId,
         [self = QPointer<RecipeViewModel>(this), groupId,
-         oldGroups, oldFavorites, oldTotal]
+         oldGroups, oldFavorites]
         (bool success, const std::string& error) {
         if (!self) return;
         if (success) {
@@ -933,7 +940,6 @@ void RecipeViewModel::deleteFavoriteGroup(int groupId)
             // 失败 → 回滚
             self->m_favoriteGroups = oldGroups;
             self->m_favorites = oldFavorites;
-            self->m_favoritesTotal = oldTotal;
             emit self->favoriteGroupsChanged();
             emit self->favoritesChanged();
             emit self->favoriteOperationFailed(QString::fromStdString(
