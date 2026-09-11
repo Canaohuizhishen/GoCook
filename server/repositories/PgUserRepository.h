@@ -21,6 +21,14 @@ public:
     void createUser(const std::string& username,
                     const std::string& passwordHash,
                     const std::string& email) override;
+    // 创建/覆盖待验证注册记录（两段式注册第一步）
+    void upsertPendingRegistration(const std::string& username,
+                                   const std::string& passwordHash,
+                                   const std::string& email,
+                                   const std::string& token) override;
+    // 校验验证码并原子创建用户（两段式注册第二步）
+    gocook::models::RegistrationOutcome createUserFromPendingRegistration(
+        const std::string& email, const std::string& token) override;
 
     // 按 ID 查询用户公开资料
     std::optional<gocook::models::UserProfile> findById(int userId) override;

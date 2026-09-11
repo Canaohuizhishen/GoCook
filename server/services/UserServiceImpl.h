@@ -22,8 +22,10 @@ public:
                              const std::string& jwtSecret)
         : userRepo_(std::move(userRepo)), jwt_secret_(jwtSecret) {}
 
-    // 注册新用户
+    // 用户注册（两段式第一步：写入待验证记录并发送验证码邮件）
     void registerUser(const gocook::models::RegisterRequest& request) override;
+    // 完成注册（两段式第二步：验证码核验后建号）
+    void verifyRegistration(const std::string& email, const std::string& token) override;
     // 用户登录，验证密码并签发 JWT Token
     gocook::models::LoginResponse login(const gocook::models::LoginRequest& request) override;
 

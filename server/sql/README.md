@@ -30,6 +30,20 @@
 > ```
 
 
+> 两段式注册新增表 `pending_registrations`（新建库由 `create_all_tables.sql` 直接包含）——
+> **保留数据的存量库**手工执行：
+> ```sql
+> CREATE TABLE IF NOT EXISTS pending_registrations (
+>     id SERIAL PRIMARY KEY,
+>     username TEXT NOT NULL,
+>     password_hash TEXT NOT NULL,
+>     email TEXT NOT NULL UNIQUE,
+>     token TEXT NOT NULL,
+>     expires_at TIMESTAMPTZ NOT NULL,
+>     created_at TIMESTAMP DEFAULT NOW()
+> );
+> ```
+
 ## 一键重置（推荐入口）
 
 > 脚本位于 **server/ 根目录**（`server/reset_db.sh`），刻意不放本目录——本目录被 docker-compose

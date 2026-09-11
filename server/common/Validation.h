@@ -67,6 +67,17 @@ inline bool validateForgotPasswordRequest(const json& j) {
     return true;
 }
 
+/// 注册验证（两段式注册第二步）：email 与 token 均必填
+inline bool validateVerifyRegistrationRequest(const json& j) {
+    if (!j.contains("email") || !j["email"].is_string() ||
+        !isValidEmail(j["email"]))
+        throw gocook::services::ServiceException("邮箱格式无效", 400);
+    if (!j.contains("token") || !j["token"].is_string() ||
+        j["token"].get<std::string>().empty())
+        throw gocook::services::ServiceException("缺少验证码", 400);
+    return true;
+}
+
 /// 重置密码：token 和新密码必填，密码 ≥ 6 字符，对应 “忘记密码” 流程。
 /// 调用时，用户处于未登录状态。系统不信任用户知道旧密码，而是通过“邮箱+用户名”双验证后，
 /// 颁发一个一次性重置令牌（token）来证明身份。

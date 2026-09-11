@@ -420,6 +420,29 @@ void HttpGoCookApi::registerUser(const gocook::models::RegisterRequest& request,
     }, true);
 }
 
+void HttpGoCookApi::verifyRegistration(const std::string& email,
+                                       const std::string& token,
+                                       SuccessCallback callback)
+{
+    QVariantMap data;
+    data["email"] = QString::fromStdString(email);
+    data["token"] = QString::fromStdString(token);
+
+    post("/api/register/verify", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+        if (success) {
+            callback(true, "");
+        } else {
+            QString err = errorMsg;
+            if (doc.isObject()) {
+                QJsonObject obj = doc.object();
+                if (obj.contains("error"))
+                    err = obj["error"].toString();
+            }
+            callback(false, err.isEmpty() ? "未知错误" : err.toStdString());
+        }
+    }, true);
+}
+
 void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
                           LoginCallback callback)
 {

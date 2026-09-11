@@ -63,6 +63,34 @@ namespace {
             }
         }
     }
+
+    /// 生成 6 位数字验证码（CSPRNG，范围 100000-999999；密码重置与注册验证共用）
+    std::string generateNumericCode() {
+        unsigned char randomBytes[4];
+        if (RAND_bytes(randomBytes, sizeof(randomBytes)) != 1) {
+            throw ServiceException("无法生成安全令牌");
+        }
+        uint32_t val = (static_cast<uint32_t>(randomBytes[0]) << 24)
+                     | (static_cast<uint32_t>(randomBytes[1]) << 16)
+                     | (static_cast<uint32_t>(randomBytes[2]) << 8)
+                     | static_cast<uint32_t>(randomBytes[3]);
+        return std::to_string((val % 900000) + 100000);
+    }
+
+    /// 发送邮件：SMTP 已配置 → 真发（失败抛 500，注册的两个分支一致，响应层无可区分差异）；
+    /// 未配置（开发模式）→ 邮件内容打印到服务端日志，接口响应保持统一。
+    void sendMailOrLog(const std::string& to, const std::string& subject, const std::string& body) {
+        if (EmailSender::isConfigured()) {
+            if (!EmailSender::sendEmail(to, subject, body)) {
+                LOG_ERROR("向 %s 发送邮件失败（SMTP 错误）：%s", to.c_str(), subject.c_str());
+                throw ServiceException("邮件发送失败，请稍后再试或联系管理员", 500);
+            }
+            LOG_INFO("邮件已发送至 %s：%s", to.c_str(), subject.c_str());
+        } else {
+            LOG_WARN("[DEV MAIL] SMTP 未配置，邮件未真实发送\n收件人：%s\n主题：%s\n正文：\n%s",
+                     to.c_str(), subject.c_str(), body.c_str());
+        }
+    }
 }
 
 std::string UserServiceImpl::generateToken(int userId, const std::string& username, const std::string& role) {
@@ -130,17 +158,43 @@ bool UserServiceImpl::validatePassword(const std::string& plain, const std::stri
 }
 
 void UserServiceImpl::registerUser(const RegisterRequest& request) {
-    if (userRepo_->existsByEmail(request.email)) {
-        throw ServiceException("邮箱已被注册", 409);
-    }
-
+    // 用户名冲突照常返回 409（用户名维度不在防枚举收口范围）
     auto existing = userRepo_->findByUsername(request.username);
     if (existing.has_value()) {
         throw ServiceException("用户名已存在", 409);
     }
 
+    // 邮箱已注册：接口响应保持统一（不泄露注册状态），差异只体现在邮件内容上（防枚举）；
+    // 邮件发送失败在两种分支都会抛 500，响应层不产生可区分的差异。
+    if (userRepo_->existsByEmail(request.email)) {
+        sendMailOrLog(request.email, "GoCook 注册提示",
+            "此邮箱已关联 GoCook 账户。请直接登录；如果忘记密码，可在登录页尝试找回密码。\n"
+            "如非本人操作，请忽略此邮件。");
+        return;
+    }
+
+    // 两段式注册第一步：写入待验证记录（覆盖旧记录）并发送验证码邮件，不直接建号
+    std::string token = generateNumericCode();
     std::string hashed = hashPassword(request.password);
-    userRepo_->createUser(request.username, hashed, request.email);
+    userRepo_->upsertPendingRegistration(request.username, hashed, request.email, token);
+    sendMailOrLog(request.email, "GoCook 注册验证码",
+        "您正在注册 GoCook 账户，验证码为：" + token + "（15 分钟内有效）。\n"
+        "请在注册页面输入该验证码完成注册。如非本人操作，请忽略此邮件。");
+}
+
+void UserServiceImpl::verifyRegistration(const std::string& email, const std::string& token) {
+    // 两段式注册第二步：验证码核验通过后原子建号；此阶段可返回具体错误（持码人已证明邮箱归属）
+    switch (userRepo_->createUserFromPendingRegistration(email, token)) {
+        case RegistrationOutcome::Success:
+            return;
+        case RegistrationOutcome::InvalidCode:
+            throw ServiceException("验证码无效或已过期", 400);
+        case RegistrationOutcome::UsernameTaken:
+            throw ServiceException("用户名已被占用，请更换用户名后重新注册", 409);
+        case RegistrationOutcome::EmailTaken:
+            throw ServiceException("该邮箱已被注册，请直接登录", 409);
+    }
+    throw ServiceException("注册验证失败");
 }
 
 LoginResponse UserServiceImpl::login(const LoginRequest& request) {
@@ -177,22 +231,13 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
     if (!userIdOpt.has_value()) {
         LOG_WARN("密码重置请求未找到匹配账户：username='%s' email='%s'",
                  username.c_str(), email.c_str());
-        throw ServiceException("用户名和邮箱不匹配", 400);
+        throw ServiceException("用户名或邮箱不正确", 400);
     }
 
-    // 注意：开发模式下返回 dev_token 可能被利用枚举已注册用户名+邮箱组合。
-    // 未来改进：对已验证身份（如 session/IP）返回 token，未验证者始终返回 200 + nullopt。
-    // 2. 生成 6 位数字验证码（CSPRNG，范围 100000-999999）
-    unsigned char randomBytes[4];
-    if (RAND_bytes(randomBytes, sizeof(randomBytes)) != 1) {
-        throw ServiceException("无法生成安全令牌");
-    }
-    uint32_t val = (static_cast<uint32_t>(randomBytes[0]) << 24)
-                 | (static_cast<uint32_t>(randomBytes[1]) << 16)
-                 | (static_cast<uint32_t>(randomBytes[2]) << 8)
-                 | static_cast<uint32_t>(randomBytes[3]);
-    int code = (val % 900000) + 100000;  // 始终为 6 位数字
-    std::string token = std::to_string(code);
+    // 开发模式下返回 dev_token 仅发生在「用户名+邮箱双双匹配」时（配 SMTP 的生产模式不返回令牌）；
+    // 双字段匹配即发信门槛——不知道完整用户名+邮箱组合的请求不会触发任何邮件（防轰炸）。
+    // 2. 生成 6 位数字验证码（CSPRNG，与注册验证共用 generateNumericCode）
+    std::string token = generateNumericCode();
 
     // 3. 将令牌存入数据库 — 过期时间在 SQL 中计算为 NOW() + INTERVAL '15 minutes'
     userRepo_->createPasswordResetToken(userIdOpt.value(), token);

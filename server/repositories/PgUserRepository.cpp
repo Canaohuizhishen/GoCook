@@ -57,6 +57,51 @@ void PgUserRepository::createUser(const std::string& username,
     }, "数据库操作失败");
 }
 
+void PgUserRepository::upsertPendingRegistration(const std::string& username,
+                                                 const std::string& passwordHash,
+                                                 const std::string& email,
+                                                 const std::string& token) {
+    executeDb(db_, [&](pqxx::work& txn) {
+        // 邮箱唯一：重复提交覆盖旧记录并重置过期时间（旧验证码随之失效）
+        LOG_DEBUG("[SQL] UPSERT pending_registrations | email=%s", email.c_str());
+        txn.exec(
+            "INSERT INTO pending_registrations (username, password_hash, email, token, expires_at) "
+            "VALUES ($1, $2, $3, $4, NOW() + INTERVAL '" "15 minutes')"
+            "ON CONFLICT (email) DO UPDATE SET "
+            "    username = EXCLUDED.username, password_hash = EXCLUDED.password_hash, "
+            "    token = EXCLUDED.token, expires_at = EXCLUDED.expires_at, created_at = NOW()",
+            pqxx::params{username, passwordHash, email, token});
+    }, "数据库操作失败");
+}
+
+gocook::models::RegistrationOutcome PgUserRepository::createUserFromPendingRegistration(
+    const std::string& email, const std::string& token) {
+    return executeDb(db_, [&](pqxx::work& txn) -> gocook::models::RegistrationOutcome {
+        // 1) 锁定并校验待验证记录（未过期 + 验证码一致）
+        LOG_DEBUG("[SQL] SELECT pending_registrations | email=%s", email.c_str());
+        pqxx::result pending = txn.exec(
+            "SELECT username, password_hash FROM pending_registrations "
+            "WHERE email = $1 AND token = $2 AND expires_at > NOW() FOR UPDATE",
+            pqxx::params{email, token});
+        if (pending.empty()) return gocook::models::RegistrationOutcome::InvalidCode;
+
+        std::string username = pending[0]["username"].c_str();
+        std::string passwordHash = pending[0]["password_hash"].c_str();
+
+        // 2) 唯一性复核（提交验证码期间可能存在竞态）
+        pqxx::result u = txn.exec("SELECT 1 FROM users WHERE username = $1", pqxx::params{username});
+        if (!u.empty()) return gocook::models::RegistrationOutcome::UsernameTaken;
+        pqxx::result e = txn.exec("SELECT 1 FROM users WHERE email = $1", pqxx::params{email});
+        if (!e.empty()) return gocook::models::RegistrationOutcome::EmailTaken;
+
+        // 3) 建号并删除待验证记录（同一事务，提交后原子生效）
+        txn.exec("INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)",
+                 pqxx::params{username, passwordHash, email});
+        txn.exec("DELETE FROM pending_registrations WHERE email = $1", pqxx::params{email});
+        return gocook::models::RegistrationOutcome::Success;
+    }, "数据库操作失败");
+}
+
 std::optional<UserProfile> PgUserRepository::findById(int userId) {
     return executeDb(db_, [&](pqxx::work& txn) -> std::optional<UserProfile> {
 

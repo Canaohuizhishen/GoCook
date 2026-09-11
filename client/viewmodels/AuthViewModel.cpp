@@ -58,12 +58,27 @@ void AuthViewModel::registerUser(const QString &username,
     m_api->registerUser(req, [self = QPointer<AuthViewModel>(this)](bool success, const std::string &error) {
         if (!self) return;
         if (success) {
-            emit self->registerSuccess();
+            // 两段式注册第一步完成：验证邮件已发送，等待输入验证码
+            emit self->registerStarted();
         } else {
             emit self->registerFailed(QString::fromStdString(
                 error.empty() ? "未知错误" : error));
         }
     });
+}
+
+void AuthViewModel::verifyRegistration(const QString &email, const QString &token)
+{
+    m_api->verifyRegistration(email.toStdString(), token.toStdString(),
+        [self = QPointer<AuthViewModel>(this)](bool success, const std::string &error) {
+            if (!self) return;
+            if (success) {
+                emit self->registrationVerified();
+            } else {
+                emit self->registrationVerifyFailed(QString::fromStdString(
+                    error.empty() ? "未知错误" : error));
+            }
+        });
 }
 
 void AuthViewModel::logout()

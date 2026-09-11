@@ -181,12 +181,22 @@ public:
 
     // ---------- 认证（公开接口） ----------
     /**
-     * @brief 用户注册
+     * @brief 发起注册（两段式注册第一步：服务端发送验证码邮件）
      * @param request 注册请求，包含用户名、密码和邮箱
      * @param callback 回调 (success, error)
      */
     virtual void registerUser(const gocook::models::RegisterRequest& request,
                               SuccessCallback callback) = 0;
+
+    /**
+     * @brief 完成注册（两段式注册第二步：邮箱验证码核验）
+     * @param email 注册邮箱
+     * @param token 邮件中的 6 位数字验证码
+     * @param callback 回调 (success, error)
+     */
+    virtual void verifyRegistration(const std::string& email,
+                                    const std::string& token,
+                                    SuccessCallback callback) = 0;
 
     /**
      * @brief 用户登录
@@ -198,9 +208,10 @@ public:
 
     // ---------- 忘记密码（公开接口） ----------
     /**
-     * @brief 发送密码重置邮件
+     * @brief 发送密码重置邮件（需用户名 + 邮箱双重匹配：双字段作为发信门槛，防邮件轰炸）
+     * @param username 用户名（用于双重验证）
      * @param email 注册邮箱
-     * @param callback 回调 (success, error)，无论成功与否统一返回成功信息（防枚举）
+     * @param callback 回调 (success, error)；不匹配时返回 400「用户名或邮箱不正确」且不发信
      */
     virtual void forgotPassword(const std::string& username,
                                 const std::string& email,

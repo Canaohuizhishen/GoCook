@@ -53,6 +53,27 @@ public:
                             const std::string& email) = 0;
 
     /**
+     * @brief 创建/覆盖待验证注册记录（两段式注册第一步；邮箱唯一，过期时间由 SQL 层统一设置为 NOW() + 15 分钟）。
+     * @param username 用户名
+     * @param passwordHash 密码哈希
+     * @param email 邮箱地址
+     * @param token 6 位数字验证码
+     */
+    virtual void upsertPendingRegistration(const std::string& username,
+                                           const std::string& passwordHash,
+                                           const std::string& email,
+                                           const std::string& token) = 0;
+
+    /**
+     * @brief 校验验证码并原子创建用户（同一事务：校验待验证记录 → 唯一性复核 → 建号 → 删除待验证记录）。
+     * @param email 注册邮箱
+     * @param token 6 位数字验证码
+     * @return 验证结果（成功 / 验证码无效 / 用户名被占 / 邮箱已被注册）
+     */
+    virtual models::RegistrationOutcome createUserFromPendingRegistration(
+        const std::string& email, const std::string& token) = 0;
+
+    /**
      * @brief 按 ID 查询用户公开资料。
      * @param userId 用户 ID
      * @return 用户资料；不存在时返回 nullopt

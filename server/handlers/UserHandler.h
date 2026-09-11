@@ -13,8 +13,10 @@ public:
     explicit UserHandler(gocook::services::IUserService& service,
                          AuthMiddleware& auth);
 
-    // 注册新用户（公开接口）
+    // 注册新用户（公开接口；两段式注册第一步：发送验证码邮件）
     void registerUser(const httplib::Request& req, httplib::Response& res);
+    // 完成注册（公开接口；两段式注册第二步：验证码核验后建号）
+    void verifyRegistration(const httplib::Request& req, httplib::Response& res);
     // 用户登录，返回 token（公开接口）
     void loginUser(const httplib::Request& req, httplib::Response& res);
     // 忘记密码 - 发送重置邮件（公开接口）

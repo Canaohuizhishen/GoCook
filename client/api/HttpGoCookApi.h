@@ -115,6 +115,9 @@ public:
     // 认证
     void registerUser(const gocook::models::RegisterRequest& request,
                       SuccessCallback callback) override;
+    void verifyRegistration(const std::string& email,
+                            const std::string& token,
+                            SuccessCallback callback) override;
     void login(const gocook::models::LoginRequest& request,
                LoginCallback callback) override;
     void forgotPassword(const std::string& username,

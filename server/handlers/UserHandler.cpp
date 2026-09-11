@@ -26,8 +26,26 @@ void UserHandler::registerUser(const httplib::Request& req, httplib::Response& r
 
         service_.registerUser(request);
 
-        res.status = 201;
-        res.body = json{{"message", "用户注册成功"}}.dump();
+        // 两段式注册第一步：响应保持统一（不透露邮箱是否已注册），差异只体现在邮件内容
+        res.status = 200;
+        res.body = json{{"message", "我们已向该邮箱发送邮件，请按邮件提示继续。"}}.dump();
+    } catch (const gocook::services::ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void UserHandler::verifyRegistration(const httplib::Request& req, httplib::Response& res) {
+    try {
+        json reqJson = json::parse(req.body);
+        Validation::validateVerifyRegistrationRequest(reqJson);
+
+        std::string email = reqJson["email"];
+        std::string token = reqJson["token"];
+        service_.verifyRegistration(email, token);
+        res.status = 200;
+        res.body = json{{"message", "注册成功"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -68,7 +86,7 @@ void UserHandler::forgotPassword(const httplib::Request& req, httplib::Response&
         std::string email = reqJson["email"];
         auto devToken = service_.requestPasswordReset(username, email);
 
-        json rsp{{"message", "若该邮箱已注册，您将收到一封重置密码的邮件"}};
+        json rsp{{"message", "重置密码邮件已发送，请检查收件箱和垃圾邮件。"}};
         // 开发模式：SMTP 未配置时返回令牌以便调试
         if (devToken.has_value()) {
             rsp["message"] = "【开发模式】SMTP 未配置，重置令牌如下（仅本次有效）：";
