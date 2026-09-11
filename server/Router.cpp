@@ -154,6 +154,9 @@ void Router::registerAuthRoutes(httplib::Server& svr) {
     svr.Post("/api/register", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.registerUser(req, res);
     });
+    svr.Post("/api/register/verify", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.verifyRegistration(req, res);
+    });
     svr.Post("/api/login", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.loginUser(req, res);
     });

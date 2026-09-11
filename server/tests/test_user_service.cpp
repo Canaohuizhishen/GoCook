@@ -31,34 +31,54 @@ namespace {
 
 // ==================== 注册 ====================
 
-TEST(UserServiceTest, 注册成功) {
+TEST(UserServiceTest, 注册成功进入待验证并发送验证码) {
+    // 保存并清除 SMTP 环境变量，模拟开发模式（邮件落日志，不真实发送）
+    auto oldUser = std::getenv("GOCOOK_SMTP_USER");
+    auto oldPass = std::getenv("GOCOOK_SMTP_PASS");
+    if (oldUser) unsetenv("GOCOOK_SMTP_USER");
+    if (oldPass) unsetenv("GOCOOK_SMTP_PASS");
+
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     auto req = makeRegisterReq();
 
-    EXPECT_CALL(*repo, existsByEmail("test@example.com")).WillOnce(Return(false));
+    // 两段式注册第一步：不建号，写入待验证记录（验证码为 6 位数字）
     EXPECT_CALL(*repo, findByUsername("testuser")).WillOnce(Return(std::nullopt));
-    EXPECT_CALL(*repo, createUser("testuser", _, "test@example.com")).Times(1);
+    EXPECT_CALL(*repo, existsByEmail("test@example.com")).WillOnce(Return(false));
+    EXPECT_CALL(*repo, createUser(_, _, _)).Times(0);
+    EXPECT_CALL(*repo, upsertPendingRegistration("testuser", _, "test@example.com", _))
+        .WillOnce([](const std::string&, const std::string&, const std::string&, const std::string& token) {
+            EXPECT_EQ(token.size(), 6u);
+        });
 
     EXPECT_NO_THROW(service.registerUser(req));
+
+    if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
+    if (oldPass) setenv("GOCOOK_SMTP_PASS", oldPass, 1);
 }
 
-TEST(UserServiceTest, 注册邮箱冲突) {
+TEST(UserServiceTest, 注册邮箱已注册静默成功不建号) {
+    // 保存并清除 SMTP 环境变量，模拟开发模式
+    auto oldUser = std::getenv("GOCOOK_SMTP_USER");
+    auto oldPass = std::getenv("GOCOOK_SMTP_PASS");
+    if (oldUser) unsetenv("GOCOOK_SMTP_USER");
+    if (oldPass) unsetenv("GOCOOK_SMTP_PASS");
+
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
+    EXPECT_CALL(*repo, findByUsername(_)).WillOnce(Return(std::nullopt));
     EXPECT_CALL(*repo, existsByEmail(_)).WillRepeatedly(Return(true));
+    // 防枚举：不抛异常、不建号、不写待验证记录，差异只体现在邮件内容
+    EXPECT_CALL(*repo, upsertPendingRegistration(_, _, _, _)).Times(0);
 
-    try {
-        service.registerUser(makeRegisterReq());
-        FAIL() << "Expected ServiceException";
-    } catch (const ServiceException& e) {
-        EXPECT_EQ(e.statusCode(), 409);
-        EXPECT_STREQ(e.what(), "邮箱已被注册");
-    }
+    EXPECT_NO_THROW(service.registerUser(makeRegisterReq()));
+
+    if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
+    if (oldPass) setenv("GOCOOK_SMTP_PASS", oldPass, 1);
 }
 
 TEST(UserServiceTest, 注册用户名冲突) {
@@ -66,7 +86,7 @@ TEST(UserServiceTest, 注册用户名冲突) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, existsByEmail(_)).WillOnce(Return(false));
+    // 新顺序：先查用户名（409 保持），命中即返回，不再经过邮箱检查
     EXPECT_CALL(*repo, findByUsername(_)).WillOnce(Return(std::optional<UserAuthInfo>(UserAuthInfo{})));
 
     try {
@@ -75,6 +95,70 @@ TEST(UserServiceTest, 注册用户名冲突) {
     } catch (const ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 409);
         EXPECT_STREQ(e.what(), "用户名已存在");
+    }
+}
+
+// ==================== 注册验证（两段式第二步） ====================
+
+TEST(UserServiceTest, 注册验证成功建号) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, createUserFromPendingRegistration("test@example.com", "123456"))
+        .WillOnce(Return(RegistrationOutcome::Success));
+
+    EXPECT_NO_THROW(service.verifyRegistration("test@example.com", "123456"));
+}
+
+TEST(UserServiceTest, 注册验证码无效或过期) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _))
+        .WillOnce(Return(RegistrationOutcome::InvalidCode));
+
+    try {
+        service.verifyRegistration("test@example.com", "000000");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "验证码无效或已过期");
+    }
+}
+
+TEST(UserServiceTest, 注册验证用户名被占用) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _))
+        .WillOnce(Return(RegistrationOutcome::UsernameTaken));
+
+    try {
+        service.verifyRegistration("test@example.com", "123456");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 409);
+        EXPECT_STREQ(e.what(), "用户名已被占用，请更换用户名后重新注册");
+    }
+}
+
+TEST(UserServiceTest, 注册验证邮箱已被注册) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _))
+        .WillOnce(Return(RegistrationOutcome::EmailTaken));
+
+    try {
+        service.verifyRegistration("test@example.com", "123456");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 409);
+        EXPECT_STREQ(e.what(), "该邮箱已被注册，请直接登录");
     }
 }
 
@@ -283,20 +367,22 @@ TEST(UserServiceTest, 录入健康指标用户不存在) {
 
 // ==================== 密码重置 ====================
 
-TEST(UserServiceTest, 请求重置密码邮箱未注册静默成功) {
+TEST(UserServiceTest, 请求重置密码用户名邮箱不匹配报错不发信) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     EXPECT_CALL(*repo, findIdByUsernameAndEmail("unknown_user", "unreg@test.com"))
         .WillOnce(Return(std::nullopt));
+    // 双字段匹配是发信门槛：不匹配不发信、不建令牌
+    EXPECT_CALL(*repo, createPasswordResetToken(_, _)).Times(0);
 
     try {
         service.requestPasswordReset("unknown_user", "unreg@test.com");
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 400);
-        EXPECT_STREQ(e.what(), "用户名和邮箱不匹配");
+        EXPECT_STREQ(e.what(), "用户名或邮箱不正确");
     }
 }
 

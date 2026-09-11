@@ -6,7 +6,7 @@
 --   docker exec -i gocook-postgres psql -U gocook -d gocookdb < ./seed_ingredient_nutrition.sql
 -- 开发库一键重置（推荐入口）：bash ../reset_db.sh —— 本文件为第 2 步，见 sql/README.md
 -- 约定：
---   · 本表为系统数据，重跑种子 = 全量同步修订（ON CONFLICT DO UPDATE），
+--   · 本表为系统数据，重跑种子 = 全量同步修订（先清空旧行再插入），
 --     营养库修正/扩充可随重跑自动应用到已灌入的库。
 --   · default_portion_g：单个计数的近似质量（克），NULL 表示该食材无法按"个/只/根"换算，
 --     投稿中若用这类计数单位且无单重，则该食材不参与营养计算。

@@ -103,23 +103,6 @@ Page {
                 color: Theme.textHint
                 visible: authViewModel.loggedIn
             }
-
-            // ★ 调试：显示当前头像 URL
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: "URL: " + (function() {
-                    var u = authViewModel.profileAvatarUrl;
-                    if (u.length === 0) return "(空)";
-                    return authViewModel.apiBaseUrl + u + "?t=" + authViewModel.avatarVersion;
-                })()
-                font.family: Theme.fontFamily; font.pointSize: 8
-                color: "gray"
-                elide: Text.ElideMiddle
-                maximumLineCount: 2
-                wrapMode: Text.Wrap
-                Layout.fillWidth: true
-                visible: authViewModel.loggedIn
-            }
         }
 
         Rectangle {

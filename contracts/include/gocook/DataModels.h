@@ -35,6 +35,20 @@ namespace gocook::models {
         std::string email;         // 必填，用于密码找回
     };
 
+    /// 注册验证请求（两段式注册第二步：邮箱 + 验证码）
+    struct VerifyRegistrationRequest {
+        std::string email;   // 注册邮箱
+        std::string token;   // 邮件中的 6 位数字验证码
+    };
+
+    /// 注册验证结果（两段式注册第二步的仓库层返回值）
+    enum class RegistrationOutcome {
+        Success,        // 验证通过，用户已创建
+        InvalidCode,    // 验证码无效或已过期
+        UsernameTaken,  // 用户名已被占用（提交验证码期间的竞态）
+        EmailTaken,     // 邮箱已被注册（提交验证码期间的竞态）
+    };
+
     /// 登录请求
     struct LoginRequest {
         std::string username;   // 用户名

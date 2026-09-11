@@ -244,6 +244,17 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens (token);
 
+-- 15b. 待验证注册表（两段式注册第一步：验证码核验通过后才写入 users；邮箱唯一，重复提交覆盖旧记录）
+CREATE TABLE IF NOT EXISTS pending_registrations (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    token TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
 -- 16. 用户行为日志表
 CREATE TABLE IF NOT EXISTS activity_logs (
     id SERIAL PRIMARY KEY,

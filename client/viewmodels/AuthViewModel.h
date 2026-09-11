@@ -46,6 +46,8 @@ public:
 
     Q_INVOKABLE void login(const QString &username, const QString &password);
     Q_INVOKABLE void registerUser(const QString &username, const QString &password, const QString &email);
+    // 两段式注册第二步：邮箱验证码核验
+    Q_INVOKABLE void verifyRegistration(const QString &email, const QString &token);
     Q_INVOKABLE void logout();
     Q_INVOKABLE void checkAutoLogin();
 
@@ -70,8 +72,10 @@ signals:
     void userIdChanged();
     void loginSuccess();
     void loginFailed(const QString &error);
-    void registerSuccess();
+    void registerStarted();
     void registerFailed(const QString &error);
+    void registrationVerified();
+    void registrationVerifyFailed(const QString &error);
     void logoutFinished();
     void initialLoadingChanged();
 

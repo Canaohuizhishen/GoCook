@@ -17,14 +17,17 @@ Page {
 
     property bool showResetFlow: false
     property bool showResetForm: false
+    property bool showRegisterVerify: false   // 两段式注册：验证码步骤
 
     function resetToLogin() {
         showResetFlow = false
         showResetForm = false
+        showRegisterVerify = false
         resetUsernameField.text = ""
         resetEmailField.text = ""
         resetTokenField.text = ""
         resetNewPasswordField.text = ""
+        verifyCodeField.text = ""
         errorLabel.text = ""
     }
 
@@ -41,6 +44,15 @@ Page {
                 emailField.text
             )
         }
+    }
+
+    // 两段式注册第二步：提交验证码
+    function submitVerify() {
+        if (verifyCodeField.text.trim() === "") {
+            errorLabel.text = "请输入验证码"
+            return
+        }
+        authViewModel.verifyRegistration(emailField.text.trim(), verifyCodeField.text.trim())
     }
 
     // 顶部工具行：跳过按钮固定页面右上角（欢迎模式=进入游客模式，应用内模式=取消操作）
@@ -78,7 +90,7 @@ Page {
 
         // ============ 登录/注册模式 ============
         ColumnLayout {
-            visible: !showResetFlow
+            visible: !showResetFlow && !showRegisterVerify
             spacing: 20
             Layout.fillWidth: true
 
@@ -263,6 +275,54 @@ Page {
             }
         }
 
+        // ============ 注册验证码模式（两段式注册第二步） ============
+        ColumnLayout {
+            visible: showRegisterVerify
+            spacing: 20
+            Layout.fillWidth: true
+
+            Text {
+                text: qsTr("完成注册")
+                font.pointSize: 16
+                font.bold: true
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Text {
+                text: qsTr("我们已向该邮箱发送邮件，请按邮件提示继续。")
+                color: Theme.textHint
+                wrapMode: Text.Wrap
+                Layout.fillWidth: true
+            }
+
+            TextField {
+                id: verifyCodeField
+                placeholderText: qsTr("验证码（6 位数字）")
+                Layout.fillWidth: true
+                Keys.onReturnPressed: submitVerify()
+                Keys.onEnterPressed: submitVerify()
+            }
+
+            CustomButton {
+                buttonText: qsTr("完成注册")
+                buttonType: CustomButton.ButtonType.Primary
+                Layout.fillWidth: true
+                onClicked: submitVerify()
+            }
+
+            Text {
+                text: qsTr("← 返回登录")
+                color: Theme.accentColor
+                font.underline: true
+                Layout.alignment: Qt.AlignHCenter
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: resetToLogin()
+                }
+            }
+        }
+
         // ============ 提示标签 ============
         Label {
             id: errorLabel
@@ -283,16 +343,25 @@ Page {
                 errorLabel.color = Theme.errorColor
                 errorLabel.text = error
             }
-            function onRegisterSuccess() {
+            function onRegisterStarted() {
+                errorLabel.text = ""
+                showRegisterVerify = true
+            }
+            function onRegistrationVerified() {
+                resetToLogin()
                 errorLabel.color = Theme.accentColor
                 errorLabel.text = "注册成功，请登录"
+            }
+            function onRegistrationVerifyFailed(error) {
+                errorLabel.color = Theme.errorColor
+                errorLabel.text = error
             }
             function onLoginSuccess() {
                 errorLabel.text = ""
             }
             function onForgotPasswordSent() {
                 errorLabel.color = Theme.accentColor
-                errorLabel.text = "若该邮箱已注册，您将收到重置邮件。请在服务端日志中查看重置令牌。"
+                errorLabel.text = "重置密码邮件已发送，请检查收件箱和垃圾邮件。（开发模式下验证码见服务端日志）"
                 showResetForm = true
             }
             function onForgotPasswordFailed(error) {

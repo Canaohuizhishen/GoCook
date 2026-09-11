@@ -19,6 +19,12 @@ public:
     // 创建新用户
     MOCK_METHOD(void, createUser,
                 (const std::string&, const std::string&, const std::string&), (override));
+    // 创建/覆盖待验证注册记录（两段式注册第一步）
+    MOCK_METHOD(void, upsertPendingRegistration,
+                (const std::string&, const std::string&, const std::string&, const std::string&), (override));
+    // 校验验证码并原子创建用户（两段式注册第二步）
+    MOCK_METHOD(gocook::models::RegistrationOutcome, createUserFromPendingRegistration,
+                (const std::string&, const std::string&), (override));
     // 按 ID 查询用户公开资料
     MOCK_METHOD(std::optional<gocook::models::UserProfile>, findById, (int), (override));
     // 通过邮箱查找用户 ID

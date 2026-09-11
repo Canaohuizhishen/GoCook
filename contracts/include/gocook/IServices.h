@@ -234,10 +234,18 @@ namespace gocook::services {
         virtual ~IUserService() = default;
 
         /**
-         * @brief 用户注册（无需认证）。
+         * @brief 用户注册（无需认证；两段式注册第一步：写入待验证记录并发送验证码邮件，不直接建号）。
          * @param request 注册请求（用户名/密码/邮箱）
          */
         virtual void registerUser(const models::RegisterRequest& request) = 0;
+
+        /**
+         * @brief 完成注册（两段式注册第二步：邮箱验证码核验后建号）。
+         * @param email 注册邮箱
+         * @param token 邮件中的 6 位数字验证码
+         */
+        virtual void verifyRegistration(const std::string& email,
+                                        const std::string& token) = 0;
 
         /**
          * @brief 用户登录，返回 token 等信息（无需认证）。

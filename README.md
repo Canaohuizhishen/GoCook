@@ -11,7 +11,7 @@ GoCook/
 ├── Dockerfile         # 服务端多阶段镜像
 ├── DOCKER_NOTES.md    # Docker / PostgreSQL 操作笔记（备份恢复、常用命令）
 ├── run.sh             # 一键启动脚本（服务端+客户端）
-└── docs/              # api-spec.md（现行契约）+ archive/（历史文档存档）
+└── docs/              # GoCook_Design.md（设计说明书）+ api-spec.md（现行契约）+ archive/（历史文档存档）
 ```
 
 ---
@@ -268,7 +268,7 @@ cd /root/project/mainProject/GoCook/GoCook
 **注意事项**：
 
 - `.env` 已存在时会跳过生成；想重置密钥就删掉 `.env` 再跑
-- SMTP 配置**留空 = 开发模式**：密码重置接口会把令牌直接返回在响应里（方便调试），配置了 SMTP 才真正发邮件
+- SMTP 配置**留空 = 开发模式**：密码重置接口会把令牌直接返回在响应里；注册验证码等邮件内容打印到服务端日志（方便调试），配置了 SMTP 才真正发邮件
 - 脚本最后会问是否启动服务端（`server/build/server`），日常用容器的话选 N 即可
 
 ---
