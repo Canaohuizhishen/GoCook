@@ -12,10 +12,12 @@
 #include <QFileInfo>
 #include <gocook/IServices.h>
 
-// 统一错误文案解析：三级判据（与笔记 6.1 一致）
-//  1) statusCode <= 0        → 网络层错误（断网/拒绝连接/超时），无服务端响应
-//  2) 服务端 JSON 含 error   → 业务错误，用服务端精确文案
-//  3) 其余（statusCode > 0） → 服务器问题（5xx 返回 HTML/空体等），不能误导用户去查网络
+// 统一错误文案解析（HTTP 与登录守卫错误文案的唯一出口；kAuthRequiredError 即出自这里）。
+// 判据（自上而下，首个命中者生效）：
+//   statusCode == -2      → 登录守卫拦截（请求未发出），文案 = kAuthRequiredError
+//   statusCode <= 0       → 网络层错误（断网/拒绝连接/超时），无服务端响应
+//   响应 JSON 含非空 error → 业务错误，用服务端精确文案
+//   其余（HTTP > 0）      → 服务器问题（5xx 返回 HTML/空体等），不误导用户去查网络
 static QString errorMessageFor(int statusCode, const QJsonDocument &doc)
 {
     // -2 = 被登录守卫拦截（未登录且接口需登录），未发送任何请求
@@ -36,29 +38,24 @@ static QString errorMessageFor(int statusCode, const QJsonDocument &doc)
     return QStringLiteral("服务器有点问题，请稍候再试");
 }
 
-// 构造函数
 HttpGoCookApi::HttpGoCookApi(QObject *parent) : QObject(parent)
 {
     // 初始化默认基础 URL
     m_baseUrl = "http://127.0.0.1:8080";
 }
 
-// 设置基础 URL
 void HttpGoCookApi::setBaseUrl(const QString &url)
 {
     if (m_baseUrl != url) {
         m_baseUrl = url;
-        // 发射属性变更信号
         emit baseUrlChanged();
     }
 }
 
-// 设置认证令牌
 void HttpGoCookApi::setToken(const QString &token)
 {
     if (m_token != token) {
         m_token = token;
-        // 发射属性变更信号
         emit tokenChanged();
         // 登录守卫联动：拿到新 token（登录成功）→ 重放挂起的 Interactive 请求；
         // token 被清空（登出）→ 挂起请求作废，按"请先登录"回调失败
@@ -102,7 +99,6 @@ void HttpGoCookApi::cancelAuthQueue()
     clearPendingAuthRequests();
 }
 
-// 设置最大重试次数
 void HttpGoCookApi::setMaxRetries(int retries)
 {
     if (m_maxRetries != retries) {
@@ -111,7 +107,6 @@ void HttpGoCookApi::setMaxRetries(int retries)
     }
 }
 
-// 设置重试延迟
 void HttpGoCookApi::setRetryDelay(int delayMs)
 {
     if (m_retryDelay != delayMs) {
@@ -123,7 +118,6 @@ void HttpGoCookApi::setRetryDelay(int delayMs)
 // GET 请求封装（QML 版本）
 void HttpGoCookApi::get(const QString &endpoint, const QJSValue &callback, AuthMode authMode)
 {
-    // 调用统一请求发送方法，retryCount 从 0 开始
     sendRequest(QNetworkAccessManager::GetOperation, endpoint, QVariantMap(), callback, 0, "", false, authMode);
 }
 
@@ -198,7 +192,7 @@ void HttpGoCookApi::patch(const QString &endpoint, const QVariantMap &data,
 }
 
 // 构造标准 JSON 请求（URL、15 秒超时、Content-Type、Authorization）
-QNetworkRequest HttpGoCookApi::buildRequest(const QString &endpoint, const QString &methodOverride)
+QNetworkRequest HttpGoCookApi::buildRequest(const QString &endpoint)
 {
     // 构造完整 URL
     QUrl url(m_baseUrl + endpoint);
@@ -295,7 +289,7 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 bool suppressNetworkError,
                                 AuthMode authMode)
 {
-    auto wrapped = [this, callback](bool success, const QString&, const QJsonDocument& doc) {
+    auto wrapped = [this, callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!callback.isCallable()) return;
         QJSEngine *engine = qjsEngine(this);
         QJSValue jsResponse;
@@ -323,7 +317,7 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
         }
         QJSValueList args;
         args << success;
-        args << (success ? QString() : QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+        args << errorMsg;
         args << jsResponse;
         QJSValue(callback).call(args);
     };
@@ -340,7 +334,7 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
                                 bool suppressNetworkError,
                                 AuthMode authMode)
 {
-    QNetworkRequest request = buildRequest(endpoint, methodOverride);
+    QNetworkRequest request = buildRequest(endpoint);
     // 将数据转换为 JSON 字节数组
     QByteArray body;
     if (!data.isEmpty()) {
@@ -372,7 +366,16 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
             return;
         }
 
-        // 网络层错误（无任何 HTTP 响应，statusCode<=0）：只对 GET 重试；
+        // -1 = 请求未能发出（sendRaw 极端分支：reply 构造失败）：不重试，直接按失败回调
+        // （文案沿用网络层错误；与其它失败一样受 suppressNetworkError 抑制）
+        if (statusCode == -1) {
+            const QString errMsg = errorMessageFor(statusCode, doc);
+            if (!suppressNetworkError) emit self->networkError(errMsg);
+            if (callback) callback(false, errMsg, doc);
+            return;
+        }
+
+        // 网络层错误（无任何 HTTP 响应，statusCode<=0；-1/-2 已提前分流）：只对 GET 重试；
         // 4xx/5xx 说明服务端已应答（包裹送到了），业务错误/服务器问题重试只会放大问题
         if (statusCode <= 0) {
             if (op == QNetworkAccessManager::GetOperation && retryCount < self->m_maxRetries) {
@@ -400,7 +403,15 @@ void HttpGoCookApi::sendRequest(QNetworkAccessManager::Operation op,
     });
 }
 
-// ==================== GoCookApi 抽象接口实现 ======================
+// ==================== IGoCookApi 抽象接口实现 ======================
+// 本区书写约定（新增/修改接口方法时按此执行，例外必须就近注释）：
+//   1. AuthMode 声明：需登录的读接口（列表/详情/加载）→ Silent；写操作/登录态敏感 → Interactive；
+//      对游客开放 → Public（菜谱浏览/公告等公开接口优先按此档）。参考 getCurrentUser 的例外注释写法。
+//   2. 错误文案：统一用 errorMessageFor（已含服务端 error 文案）；方法内不要手工二次提取响应 error 字段。
+//   3. suppressNetworkError：错误由 VM/页面呈现的接口传 true；故意让全局 toast 兜底的传
+//      false 并就近注释原因（当前 false：我的投稿、购物清单四方法）。
+//   4. 成功判定：统一 2xx 区间（statusCode >= 200 && statusCode < 300）。
+//   5. 未实现接口：用区块级 TODO 标记（见膳食计划/管理员功能区），不留裸存根。
 
 // ======================= 认证 =======================
 void HttpGoCookApi::registerUser(const gocook::models::RegisterRequest& request,
@@ -411,18 +422,11 @@ void HttpGoCookApi::registerUser(const gocook::models::RegisterRequest& request,
     data["password"] = QString::fromStdString(request.password);
     data["email"]    = QString::fromStdString(request.email);
 
-    post("/api/register", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+    post("/api/register", data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (success) {
-            callback(true, "");
+            if (callback) callback(true, "");
         } else {
-            QString err = errorMsg;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error")) {
-                    err = obj["error"].toString();
-                }
-            }
-            callback(false, err.isEmpty() ? "未知错误" : err.toStdString());
+            if (callback) callback(false, errorMsg.toStdString());
         }
     }, true);
 }
@@ -435,17 +439,11 @@ void HttpGoCookApi::verifyRegistration(const std::string& email,
     data["email"] = QString::fromStdString(email);
     data["token"] = QString::fromStdString(token);
 
-    post("/api/register/verify", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+    post("/api/register/verify", data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (success) {
-            callback(true, "");
+            if (callback) callback(true, "");
         } else {
-            QString err = errorMsg;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            callback(false, err.isEmpty() ? "未知错误" : err.toStdString());
+            if (callback) callback(false, errorMsg.toStdString());
         }
     }, true);
 }
@@ -459,8 +457,7 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
 
     post("/api/login", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::LoginResponse{},
-                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::LoginResponse{}, errorMsg.toStdString());
             return;
         }
         if (doc.isObject()) {
@@ -469,9 +466,9 @@ void HttpGoCookApi::login(const gocook::models::LoginRequest& request,
             resp.token = obj["token"].toString().toStdString();
             resp.user_id = obj["user_id"].toInt();
             resp.username = obj["username"].toString().toStdString();
-            callback(true, resp, "");
+            if (callback) callback(true, resp, "");
         } else {
-            callback(false, gocook::models::LoginResponse{}, "响应格式无效");
+            if (callback) callback(false, gocook::models::LoginResponse{}, "无效的响应格式");
         }
     }, true);
 }
@@ -484,17 +481,11 @@ void HttpGoCookApi::forgotPassword(const std::string& username,
     data["username"] = QString::fromStdString(username);
     data["email"] = QString::fromStdString(email);
 
-    post("/api/password/forgot", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+    post("/api/password/forgot", data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (success) {
-            callback(true, "");
+            if (callback) callback(true, "");
         } else {
-            QString err = errorMsg;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            callback(false, err.isEmpty() ? "请求失败" : err.toStdString());
+            if (callback) callback(false, errorMsg.toStdString());
         }
     }, true);
 }
@@ -507,17 +498,11 @@ void HttpGoCookApi::resetPassword(const std::string& token,
     data["token"] = QString::fromStdString(token);
     data["new_password"] = QString::fromStdString(newPassword);
 
-    post("/api/password/reset", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+    post("/api/password/reset", data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (success) {
-            callback(true, "");
+            if (callback) callback(true, "");
         } else {
-            QString err = errorMsg;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            callback(false, err.isEmpty() ? "重置失败" : err.toStdString());
+            if (callback) callback(false, errorMsg.toStdString());
         }
     }, true);
 }
@@ -527,7 +512,7 @@ void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
     // Silent：登录态校验/加载类，未登录静默失败（checkAutoLogin 仅在本地有 token 时调用，不受影响）
     get("/api/users/me", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::UserProfile{}, errorStr.toStdString());
+            if (callback) callback(false, gocook::models::UserProfile{}, errorStr.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
@@ -540,7 +525,7 @@ void HttpGoCookApi::getCurrentUser(UserProfileCallback callback) {
         profile.avatar_url = obj["avatar_url"].toString().toStdString();
         profile.preferences_complete = obj["preferences_complete"].toBool();
         profile.created_at = obj["created_at"].toString().toStdString();
-        callback(true, profile, "");
+        if (callback) callback(true, profile, "");
     }, true, AuthMode::Silent);
 }
 
@@ -560,13 +545,7 @@ void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& pr
 
     put("/api/users/me/profile", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, gocook::models::UserProfile{}, err.toStdString());
+            if (callback) callback(false, gocook::models::UserProfile{}, errorStr.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
@@ -620,15 +599,9 @@ void HttpGoCookApi::updatePreferences(const gocook::models::UserPreferences& pre
     }
     data["health_goal"] = QString::fromStdString(prefs.health_goal);
 
-    put("/api/users/me/preferences", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+    put("/api/users/me/preferences", data, [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -651,13 +624,7 @@ void HttpGoCookApi::updateHealthProfile(const gocook::models::HealthProfileReque
 
     put("/api/users/me/health-profile", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, gocook::models::HealthProfileResponse{}, err.toStdString());
+            if (callback) callback(false, gocook::models::HealthProfileResponse{}, errorStr.toStdString());
             return;
         }
 
@@ -711,35 +678,19 @@ void HttpGoCookApi::getHealthProfile(HealthProfileCallback callback) {
 void HttpGoCookApi::uploadAvatar(const std::string& filePath,
                                  AvatarUploadCallback callback)
 {
-    // 调试日志写到文件 /tmp/gocook_avatar_debug.log
-    auto avLog = [](const QString& msg) {
-        QFile f("/tmp/gocook_avatar_debug.log");
-        if (f.open(QIODevice::Append | QIODevice::Text)) {
-            f.write(("[CLIENT] " + msg + "\n").toUtf8());
-            f.close();
-        }
-    };
-    avLog("=== 头像上传开始 ===");
-    avLog("文件路径：" + QString::fromStdString(filePath));
-
     QFile file(QString::fromStdString(filePath));
     if (!file.exists()) {
-        avLog("错误：文件不存在");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "文件不存在");
         return;
     }
     if (!file.open(QIODevice::ReadOnly)) {
-        avLog("错误：无法打开文件");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无法打开文件");
         return;
     }
     QByteArray fileData = file.readAll();
     QString fileName = QFileInfo(file.fileName()).fileName();
     file.close();
-    avLog("文件名：" + fileName + "，大小：" + QString::number(fileData.size()) + " 字节");
-
     if (fileData.size() > 5 * 1024 * 1024) {
-        avLog("错误：文件超过 5MB 上限");
         if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "图片大小不能超过5MB");
         return;
     }
@@ -757,33 +708,24 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
         contentType = "image/webp";
     else if (lower.endsWith(".svg") || lower.endsWith(".svgz"))
         contentType = "image/svg+xml";
-    avLog("Content-Type：" + contentType + "，是否携带令牌：" + (m_token.isEmpty() ? "否" : "是"));
-
     QUrl url(m_baseUrl + "/api/users/me/avatar");
     QNetworkRequest request(url);
     request.setTransferTimeout(30000);
     request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
     if (!m_token.isEmpty())
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
-    avLog("发送 POST 请求：" + url.toString());
-
     sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
-            [callback, avLog](int statusCode, const QByteArray &responseData) {
+            [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        avLog("响应状态码：" + QString::number(statusCode));
-        avLog("响应内容：" + QString::fromUtf8(responseData));
 
         if (statusCode == 401) {
-            avLog("未授权(401)");
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
         bool success = (statusCode >= 200 && statusCode < 300);
         if (!success) {
-            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
             const QString err = errorMessageFor(statusCode, doc);
-            avLog("请求失败：" + err);
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, err.toStdString());
             return;
         }
@@ -793,10 +735,8 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
             gocook::models::AvatarUploadResponse resp;
             resp.avatar_id = obj["avatar_id"].toInt();
             resp.avatar_url = obj["avatar_url"].toString().toStdString();
-            avLog("成功：avatar_id=" + QString::number(resp.avatar_id) + "，avatar_url=" + QString::fromStdString(resp.avatar_url));
             if (callback) callback(true, resp, "");
         } else {
-            avLog("响应格式无效(非 JSON)");
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无效的响应格式");
         }
     });
@@ -851,7 +791,6 @@ void HttpGoCookApi::uploadRecipeImage(int recipeId,
 
         bool success = (statusCode >= 200 && statusCode < 300);
         if (!success) {
-            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
             const QString err = errorMessageFor(statusCode, doc);
             if (callback) callback(false, "", err.toStdString());
             return;
@@ -871,35 +810,19 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
                                     const std::string& filePath,
                                     RecipeImageCallback callback)
 {
-    auto siLog = [](const QString& msg) {
-        QFile f("/tmp/gocook_stepimage_debug.log");
-        if (f.open(QIODevice::Append | QIODevice::Text)) {
-            f.write(("[CLIENT] " + msg + "\n").toUtf8());
-            f.close();
-        }
-    };
-    siLog("=== 步骤图上传开始 ===");
-    siLog("菜谱 ID=" + QString::number(recipeId) + "，步骤序号=" + QString::number(stepIndex)
-          + "，文件路径=" + QString::fromStdString(filePath));
-
     QFile file(QString::fromStdString(filePath));
     if (!file.exists()) {
-        siLog("错误：文件不存在");
         if (callback) callback(false, "", "文件不存在");
         return;
     }
     if (!file.open(QIODevice::ReadOnly)) {
-        siLog("错误：无法打开文件");
         if (callback) callback(false, "", "无法打开文件");
         return;
     }
     QByteArray fileData = file.readAll();
     QString fileName = QFileInfo(file.fileName()).fileName();
     file.close();
-    siLog("文件名=" + fileName + "，大小=" + QString::number(fileData.size()) + " 字节");
-
     if (fileData.size() > 5 * 1024 * 1024) {
-        siLog("错误：文件超过 5MB 上限");
         if (callback) callback(false, "", "图片大小不能超过5MB");
         return;
     }
@@ -919,33 +842,30 @@ void HttpGoCookApi::uploadStepImage(int recipeId, int stepIndex,
     request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
     if (!m_token.isEmpty())
         request.setRawHeader("Authorization", QString("Bearer %1").arg(m_token).toUtf8());
-    siLog("发送 POST 请求：" + url.toString() + "，Content-Type=" + contentType + "，是否携带令牌：" + (m_token.isEmpty() ? "否" : "是"));
-
     sendRaw(AuthMode::Interactive, QNetworkAccessManager::PostOperation, request, fileData, "",
-            [callback, siLog](int statusCode, const QByteArray &responseData) {
+            [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
-        siLog("响应状态码=" + QString::number(statusCode) + "，响应内容=" + QString::fromUtf8(responseData));
 
         if (statusCode == 401) {
-            siLog("未授权(401)");
             if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
         bool success = (statusCode >= 200 && statusCode < 300);
         if (!success) {
-            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
             const QString err = errorMessageFor(statusCode, doc);
-            siLog("请求失败：" + err);
             if (callback) callback(false, "", err.toStdString());
             return;
         }
 
-        std::string imageUrl;
-        if (doc.isObject() && doc.object().contains("image_url"))
-            imageUrl = doc.object()["image_url"].toString().toStdString();
-        siLog("成功：image_url=" + QString::fromStdString(imageUrl));
-        if (callback) callback(true, imageUrl, "");
+        if (doc.isObject()) {
+            std::string imageUrl;
+            if (doc.object().contains("image_url"))
+                imageUrl = doc.object()["image_url"].toString().toStdString();
+            if (callback) callback(true, imageUrl, "");
+        } else {
+            if (callback) callback(false, "", "无效的响应格式");
+        }
     });
 }
 
@@ -958,7 +878,7 @@ void HttpGoCookApi::deleteRecipe(int recipeId, SuccessCallback callback)
                 return;
             }
             if (callback) callback(true, "");
-        }, true);
+        }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::changePassword(const std::string& currentPassword,
@@ -969,15 +889,9 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
     data["current_password"] = QString::fromStdString(currentPassword);
     data["new_password"] = QString::fromStdString(newPassword);
 
-    put("/api/users/me/password", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+    put("/api/users/me/password", data, [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -986,15 +900,9 @@ void HttpGoCookApi::changePassword(const std::string& currentPassword,
 
 void HttpGoCookApi::deleteAccount(SuccessCallback callback)
 {
-    deleteResource("/api/users/me", {}, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
+    deleteResource("/api/users/me", {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (!success) {
-            QString err = errorMsg;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorMsg.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -1088,8 +996,7 @@ void HttpGoCookApi::updateFavoriteGroup(int groupId,
     put(QString("/api/users/me/favorites/groups/%1").arg(groupId), data,
         [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -1129,7 +1036,6 @@ void HttpGoCookApi::updateFavoriteItem(int favoriteId,
             [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-        // 401 全局 unauthorized 信号已由 sendRaw 统一发出（与其它接口一致：触发登出）
         if (statusCode == 401) {
             if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
             return;
@@ -1140,7 +1046,6 @@ void HttpGoCookApi::updateFavoriteItem(int favoriteId,
             if (success)
                 callback(true, "");
             else
-                // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
                 callback(false, errorMessageFor(statusCode, doc).toStdString());
         }
     });
@@ -1212,15 +1117,9 @@ void HttpGoCookApi::markNotificationRead(int notificationId,
                                          SuccessCallback callback)
 {
     patch(QString("/api/users/me/notifications/%1/read").arg(notificationId), {},
-        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -1230,15 +1129,9 @@ void HttpGoCookApi::markNotificationRead(int notificationId,
 void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
 {
     put("/api/users/me/notifications/read-all", {},
-        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -1249,15 +1142,9 @@ void HttpGoCookApi::deleteNotification(int notificationId,
                                         SuccessCallback callback)
 {
     deleteResource(QString("/api/users/me/notifications/%1").arg(notificationId), {},
-        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject()) {
-                QJsonObject obj = doc.object();
-                if (obj.contains("error"))
-                    err = obj["error"].toString();
-            }
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
@@ -1323,8 +1210,8 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
 
     get(endpoint, [callback](bool success, const QString &errorMsg, const QJsonDocument &doc) {
         if (!success) {
-            callback(false, gocook::models::PagedRecipes{},
-                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::PagedRecipes{},
+                                   errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1341,7 +1228,7 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
             for (const QJsonValue &val : dataArr)
                 result.data.push_back(parseRecipeSummary(val.toObject()));
         }
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, true);
 }
 
@@ -1354,8 +1241,8 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
 
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::PagedRecommendedRecipes{},
-                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::PagedRecommendedRecipes{},
+                                   errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1434,7 +1321,7 @@ void HttpGoCookApi::getRecommendedRecipes(int page, int size,
             }
         }
 
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, true, AuthMode::Silent);
 }
 
@@ -1488,8 +1375,8 @@ void HttpGoCookApi::searchRecipes(const std::string& keyword,
 
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::PagedRecipes{},
-                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::PagedRecipes{},
+                                   errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1506,7 +1393,7 @@ void HttpGoCookApi::searchRecipes(const std::string& keyword,
             for (const QJsonValue& val : dataArr)
                 result.data.push_back(parseRecipeSummary(val.toObject()));
         }
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, true);
 }
 
@@ -1515,7 +1402,7 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
     QString endpoint = QString("/api/recipes/%1").arg(recipeId);
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::RecipeDetail{}, errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::RecipeDetail{}, errorMsg.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
@@ -1580,7 +1467,7 @@ void HttpGoCookApi::getRecipeDetail(int recipeId,
         detail.is_favorited = obj["is_favorited"].toBool();
         detail.created_at = obj["created_at"].toString().toStdString();
         detail.updated_at = obj["updated_at"].toString().toStdString();
-        callback(true, detail, "");
+        if (callback) callback(true, detail, "");
     }, true);
 }
 
@@ -1589,7 +1476,7 @@ void HttpGoCookApi::getRecipeVideos(int recipeId,
     QString endpoint = QString("/api/recipes/%1/videos").arg(recipeId);
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, {}, errorMsg.toStdString());
+            if (callback) callback(false, {}, errorMsg.toStdString());
             return;
         }
         QJsonArray arr = doc.array();
@@ -1605,7 +1492,7 @@ void HttpGoCookApi::getRecipeVideos(int recipeId,
             v.duration_seconds = obj["duration_seconds"].toInt();
             videos.push_back(std::move(v));
         }
-        callback(true, videos, "");
+        if (callback) callback(true, videos, "");
     }, true);
 }
 
@@ -1615,7 +1502,7 @@ void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,
                            .arg(recipeId).arg(page).arg(size);
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::PagedRatings{}, errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::PagedRatings{}, errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1639,7 +1526,7 @@ void HttpGoCookApi::getRecipeRatings(int recipeId, int page, int size,
         result.pagination.total = pag["total"].toInt();
         result.pagination.total_pages = pag["total_pages"].toInt();
 
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, true);
 }
 
@@ -1648,12 +1535,12 @@ void HttpGoCookApi::getMyRecipeRating(int recipeId,
     QString endpoint = QString("/api/recipes/%1/ratings/mine").arg(recipeId);
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, std::nullopt, errorMsg.toStdString());
+            if (callback) callback(false, std::nullopt, errorMsg.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
         if (obj.isEmpty()) {
-            callback(true, std::nullopt, "");
+            if (callback) callback(true, std::nullopt, "");
             return;
         }
         gocook::models::RecipeRating r;
@@ -1663,7 +1550,7 @@ void HttpGoCookApi::getMyRecipeRating(int recipeId,
         r.rating = obj["rating"].toInt();
         r.comment = obj["comment"].toString().toStdString();
         r.created_at = obj["created_at"].toString().toStdString();
-        callback(true, std::move(r), "");
+        if (callback) callback(true, std::move(r), "");
     }, true, AuthMode::Silent);
 }
 
@@ -1722,14 +1609,14 @@ void HttpGoCookApi::submitRecipe(const gocook::models::SubmitRecipeRequest& reci
 
     post("/api/recipes", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::SubmitRecipeResponse{}, errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::SubmitRecipeResponse{}, errorMsg.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
         gocook::models::SubmitRecipeResponse resp;
         resp.id = obj["id"].toInt();
         resp.status = obj["status"].toString().toStdString();
-        callback(true, resp, "");
+        if (callback) callback(true, resp, "");
     }, true, AuthMode::Interactive);
 }
 
@@ -1749,10 +1636,11 @@ void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
     if (!query.isEmpty())
         endpoint += "?" + query.toString(QUrl::FullyEncoded);
 
+    // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
     get(endpoint, [callback](bool success, const QString &errorMsg, const QJsonDocument &doc) {
         if (!success) {
-            callback(false, gocook::models::PagedMyRecipes{},
-                     errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::PagedMyRecipes{},
+                                   errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1779,7 +1667,7 @@ void HttpGoCookApi::getMySubmittedRecipes(int page, int size,
                 result.data.push_back(std::move(item));
             }
         }
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, false, AuthMode::Silent);
 }
 
@@ -1840,12 +1728,10 @@ void HttpGoCookApi::editRecipe(int recipeId,
     QString endpoint = QString("/api/recipes/%1").arg(recipeId);
     put(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (!success) {
-            if (callback)
-                callback(false, errorMsg.toStdString());
+            if (callback) callback(false, errorMsg.toStdString());
             return;
         }
-        if (callback)
-            callback(true, "");
+        if (callback) callback(true, "");
     }, true, AuthMode::Interactive);
 }
 
@@ -1877,7 +1763,7 @@ void HttpGoCookApi::rateRecipe(int recipeId,
     data["comment"] = QString::fromStdString(request.comment);
     post(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, errorMsg.toStdString());
-    }, false, AuthMode::Interactive);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::updateRating(int recipeId, int ratingId,
@@ -1890,7 +1776,7 @@ void HttpGoCookApi::updateRating(int recipeId, int ratingId,
     data["comment"] = QString::fromStdString(request.comment);
     put(endpoint, data, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, errorMsg.toStdString());
-    }, false, AuthMode::Interactive);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
@@ -1899,7 +1785,7 @@ void HttpGoCookApi::deleteRating(int recipeId, int ratingId,
     QString endpoint = QString("/api/recipes/%1/ratings/%2").arg(recipeId).arg(ratingId);
     deleteResource(endpoint, QVariantMap{}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
         if (callback) callback(success, errorMsg.toStdString());
-    }, false, AuthMode::Interactive);
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::getMyRatings(int page, int size,
@@ -1919,7 +1805,7 @@ void HttpGoCookApi::getMyRatings(int page, int size,
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             if (callback) callback(false, gocook::models::PagedUserRatings{},
-                                   errorMsg.isEmpty() ? "未知错误" : errorMsg.toStdString());
+                                   errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -1957,7 +1843,7 @@ void HttpGoCookApi::getRecipeNutrition(int recipeId,
     QString endpoint = QString("/api/recipes/%1/nutrition").arg(recipeId);
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::NutritionReport{}, errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::NutritionReport{}, errorMsg.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
@@ -2005,7 +1891,7 @@ void HttpGoCookApi::getRecipeNutrition(int recipeId,
             report.has_data = obj.contains("per_serving") && obj["per_serving"].isObject();
         }
 
-        callback(true, report, "");
+        if (callback) callback(true, report, "");
     }, true);
 }
 
@@ -2022,7 +1908,7 @@ void HttpGoCookApi::getInventory(int page, int size, const std::string& keyword,
 
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::PagedInventory{}, errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::PagedInventory{}, errorMsg.toStdString());
             return;
         }
         QJsonObject root = doc.object();
@@ -2048,7 +1934,7 @@ void HttpGoCookApi::getInventory(int page, int size, const std::string& keyword,
                 result.data.push_back(item);
             }
         }
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, true, AuthMode::Silent);
 }
 
@@ -2063,11 +1949,11 @@ void HttpGoCookApi::upsertInventory(const gocook::models::UpsertInventoryRequest
 
     post("/api/inventory", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, 0, errorMsg.toStdString());
+            if (callback) callback(false, 0, errorMsg.toStdString());
             return;
         }
         int id = doc.object()["id"].toInt();
-        callback(true, id, "");
+        if (callback) callback(true, id, "");
     }, true, AuthMode::Interactive);
 }
 
@@ -2084,7 +1970,11 @@ void HttpGoCookApi::updateInventoryItem(int itemId,
     // 编辑 = 按 id 整行替换（PUT），与“添加=POST 累加”语义分离（决策 2026-09-04）
     put(QString("/api/inventory/%1").arg(itemId), data,
         [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
-            callback(success, success ? "" : errorMsg.toStdString());
+            if (!success) {
+                if (callback) callback(false, errorMsg.toStdString());
+                return;
+            }
+            if (callback) callback(true, "");
         }, true, AuthMode::Interactive);
 }
 
@@ -2092,13 +1982,18 @@ void HttpGoCookApi::deleteInventoryItem(int itemId,
                                         SuccessCallback callback) {
     QString endpoint = QString("/api/inventory/%1").arg(itemId);
     deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
-        callback(success, success ? "" : errorMsg.toStdString());
+        if (!success) {
+            if (callback) callback(false, errorMsg.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
     }, true, AuthMode::Interactive);
 }
 
 // ======================= 购物清单 / 膳食计划 =======================
 void HttpGoCookApi::getShoppingLists(ShoppingListsCallback callback)
 {
+    // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
     get("/api/inventory/shopping-lists", [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             if (callback) callback(false, std::vector<gocook::models::ShoppingListSummary>{}, errorMsg.toStdString());
@@ -2127,6 +2022,7 @@ void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListR
     if (request.plan_id.has_value())
         data["plan_id"] = QString::fromStdString(request.plan_id.value());
 
+    // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
     post("/api/inventory/shopping-lists", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
             if (callback) callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
@@ -2159,9 +2055,10 @@ void HttpGoCookApi::getShoppingListDetail(int listId,
                                            ShoppingListCallback callback)
 {
     QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
+    // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
         if (!success) {
-            callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
+            if (callback) callback(false, gocook::models::ShoppingList{}, errorMsg.toStdString());
             return;
         }
         QJsonObject obj = doc.object();
@@ -2183,7 +2080,7 @@ void HttpGoCookApi::getShoppingListDetail(int listId,
                 result.items.push_back(std::move(item));
             }
         }
-        callback(true, result, "");
+        if (callback) callback(true, result, "");
     }, false, AuthMode::Silent);
 }
 
@@ -2191,8 +2088,13 @@ void HttpGoCookApi::deleteShoppingList(int listId,
                                         SuccessCallback callback)
 {
     QString endpoint = QString("/api/inventory/shopping-lists/%1").arg(listId);
+    // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
     deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
-        if (callback) callback(success, success ? "" : errorMsg.toStdString());
+        if (!success) {
+            if (callback) callback(false, errorMsg.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
     }, false, AuthMode::Interactive);
 }
 
@@ -2216,13 +2118,12 @@ void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
             [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-        // 401 全局 unauthorized 信号已由 sendRaw 统一发出
         if (statusCode == 401) {
             if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
-        if (statusCode == 200) {
+        if (statusCode >= 200 && statusCode < 300) {
             if (callback) callback(true, "");
         } else {
             if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
@@ -2257,13 +2158,12 @@ void HttpGoCookApi::batchAddShoppingItems(int listId,
             [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-        // 401 全局 unauthorized 信号已由 sendRaw 统一发出
         if (statusCode == 401) {
             if (callback) callback(false, gocook::models::BatchShoppingResponse{}, errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
-        if (statusCode == 201) {
+        if (statusCode >= 200 && statusCode < 300) {
             QJsonObject obj = doc.object();
             gocook::models::BatchShoppingResponse resp;
             resp.message = obj["message"].toString().toStdString();
@@ -2284,7 +2184,6 @@ void HttpGoCookApi::batchAddShoppingItems(int listId,
             }
             if (callback) callback(true, resp, "");
         } else {
-            // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
             if (callback) callback(false, gocook::models::BatchShoppingResponse{}, errorMessageFor(statusCode, doc).toStdString());
         }
     });
@@ -2307,17 +2206,15 @@ void HttpGoCookApi::exportShoppingList(int listId,
             [callback](int statusCode, const QByteArray &responseData) {
         QJsonDocument doc = QJsonDocument::fromJson(responseData);
 
-        // 401 全局 unauthorized 信号已由 sendRaw 统一发出
         if (statusCode == 401) {
             if (callback) callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             return;
         }
 
         if (callback) {
-            if (statusCode == 200) {
+            if (statusCode >= 200 && statusCode < 300) {
                 callback(true, QString::fromUtf8(responseData).toStdString(), "");
             } else {
-                // 统一三级文案：断网(statusCode=0)时不再把空 body 当错误信息抛给上层
                 callback(false, "", errorMessageFor(statusCode, doc).toStdString());
             }
         }
@@ -2325,6 +2222,8 @@ void HttpGoCookApi::exportShoppingList(int listId,
 }
 
 // ======================= 膳食计划 =======================
+// TODO(未实现)：服务端接口未就绪，本区方法固定按失败回调占位（error="功能暂未实现"）。
+// 启用时需同步：本区实现 + 客户端调用方；确认弃用则删除声明。
 void HttpGoCookApi::createMealPlan(const gocook::models::MealPlanRequest& planData,
                                    IntCallback callback) {
     Q_UNUSED(planData);
@@ -2402,6 +2301,8 @@ void HttpGoCookApi::getAnnouncements(int page, int size,
 }
 
 // ======================= 管理员功能 =======================
+// TODO(未实现)：本区方法除 resetTestNotifications 外均为占位（固定失败回调 error="功能暂未实现"）。
+// 启用时需同步：本区实现 + 客户端调用方；确认弃用则删除声明。
 void HttpGoCookApi::getUsers(int page, int size,
                              const nlohmann::json& filters,
                              PagedUsersCallback callback) {
@@ -2477,14 +2378,12 @@ void HttpGoCookApi::getStatistics(StatisticsCallback callback)
     if (callback) callback(false, gocook::models::StatisticsData{}, "功能暂未实现");
 }
 
+// 测试辅助（仅开发环境可用，见 IGoCookApi.h）。
 void HttpGoCookApi::resetTestNotifications(SuccessCallback callback)
 {
-    get("/api/test/reset-notifications", [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
+    get("/api/test/reset-notifications", [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
-            QString err = errorStr;
-            if (doc.isObject() && doc.object().contains("error"))
-                err = doc.object()["error"].toString();
-            if (callback) callback(false, err.toStdString());
+            if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");

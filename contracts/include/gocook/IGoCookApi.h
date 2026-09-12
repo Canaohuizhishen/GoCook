@@ -885,7 +885,7 @@ public:
 
     // ---------- 令牌管理 ----------
     /**
-     * @brief 设置认证令牌（由 AuthManager 调用）
+     * @brief 设置认证令牌（由 AuthViewModel 调用）
      */
     virtual void setAuthToken(const std::string& token) = 0;
 

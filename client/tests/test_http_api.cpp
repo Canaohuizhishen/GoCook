@@ -8,6 +8,11 @@
 //   T5  断网（连接拒绝，statusCode=0）→ 统一网络文案，不再抛空 body
 //   T6  真正的网络错误仍然重试（原请求 + maxRetries 次，TCP 层计数）
 //   T7  E2E（可选）：真实 GoCook 服务端（设置 GOCOOK_E2E_BASE 时启用）
+//   T8  deleteRecipe 游客守卫（Interactive）：未登录不发请求、emit authRequired、取消后按"请先登录"失败
+//   T9  评分三件套失败抑制全局 networkError（页内呈现）；对照组（suppress=false）必发一次
+//   T10 uploadStepImage：2xx 非 JSON 体判失败"无效的响应格式"；2xx 合法 JSON 成功回传 image_url
+//   T11 QML 门面回调 errMsg 为中文文案（非原始 JSON 体）；响应对象仍携带 error 字段
+//   T12 batchAddShoppingItems：200（非 201）按 2xx 收口判成功
 //
 // 桩服务器用 httplib（与 GoCook 服务端同款），测试不依赖真实服务端。
 
@@ -16,7 +21,9 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QJSEngine>
 #include <QJsonDocument>
+#include <QQmlEngine>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -61,6 +68,8 @@ public:
     std::atomic<int> avatarReqCount{0};
     std::atomic<int> favoriteReqCount{0};        // POST 收藏（Interactive 挂起/重放计数）
     std::atomic<int> favoritesListReqCount{0};   // GET 收藏列表（Silent 拦截计数）
+    std::atomic<int> deleteRecipeReqCount{0};    // DELETE 菜谱（T8 守卫拦截验证）
+    std::atomic<int> stepImageReqCount{0};       // POST 步骤图（T10 两段式响应计数）
 
     StubServer()
     {
@@ -102,6 +111,46 @@ public:
             favoritesListReqCount++;
             res.status = 200;
             res.set_content(R"({"pagination":{"page":1,"size":20,"total":0,"total_pages":0},"data":[]})", "application/json");
+        });
+
+        // T8 用：删除菜谱（游客守卫验证：拦截期间不得被发出）
+        svr.Delete("/api/recipes/42", [this](const httplib::Request&, httplib::Response& res) {
+            deleteRecipeReqCount++;
+            res.status = 200;
+            res.set_content(R"({"message":"deleted"})", "application/json");
+        });
+        // T9 用：评分三件套失败（500 + 中文业务文案，验证 suppress 不发全局提示）
+        svr.Post("/api/recipes/42/rate", [](const httplib::Request&, httplib::Response& res) {
+            res.status = 500;
+            res.set_content(R"({"error":"评分服务开小差"})", "application/json");
+        });
+        svr.Put("/api/recipes/42/ratings/7", [](const httplib::Request&, httplib::Response& res) {
+            res.status = 500;
+            res.set_content(R"({"error":"评分服务开小差"})", "application/json");
+        });
+        svr.Delete("/api/recipes/42/ratings/7", [](const httplib::Request&, httplib::Response& res) {
+            res.status = 500;
+            res.set_content(R"({"error":"评分服务开小差"})", "application/json");
+        });
+        // T9 对照组用：suppress=false 的购物清单列表（必须发全局 networkError）
+        svr.Get("/api/inventory/shopping-lists", [](const httplib::Request&, httplib::Response& res) {
+            res.status = 500;
+            res.set_content(R"({"error":"清单服务异常"})", "application/json");
+        });
+        // T10 用：步骤图上传两段式（第 1 次 2xx 非 JSON，第 2 次 2xx 合法 JSON）
+        svr.Post("/api/recipes/42/steps/0/image", [this](const httplib::Request&, httplib::Response& res) {
+            if (++stepImageReqCount == 1) {
+                res.status = 200;
+                res.set_content("plain-text-body", "text/plain");
+            } else {
+                res.status = 200;
+                res.set_content(R"({"image_url":"/uploads/steps/42_0.jpg"})", "application/json");
+            }
+        });
+        // T12 用：批量添加返回 200（非 201）——固化"成功判定收口 2xx"
+        svr.Post("/api/inventory/shopping-lists/42/items/batch", [](const httplib::Request&, httplib::Response& res) {
+            res.status = 200;
+            res.set_content(R"({"message":"已添加 1 项","items":[]})", "application/json");
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
@@ -817,4 +866,218 @@ TEST(HttpApiE2E, InventoryPutEdit)
     // --- 6. 清场 ---
     cleanup();
     ASSERT_TRUE(ok) << "收尾清场失败: " << err;
+}
+
+// ==================== T8：deleteRecipe 游客守卫（Interactive）——不发请求、取消失败 ====================
+TEST_F(HttpApiTest, DeleteRecipe_GuestGuard_SuspendedNoSend)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    std::atomic<bool> authRequiredCalled{false};
+    QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
+
+    std::atomic<bool> done{false};
+    bool ok = true;
+    std::string err;
+    api.deleteRecipe(42, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+
+    // 挂起期间：已 emit authRequired、未发请求、未回调
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_TRUE(authRequiredCalled.load()) << "未登录删除必须挂起并请求登录";
+    EXPECT_EQ(stub.deleteRecipeReqCount.load(), 0) << "守卫拦截期间不得发出 DELETE";
+    EXPECT_FALSE(done.load()) << "挂起期间回调不得触发";
+
+    // 登录页取消 → 按"请先登录"失败
+    api.cancelAuthQueue();
+    ASSERT_TRUE(waitUntil(done)) << "取消后回调超时";
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(err, "请先登录");
+    QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
+}
+
+// ==================== T9：评分三件套失败抑制全局 toast（suppress）；对照组必发 ====================
+TEST_F(HttpApiTest, RatingFailures_SuppressGlobalToast_Pin)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("valid-token"));
+
+    int networkErrorCount = 0;
+    QObject::connect(&api, &HttpGoCookApi::networkError, [&](const QString&) { networkErrorCount++; });
+
+    gocook::models::RateRecipeRequest req;
+    req.rating = 5;
+    req.comment = "好吃";
+
+    {   // 发评：失败文案为服务端精确文案，且不得发全局 networkError
+        std::atomic<bool> done{false};
+        bool ok = true;
+        std::string err;
+        api.rateRecipe(42, req, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "rateRecipe 回调超时";
+        EXPECT_FALSE(ok);
+        EXPECT_EQ(err, "评分服务开小差");
+    }
+    {   // 改评
+        std::atomic<bool> done{false};
+        bool ok = true;
+        std::string err;
+        api.updateRating(42, 7, req, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "updateRating 回调超时";
+        EXPECT_FALSE(ok);
+        EXPECT_EQ(err, "评分服务开小差");
+    }
+    {   // 删评
+        std::atomic<bool> done{false};
+        bool ok = true;
+        std::string err;
+        api.deleteRating(42, 7, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "deleteRating 回调超时";
+        EXPECT_FALSE(ok);
+        EXPECT_EQ(err, "评分服务开小差");
+    }
+    EXPECT_EQ(networkErrorCount, 0) << "评分三件套失败必须抑制全局 networkError（页内呈现，避免双弹）";
+
+    {   // 对照组：suppress=false 的购物清单列表失败必须恰好发 1 次全局提示
+        std::atomic<bool> done{false};
+        bool ok = true;
+        std::string err;
+        api.getShoppingLists([&](bool s, const std::vector<gocook::models::ShoppingListSummary>&, const std::string& e) {
+            ok = s;
+            err = e;
+            done = true;
+        });
+        ASSERT_TRUE(waitUntil(done)) << "getShoppingLists 回调超时";
+        EXPECT_FALSE(ok);
+        EXPECT_EQ(err, "清单服务异常");
+    }
+    EXPECT_EQ(networkErrorCount, 1) << "对照组（suppress=false）必须发全局提示（证明 suppress 是差异因子）";
+}
+
+// ==================== T10：uploadStepImage 2xx 解析——非 JSON 判失败，合法 JSON 成功回传 ====================
+TEST_F(HttpApiTest, UploadStepImage_2xxNonJson_RejectedThenJsonParsed)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("valid-token"));
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QFile img(dir.filePath("step.png"));
+    ASSERT_TRUE(img.open(QIODevice::WriteOnly));
+    img.write("fake-png-bytes");
+    img.close();
+
+    {   // 第 1 次：2xx + 非 JSON 体 → 必须判失败（本提交收口的行为）
+        std::atomic<bool> done{false};
+        bool ok = true;
+        std::string err;
+        api.uploadStepImage(42, 0, img.fileName().toStdString(),
+                            [&](bool s, const std::string&, const std::string& e) {
+                                ok = s;
+                                err = e;
+                                done = true;
+                            });
+        ASSERT_TRUE(waitUntil(done)) << "回调超时";
+        EXPECT_FALSE(ok);
+        EXPECT_EQ(err, "无效的响应格式");
+    }
+    {   // 第 2 次：2xx + 合法 JSON → 成功并回传 image_url
+        std::atomic<bool> done{false};
+        bool ok = false;
+        std::string url;
+        api.uploadStepImage(42, 0, img.fileName().toStdString(),
+                            [&](bool s, const std::string& u, const std::string&) {
+                                ok = s;
+                                url = u;
+                                done = true;
+                            });
+        ASSERT_TRUE(waitUntil(done)) << "回调超时";
+        EXPECT_TRUE(ok);
+        EXPECT_EQ(url, "/uploads/steps/42_0.jpg");
+    }
+    EXPECT_EQ(stub.stepImageReqCount.load(), 2) << "两次上传都必须真实到达服务端（带 token，非守卫拦截）";
+}
+
+// ==================== T11：QJS 门面回调第二参为中文文案（非原始 JSON 体） ====================
+TEST_F(HttpApiTest, QmlFacade_ErrMsgChinese_NotRawJson)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    // 防双删：QJSEngine::newQObject 默认把包装对象交给 JS 托管（JavaScriptOwnership），
+    // 引擎析构时会 delete 被包装的 QObject；而 api 是 fixture 成员（C++ 托管），必须显式声明 CppOwnership
+    QQmlEngine::setObjectOwnership(&api, QQmlEngine::CppOwnership);
+
+    QJSEngine engine;
+    engine.globalObject().setProperty(QStringLiteral("__api"), engine.newQObject(&api));
+
+    // 走 QML 同款路径：JS 侧调用门面 get，验证回调参数
+    // （失败时第 2 参应为中文文案；响应对象仍携带服务端 error 字段）
+    QJSValue scriptResult = engine.evaluate(QStringLiteral(R"(
+        __done = false;
+        __ok = null;
+        __err = "";
+        __respErr = "";
+        __api.get('/api/me', function(s, err, resp) {
+            __ok = s;
+            __err = err;
+            __respErr = (resp && resp.error) ? resp.error : "";
+            __done = true;
+        });
+    )"));
+    ASSERT_FALSE(scriptResult.isError()) << scriptResult.toString().toStdString();
+
+    // 轮询 JS 侧 __done（事件循环驱动网络回调）
+    QElapsedTimer timer;
+    timer.start();
+    while (!engine.globalObject().property(QStringLiteral("__done")).toBool()
+           && timer.elapsed() < 5000) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+
+    ASSERT_TRUE(engine.globalObject().property(QStringLiteral("__done")).toBool()) << "JS 回调超时";
+    EXPECT_FALSE(engine.globalObject().property(QStringLiteral("__ok")).toBool());
+    EXPECT_EQ(engine.globalObject().property(QStringLiteral("__err")).toString().toStdString(),
+              "无效的访问令牌")
+        << "失败回调第二参必须是中文文案（回归前此处是原始 JSON 字符串）";
+    EXPECT_EQ(engine.globalObject().property(QStringLiteral("__respErr")).toString().toStdString(),
+              "无效的访问令牌")
+        << "响应对象仍应携带服务端 error 字段";
+}
+
+// ==================== T12：batchAddShoppingItems 成功判定收口 2xx（200 而非 201 也判成功） ====================
+TEST_F(HttpApiTest, BatchAddShoppingItems_200Accepted)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("valid-token"));
+
+    gocook::models::BatchShoppingItem item;
+    item.ingredient_name = "牛肉";
+    item.quantity = 1.0;
+    item.unit = "斤";
+
+    std::atomic<bool> done{false};
+    bool ok = false;
+    std::string message;
+    api.batchAddShoppingItems(42, {item},
+        [&](bool s, const gocook::models::BatchShoppingResponse& resp, const std::string&) {
+            ok = s;
+            message = resp.message;
+            done = true;
+        });
+
+    ASSERT_TRUE(waitUntil(done)) << "回调超时";
+    EXPECT_TRUE(ok) << "200（非 201）必须按 2xx 收口判成功";
+    EXPECT_EQ(message, "已添加 1 项");
 }
