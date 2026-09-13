@@ -25,3 +25,18 @@ endif()
 
 add_subdirectory(server)
 add_subdirectory(client)
+
+# ============================================================
+# API 文档（Doxygen）：cmake --build build --target docs
+# 范围与纪律见 Doxyfile（只收录公共接口层；EXTRACT_ALL=NO + WARN_IF_UNDOCUMENTED=YES）
+# ============================================================
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating API docs (Doxygen) -> docs/doxygen/html/index.html"
+        VERBATIM)
+else()
+    message(STATUS "未找到 Doxygen：docs 目标已禁用（安装 doxygen 后重新 configure 启用）")
+endif()

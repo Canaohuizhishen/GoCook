@@ -1,0 +1,56 @@
+# GoCook API 文档配置（范围：公共接口层 = contracts 共享契约 + 客户端接口头）
+#
+# 用法：在仓库根目录执行 `doxygen Doxyfile`（或 cmake --build build --target docs）
+# 输出：docs/doxygen/html（已在 .gitignore 排除，不进入提交）
+# 范围纪律：只收录"公共接口层"；.cpp 实现 / QML / tests / third_party 不入 INPUT。
+
+PROJECT_NAME           = "GoCook"
+PROJECT_BRIEF          = "公共接口层 API 参考（contracts 契约 + 客户端接口头）"
+OUTPUT_DIRECTORY       = docs/doxygen
+
+INPUT                  = contracts/include/gocook \
+                         client/viewmodels \
+                         client/api \
+                         client/database \
+                         client/adapters
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h
+INPUT_ENCODING         = UTF-8
+
+EXTRACT_ALL            = NO
+WARN_IF_UNDOCUMENTED   = YES
+# 未文档化成员不进生成页面（页面只呈现"已写文档的 API"，与 EXTRACT_ALL=NO 同哲学）。
+# 客户端接口头的 NOTIFY 伴侣信号 / 平凡 getter 按约定不逐条注释（见各文件块首说明），
+# 这类成员会被隐藏；contracts 契约层要求逐成员文档，保持零 warning。
+HIDE_UNDOC_MEMBERS     = YES
+# 警告清单落盘（docs/doxygen/ 已 gitignore），便于审计
+WARN_LOGFILE           = docs/doxygen/warnings.txt
+# 零 warning 从"纪律"升级为"门禁"：生成结束若存在 warning 则返回非零退出码（CI/本地
+# 均可把它当硬门槛）；PRINT 变体保证警告在运行末尾同时可见，warnings.txt 仍落盘。
+WARN_AS_ERROR          = FAIL_ON_WARNINGS_PRINT
+QUIET                  = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+OUTPUT_LANGUAGE        = Chinese
+
+# ============================================================
+# 界面：doxygen-awesome-css 主题（Sidebar-Only 布局）
+# 主题文件 vendored 于 docs/doxygen-awesome-css/（版本与更新方法见其 README；
+# 不放入 third_party/——会被 run.sh 的服务端镜像重建检测误判为服务端源码更新）。
+# 主题要求（doxygen >= 1.9.5）：HTML_COLORSTYLE = LIGHT；
+# Sidebar-Only 布局要求 GENERATE_TREEVIEW = YES 且 FULL_SIDEBAR = NO。
+# 以下键显式钉住，防止 doxygen 各版本默认值漂移导致观感突变。
+# ============================================================
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = NO
+DISABLE_INDEX          = NO
+HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome-css/doxygen-awesome.css \
+                         docs/doxygen-awesome-css/doxygen-awesome-sidebar-only.css
+HTML_COLORSTYLE        = LIGHT
+
+# ============================================================
+# 类图：Graphviz dot（依赖系统安装 graphviz；Arch/Manjaro：pacman -S graphviz）
+# ============================================================
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg

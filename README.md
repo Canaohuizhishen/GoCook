@@ -30,14 +30,14 @@ docker compose version    # 需要 Compose v2
 > 🚀 **懒人模式**：`./run.sh` 一条命令搞定全部——起服务端（自动建表种子）→ 等就绪 → 构建客户端 → 拉起客户端。下面 2~4 步是它的手动版，方便你理解每一步在干嘛。
 
 ```bash
-cd /root/project/mainProject/GoCook/GoCook
+cd <仓库根目录>
 ./run.sh
 ```
 
 ### 手动版（等价于 run.sh 的分解步骤）
 
 ```bash
-cd /root/project/mainProject/GoCook/GoCook
+cd <仓库根目录>
 docker compose up -d
 ```
 
@@ -84,7 +84,7 @@ curl -X POST http://127.0.0.1:8080/api/login \
 - **方式 B（命令行）**：
 
 ```bash
-cd /root/project/mainProject/GoCook/GoCook
+cd <仓库根目录>
 cmake -B build -G Ninja -S .          # 顶层构建（server + client）
 cmake --build build --target appclient
 ./build/client/appclient
@@ -215,7 +215,7 @@ docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_test
 
 ## 三、脚本使用说明书
 
-项目一共 5 个脚本 + 1 个废弃备份，速查表：
+项目一共 6 个脚本 + 1 个废弃备份，速查表：
 
 | 脚本 | 一句话用途 | 什么时候用 |
 |---|---|---|
@@ -224,6 +224,7 @@ docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_test
 | `./server/start_server.sh` | 启动本地服务端（宿主机进程） | 本地调试服务端代码 |
 | `./server/run_tests.sh` | 编译并运行 90+ 单元测试 | 每次改服务端代码后回归 |
 | `./client/start_appclient.sh` | 启动客户端（修 Qt 插件路径） | 客户端已构建好，想直接跑 |
+| `./gen_docs.sh` | 一键生成 API 文档（Doxygen） | 改完契约/接口头注释后刷新文档 |
 
 ---
 
@@ -234,7 +235,7 @@ docker exec -i gocook-postgres psql -U gocook -d gocookdb < server/sql/seed_test
 **用法**：
 
 ```bash
-cd /root/project/mainProject/GoCook/GoCook
+cd <仓库根目录>
 ./run.sh
 ```
 
@@ -261,7 +262,7 @@ cd /root/project/mainProject/GoCook/GoCook
 **用法**：
 
 ```bash
-cd /root/project/mainProject/GoCook/GoCook
+cd <仓库根目录>
 ./server/setup.sh
 ```
 
@@ -325,6 +326,25 @@ docker compose up -d
 
 ---
 
+### 6. `./gen_docs.sh` — 生成 API 文档（Doxygen）
+
+**用途**：一键重新生成公共接口层（contracts 契约 + 客户端接口头）的 API 参考，输出到 `docs/doxygen/html/`（已 gitignore，不入库）。
+
+**用法**：
+
+```bash
+cd <仓库根目录>
+./gen_docs.sh
+```
+
+**注意事项**：
+
+- 零 warning 门禁：出现任何 warning 时生成以非零退出，清单在 `docs/doxygen/warnings.txt`
+- 需要 doxygen（推荐官方静态二进制，见「API 文档生成」一节）；类图需要系统安装 graphviz
+- 与 `cmake --build build --target docs` 等价（同一份 Doxyfile）
+
+---
+
 ## 四、开发相关（选读）
 
 ### 服务端单独构建 + 测试
@@ -351,6 +371,22 @@ docker compose up -d
 ```bash
 docker exec -it gocook-postgres psql -U gocook -d gocookdb
 ```
+
+### API 文档生成（Doxygen）
+
+公共接口层（`contracts/` 共享契约 + 客户端接口头 viewmodels / api / database / adapters）的 API 参考：
+
+```bash
+cd <仓库根目录>
+./gen_docs.sh                          # ⭐ 一键生成（等价于 doxygen Doxyfile）
+cmake --build build --target docs      # 等价命令（走 CMake 目标）
+```
+
+- 输出：`docs/doxygen/html/index.html`（已 gitignore，不入库）
+- 范围纪律见 `Doxyfile`：只收录公共接口层，`EXTRACT_ALL=NO` + `WARN_IF_UNDOCUMENTED=YES`（只对公共层追零 warning；`.cpp` 实现 / QML / tests / third_party 不在范围内）
+- 警告即失败（门禁）：`WARN_AS_ERROR = FAIL_ON_WARNINGS_PRINT`——生成结束若有 warning 则返回非零退出码（警告同时写 `warnings.txt` 并在运行末尾可见），CI/本地均可把"零 warning"当硬门槛
+- 界面：doxygen-awesome-css 主题（vendored 于 `docs/doxygen-awesome-css/`，Sidebar-Only 布局）+ 类图（Graphviz dot，系统需安装 `graphviz`）
+- 缺 doxygen：推荐**官方静态二进制**（本仓库生成用 1.18.0 静态版验证）；`pacman -S doxygen`（Arch/Manjaro）仅作备选——系统包版本可能与系统库错配而无法启动
 
 ---
 
