@@ -50,6 +50,10 @@ int main(int argc, char *argv[])
     NotificationViewModel notifyVM(httpApi, &app);
     ShoppingListViewModel shoppingListVM(httpApi, &app);
 
+    // 网络恢复 → 库存自动同步（联网即同步；仅数据可能过期时重拉，见 VM）
+    QObject::connect(httpApi, &HttpGoCookApi::networkRestored,
+                     &inventoryVM, &InventoryViewModel::onNetworkRestored);
+
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
     engine.rootContext()->setContextProperty("httpApi", httpApi);

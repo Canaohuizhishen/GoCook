@@ -3,16 +3,19 @@
 #include <gocook/IGoCookApi.h>
 #include "../api/HttpGoCookApi.h"
 
-AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent)
+AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent, LocalDatabase *db)
     : QObject(parent)
     , m_api(api)
-    , m_db(LocalDatabase::instance())
+    , m_db(db ? db : LocalDatabase::instance())
     , m_loggedIn(false)
     , m_userId(0)
 {
+    // 401 统一入口：已登录 → 会话失效自动登出；未登录且在自动登录校验窗口内 →
+    // 标记“令牌被服务端明确拒绝”（sendRaw 先触发本回调再回调业务结果，标志在回调时可见）
     m_api->setUnauthorizedHandler([self = QPointer<AuthViewModel>(this)]() {
         if (!self) return;
-        if (self->m_loggedIn) { self->logout(); }
+        if (self->m_loggedIn) { self->logout(); return; }
+        if (self->m_autoLoginInFlight) self->m_autoLoginUnauthorized = true;
     });
 }
 
@@ -96,8 +99,14 @@ void AuthViewModel::checkAutoLogin()
     if (!user.isEmpty()) {
         QString token = user["token"].toString();
         m_api->setAuthToken(token.toStdString());
-        m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
+        // 校验窗口开启：窗口内的 401 由 unauthorizedHandler 标记（见构造函数）
+        m_autoLoginInFlight = true;
+        m_autoLoginUnauthorized = false;
+        m_api->getCurrentUser([self = QPointer<AuthViewModel>(this), token](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
             if (!self) return;
+            const bool unauthorized = self->m_autoLoginUnauthorized;
+            self->m_autoLoginInFlight = false;
+            self->m_autoLoginUnauthorized = false;
             if (success) {
                 QVariantMap u = self->m_db->getUser();
                 self->setLoggedIn(true, u["id"].toInt(), u["username"].toString());
@@ -107,11 +116,24 @@ void AuthViewModel::checkAutoLogin()
                 self->m_profilePhone = QString::fromStdString(profile.phone);
                 self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
                 emit self->profileChanged();
-            } else {
+            } else if (unauthorized) {
+                // 服务端明确拒绝令牌（401 = 会话确已失效）：清理凭证与快照，保持登出
                 self->m_db->clearUser();
                 self->m_api->setAuthToken("");
                 if (self->m_loggedIn) {
                     self->setLoggedIn(false, 0, "");
+                }
+            } else {
+                // 瞬时/环境故障（断网、503、5xx）：不代表凭证失效——保留 token 与本地库（含快照）。
+                // 本地行与 token 俱在 → 乐观登录进入主界面（断网启动仍可读快照）；
+                // 令牌真已失效时，联网后的首个 401 会经 unauthorizedHandler 自动登出
+                const QVariantMap u = self->m_db->getUser();
+                if (!u.isEmpty() && !token.isEmpty()) {
+                    self->setLoggedIn(true, u["id"].toInt(), u["username"].toString());
+                } else {
+                    // 本地行缺失/令牌为空 = 已损坏数据：清理为游客态
+                    self->m_db->clearUser();
+                    self->m_api->setAuthToken("");
                 }
             }
             self->m_initialLoading = false;

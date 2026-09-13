@@ -5,12 +5,21 @@
 //   V2  会话切换（登出/换号）后到达的过期响应：不填充旧账号数据、加载标记不卡死
 //   V3  clearAll：清空数据与加载状态（Main.qml 登出分支调用）
 //   V4  未登录守卫拦截（Silent "请先登录"）：不发请求、items 保持空、isLoading 复位
+//
+// 离线策略（在线优先 + 联网即同步）用例：
+//   断网无快照→loadFailed；断网有快照→静默兜底；成功→快照落库；
+//   onNetworkRestored 重拉（健康数据不打扰）；退避重试自动恢复；clearAll 停表复位；
+//   服务器繁忙 503→退避自动恢复；过滤态快照兜底按词过滤/重派生；
+//   恢复边沿在自身在途响应到达时不重复拉取；main.cpp 接线由旁路请求触发自动重拉；
+//   删除成功→快照行同步移除/删除失败回滚快照不变；非瞬时失败有数据→页内提示；
+//   瞬时失败有数据→静默保留；重试 tick 在途守卫
 
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QJsonDocument>
+#include <QSqlDatabase>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -27,6 +36,7 @@
 
 #include "HttpGoCookApi.h"
 #include "InventoryViewModel.h"
+#include "LocalDatabase.h"
 #include <httplib/httplib.h>
 
 namespace {
@@ -70,6 +80,10 @@ public:
     std::atomic<int> delayMs{0};
     std::atomic<int> totalPages{1};
     std::atomic<int> respondedCount{0}; // 已写响应的请求数（sleep 之后递增：慢响应“服务端已完成”标记）
+    std::atomic<int> busy503Times{0};   // >0 时接下来的请求返回 503 并递减（服务器瞬时繁忙模拟）
+    std::atomic<int> fail500Times{0};   // >0 时接下来的 GET 返回 500 并递减（非瞬时失败：页内提示用例）
+    std::atomic<int> deleteReqCount{0}; // DELETE 请求计数
+    std::atomic<int> deleteFailTimes{0}; // >0 时接下来的 DELETE 返回 500 并递减（删除失败回滚用例）
 
     // 最近一次请求携带的 keyword（库存页过滤框断言用）
     std::string lastKeyword() const
@@ -89,6 +103,22 @@ public:
     {
         svr.Get("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
             inventoryReqCount++;
+            // 服务器瞬时繁忙模拟（503）：按次数返回，之后恢复正常（“503 自动退避恢复”用例）
+            if (busy503Times.load() > 0) {
+                busy503Times--;
+                res.status = 503;
+                res.set_content(R"({"error":"系统繁忙，请稍后重试"})", "application/json");
+                respondedCount++;
+                return;
+            }
+            // 非瞬时服务器错误模拟（500）：按次数返回，之后恢复正常（“有数据非瞬时失败页内提示”用例）
+            if (fail500Times.load() > 0) {
+                fail500Times--;
+                res.status = 500;
+                res.set_content(R"({"error":"服务器内部错误，请稍后重试"})", "application/json");
+                respondedCount++;
+                return;
+            }
             const int page = req.has_param("page") ? std::atoi(req.get_param_value("page").c_str()) : 1;
             {
                 std::lock_guard<std::mutex> lock(mu);
@@ -120,6 +150,19 @@ public:
                     "application/json");
             }
             respondedCount++;
+        });
+
+        // 删除库存：默认 200；deleteFailTimes>0 时按次数返回 500（删除失败回滚用例）
+        svr.Delete("/api/inventory/:id", [this](const httplib::Request&, httplib::Response& res) {
+            deleteReqCount++;
+            if (deleteFailTimes.load() > 0) {
+                deleteFailTimes--;
+                res.status = 500;
+                res.set_content(R"({"error":"服务器内部错误，请稍后重试"})", "application/json");
+                return;
+            }
+            res.status = 200;
+            res.set_content(R"({"message":"已删除"})", "application/json");
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
@@ -161,10 +204,28 @@ protected:
     {
         api.setMaxRetries(0);
         api.setToken(QString()); // 每个用例从未登录开始（避免 token 污染）
+        // 独立内存库注入 VM（不触生产数据路径）；预置用户行使快照写路径可用
+        connName = QStringLiteral("gocook_invtest_%1").arg(s_counter++);
+        testDb = LocalDatabase::createForTesting(QStringLiteral(":memory:"), connName);
+        ASSERT_TRUE(testDb != nullptr);
+        ASSERT_TRUE(testDb->isOpen());
+        ASSERT_TRUE(testDb->saveUser(1, QStringLiteral("tester"), QStringLiteral("token-A")));
+    }
+
+    void TearDown() override
+    {
+        delete testDb;
+        testDb = nullptr;
+        QSqlDatabase::removeDatabase(connName);
     }
 
     HttpGoCookApi api;
+    LocalDatabase *testDb = nullptr;
+    QString connName;
+    static int s_counter;
 };
+
+int InventoryVmTest::s_counter = 0;
 
 // ==================== V1：正常加载 ====================
 TEST_F(InventoryVmTest, 正常加载填充数据)
@@ -173,7 +234,7 @@ TEST_F(InventoryVmTest, 正常加载填充数据)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<bool> itemsChangedFlag{false};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
 
@@ -194,7 +255,7 @@ TEST_F(InventoryVmTest, 会话切换后过期响应被丢弃)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<bool> itemsChangedFlag{false};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
 
@@ -221,7 +282,7 @@ TEST_F(InventoryVmTest, clearAll清空数据与状态)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<bool> itemsChangedFlag{false};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
 
@@ -243,7 +304,7 @@ TEST_F(InventoryVmTest, 未登录守卫拦截不发请求)
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl())); // 无 token
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<bool> errorFlag{false};
     QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&]() { errorFlag = true; });
 
@@ -263,7 +324,7 @@ TEST_F(InventoryVmTest, 设置过滤词请求携带keyword并回填)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<bool> itemsChangedFlag{false};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
 
@@ -284,7 +345,7 @@ TEST_F(InventoryVmTest, 清空过滤词后请求不再携带keyword)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<int> changeCount{0};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { changeCount++; });
 
@@ -311,7 +372,7 @@ TEST_F(InventoryVmTest, QML可通过方法调用设置过滤词)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<bool> itemsChangedFlag{false};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
 
@@ -345,7 +406,7 @@ TEST_F(InventoryVmTest, 在途期间过滤词变化丢弃过期响应并立即�
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<int> changeCount{0};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { changeCount++; });
 
@@ -389,7 +450,7 @@ TEST_F(InventoryVmTest, 过滤态翻页自动携带keyword)
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
-    InventoryViewModel vm(&api);
+    InventoryViewModel vm(&api, nullptr, testDb);
     std::atomic<int> changeCount{0};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { changeCount++; });
 
@@ -411,4 +472,419 @@ TEST_F(InventoryVmTest, 过滤态翻页自动携带keyword)
 
     QObject::disconnect(&vm, &InventoryViewModel::itemsChanged, nullptr, nullptr);
 }
+// ==================== V10+：离线策略（快照兜底 / 联网即同步 / 退避重试） ====================
+
+TEST_F(InventoryVmTest, 断网无快照置loadFailed且不发页内提示)
+{
+    // 指向无监听端口：连接拒绝 → 网络层错误
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> errorFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&]() { errorFlag = true; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "失败回调超时";
+    EXPECT_TRUE(vm.loadFailed()) << "无快照可兜 → 置 loadFailed（离线视图呈现）";
+    EXPECT_EQ(vm.loadFailedMessage(), HttpGoCookApi::kNetworkErrorMessage)
+        << "离线视图文案必须按失败类型透传（网络层错误）";
+    EXPECT_TRUE(vm.items().isEmpty());
+    EXPECT_FALSE(errorFlag.load()) << "首页失败不走 errorOccurred（一个失败一个反馈，呈现交给离线视图）";
+    EXPECT_FALSE(testDb->hasInventoryCache()) << "失败不得凭空生成快照";
+
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+TEST_F(InventoryVmTest, 断网有快照静默兜底不发提示)
+{
+    // 预置快照（模拟上次在线成功同步）
+    QVariantList snapshot;
+    snapshot << QVariantMap{{"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0},
+                            {"unit", "个"}, {"addedAt", "2026-05-01T00:00:00Z"}};
+    snapshot << QVariantMap{{"id", 8}, {"ingredientName", "盐"}, {"quantity", 5.0},
+                            {"unit", "克"}, {"addedAt", "2026-05-02T00:00:00Z"}};
+    ASSERT_TRUE(testDb->saveInventoryCache(snapshot));
+    ASSERT_TRUE(testDb->hasInventoryCache());
+
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> errorFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&]() { errorFlag = true; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 2; })) << "快照兜底未落地";
+    EXPECT_FALSE(vm.loadFailed()) << "有快照不得进入离线态";
+    EXPECT_FALSE(errorFlag.load()) << "快照兜底必须静默（零提示，与联网状态无异）";
+    EXPECT_EQ(vm.items()[0].toMap()["ingredientName"].toString(), "番茄");
+    EXPECT_EQ(vm.items()[1].toMap()["ingredientName"].toString(), "盐");
+    EXPECT_FALSE(vm.isLoading());
+
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+TEST_F(InventoryVmTest, 成功加载刷新本地快照)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> itemsChangedFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil(itemsChangedFlag)) << "加载超时";
+
+    EXPECT_TRUE(testDb->hasInventoryCache()) << "成功加载必须落快照（在线优先）";
+    const QVariantList cached = testDb->getInventoryCache();
+    ASSERT_EQ(cached.size(), 1);
+    EXPECT_EQ(cached[0].toMap()["ingredientName"].toString(), "番茄");
+    EXPECT_EQ(cached[0].toMap()["unit"].toString(), "个");
+
+    QObject::disconnect(&vm, &InventoryViewModel::itemsChanged, nullptr, nullptr);
+}
+
+TEST_F(InventoryVmTest, 网络恢复自动重拉)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+
+    // 恢复联网（切回桩服务）→ 网络恢复触发自动重拉
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    vm.onNetworkRestored();
+
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; })) << "自动重拉未落地";
+    EXPECT_EQ(vm.items()[0].toMap()["ingredientName"].toString(), "番茄");
+    EXPECT_FALSE(vm.loadFailed()) << "重拉成功后必须退出离线态";
+    EXPECT_TRUE(vm.loadFailedMessage().isEmpty()) << "退出离线态应清空文案";
+    EXPECT_FALSE(vm.isLoading());
+}
+
+TEST_F(InventoryVmTest, 网络恢复时健康数据不重拉)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading() && vm.items().size() == 1; })) << "加载超时";
+    const int reqCount = stub.inventoryReqCount.load();
+
+    vm.onNetworkRestored(); // 数据健康（加载成功、有数据）→ 不打扰，避免列表无谓跳动
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_EQ(stub.inventoryReqCount.load(), reqCount) << "健康数据不得触发重拉";
+}
+
+TEST_F(InventoryVmTest, 退避重试自动恢复)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.setRetryDelaysMs({50, 50, 50}); // 注入短退避，测试用
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+
+    // 恢复联网：不再手动触发，等退避定时器自动重拉
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; }, 3000)) << "退避重试未自动恢复";
+    EXPECT_FALSE(vm.loadFailed()) << "重试成功后必须退出离线态";
+}
+
+TEST_F(InventoryVmTest, clearAll复位失败态并停重试)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.setRetryDelaysMs({30, 30});
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+
+    vm.clearAll();
+    EXPECT_FALSE(vm.loadFailed());
+    EXPECT_TRUE(vm.loadFailedMessage().isEmpty()) << "clearAll 应清理离线态文案";
+    EXPECT_TRUE(vm.items().isEmpty());
+
+    // 若重试未被停表，下一档（30ms）会打到桩服务；桩服务一个请求都不应收到
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_EQ(stub.inventoryReqCount.load(), 0) << "clearAll 必须停掉退避重试";
+}
+
+TEST_F(InventoryVmTest, 服务器繁忙503自动退避恢复)
+{
+    InventoryStubServer stub;
+    stub.busy503Times = 1; // 首个请求 503（连接池饱和语义），之后恢复
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.setRetryDelaysMs({50, 50, 50});
+    std::atomic<bool> errorFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&]() { errorFlag = true; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; }, 3000)) << "503 后未自动重试恢复";
+    EXPECT_FALSE(vm.loadFailed()) << "重试成功后必须退出离线态";
+    EXPECT_FALSE(errorFlag.load()) << "503（瞬时故障）不走页内提示";
+    EXPECT_EQ(stub.inventoryReqCount.load(), 2) << "首个 503 + 重试成功恰好两次请求";
+
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+TEST_F(InventoryVmTest, 过滤态快照兜底按词过滤且可重派生)
+{
+    // 预置快照（两条：番茄、盐）——断网时唯一数据源
+    QVariantList snapshot;
+    snapshot << QVariantMap{{"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0}, {"unit", "个"}};
+    snapshot << QVariantMap{{"id", 8}, {"ingredientName", "盐"}, {"quantity", 5.0}, {"unit", "克"}};
+    ASSERT_TRUE(testDb->saveInventoryCache(snapshot));
+
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 断网：只有快照可用
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> errorFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&]() { errorFlag = true; });
+
+    // 1) 首页 + 过滤词“番茄”失败 → 快照按词过滤（只显示番茄，与过滤框一致）
+    vm.setFilterText(QStringLiteral("番茄"));
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; })) << "过滤态快照兜底未落地";
+    EXPECT_EQ(vm.items()[0].toMap()["ingredientName"].toString(), QStringLiteral("番茄"));
+    EXPECT_FALSE(vm.loadFailed());
+
+    // 2) 换过滤词“盐”再失败 → 从全量快照重派生（不回滚旧词子集、也不在子集上二次过滤）
+    vm.setFilterText(QStringLiteral("盐"));
+    ASSERT_TRUE(waitUntil([&]() {
+        return vm.items().size() == 1
+            && vm.items()[0].toMap()["ingredientName"].toString() == QStringLiteral("盐");
+    })) << "换词后未从快照重派生";
+    EXPECT_FALSE(vm.loadFailed());
+
+    // 3) 清空过滤词再失败 → 恢复全量快照
+    vm.setFilterText(QString());
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 2; })) << "清词后未恢复全量";
+    EXPECT_FALSE(vm.loadFailed());
+    EXPECT_FALSE(errorFlag.load()) << "快照兜底必须静默（零提示）";
+
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+TEST_F(InventoryVmTest, 恢复边沿在自身在途响应到达时不重复拉取)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    // 与 main.cpp 相同接线：网络恢复信号直达 VM
+    QObject::connect(&api, &HttpGoCookApi::networkRestored, &vm, &InventoryViewModel::onNetworkRestored);
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+
+    // 恢复联网后由 VM 自身重拉：该成功响应到达时先触发恢复边沿（emit 在回调链前），
+    // 此刻 m_isLoading 仍为 true → 守卫拦截，不得二次拉取、原响应不得被 epoch 顶掉
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; })) << "重拉未落地";
+    EXPECT_FALSE(vm.loadFailed());
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_EQ(stub.inventoryReqCount.load(), 1) << "在途守卫失效：重复拉取或响应被顶掉";
+    EXPECT_FALSE(vm.isLoading());
+}
+
+TEST_F(InventoryVmTest, 接线契约_网络恢复由旁路请求触发自动重拉)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先失联
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    // 与 main.cpp 相同接线：网络恢复信号直达 VM 槽
+    QObject::connect(&api, &HttpGoCookApi::networkRestored, &vm, &InventoryViewModel::onNetworkRestored);
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+    EXPECT_TRUE(vm.items().isEmpty());
+
+    // 恢复联网：由一个旁路请求（非 VM 发起）的首个成功响应触发恢复边沿
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    std::atomic<bool> sideDone{false};
+    api.getInventory(1, 50, "", [&](bool, const gocook::models::PagedInventory&, const std::string&) {
+        sideDone = true;
+    });
+    ASSERT_TRUE(waitUntil(sideDone)) << "旁路请求超时";
+
+    // 无需手调 onNetworkRestored：接线应已驱动 VM 自动重拉
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; })) << "接线未触发自动重拉";
+    EXPECT_FALSE(vm.loadFailed());
+    EXPECT_EQ(stub.inventoryReqCount.load(), 2) << "旁路 1 次 + VM 自动重拉 1 次";
+}
+
+// ==================== 删除成功：快照行同步移除（防离线兜底复活已删项） ====================
+TEST_F(InventoryVmTest, 删除成功同步移除快照行防离线复活)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> itemsChangedFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil(itemsChangedFlag)) << "加载超时";
+    ASSERT_TRUE(testDb->hasInventoryCache());
+    ASSERT_EQ(testDb->getInventoryCache().size(), 1);
+
+    itemsChangedFlag = false;
+    vm.deleteItem(7); // 乐观移除 → API 删除 → 成功回调同步快照行
+    ASSERT_TRUE(waitUntil([&]() { return stub.deleteReqCount.load() >= 1; })) << "删除请求未发出";
+    ASSERT_TRUE(waitUntil([&]() { return testDb->getInventoryCache().isEmpty(); }))
+        << "删除成功后快照必须同步移除该行（防断网兜底复活已删项）";
+    EXPECT_TRUE(testDb->hasInventoryCache()) << "meta 保留：空快照（真实空库存）≠ 从未同步";
+    EXPECT_TRUE(vm.items().isEmpty());
+
+    QObject::disconnect(&vm, &InventoryViewModel::itemsChanged, nullptr, nullptr);
+}
+
+// ==================== 删除失败：列表回滚 + 快照不被误改 ====================
+TEST_F(InventoryVmTest, 删除失败快照保持不变且列表回滚)
+{
+    InventoryStubServer stub;
+    stub.deleteFailTimes = 1; // 首次删除 500（非瞬时，仅回滚不重试）
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> errorFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&]() { errorFlag = true; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return testDb->hasInventoryCache(); })) << "加载超时";
+    ASSERT_EQ(vm.items().size(), 1);
+
+    vm.deleteItem(7);
+    ASSERT_TRUE(waitUntil(errorFlag)) << "删除失败回调超时";
+
+    // 回滚：列表恢复；快照未动（失败不得误删快照行）
+    EXPECT_EQ(vm.items().size(), 1);
+    EXPECT_EQ(vm.items()[0].toMap()["id"].toInt(), 7);
+    ASSERT_TRUE(testDb->hasInventoryCache());
+    const QVariantList kept = testDb->getInventoryCache();
+    ASSERT_EQ(kept.size(), 1);
+    EXPECT_EQ(kept[0].toMap()["ingredientName"].toString(), QStringLiteral("番茄"));
+
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+// ==================== 非瞬时首页失败（有数据）：页内提示且数据保留 ====================
+TEST_F(InventoryVmTest, 非瞬时首页失败有数据时页内提示且数据保留)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<bool> itemsChangedFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
+    std::atomic<int> errorCount{0};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&](const QString&) { errorCount++; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil(itemsChangedFlag)) << "首次加载超时";
+    ASSERT_EQ(vm.items().size(), 1);
+
+    // 下一次首页加载失败（500 非瞬时、非快照）：数据保留 + 恰一次页内提示
+    stub.fail500Times = 1;
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "失败回调超时";
+    ASSERT_TRUE(waitUntil([&]() { return errorCount.load() >= 1; })) << "非瞬时失败必须页内提示";
+    EXPECT_EQ(errorCount.load(), 1) << "恰好一条反馈（一个失败一个反馈）";
+    EXPECT_EQ(vm.items().size(), 1) << "失败不得清空可显示数据";
+    EXPECT_FALSE(vm.loadFailed()) << "有数据可显示不得进离线视图";
+
+    QObject::disconnect(&vm, &InventoryViewModel::itemsChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+// ==================== 瞬时首页失败（有数据）：静默保留 + 退避重试 ====================
+TEST_F(InventoryVmTest, 瞬时首页失败有数据时静默保留)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    // 重试档位远离观测窗口，避免自动重拉干扰断言
+    vm.setRetryDelaysMs({5000, 5000});
+    std::atomic<bool> itemsChangedFlag{false};
+    QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
+    std::atomic<int> errorCount{0};
+    QObject::connect(&vm, &InventoryViewModel::errorOccurred, [&](const QString&) { errorCount++; });
+
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil(itemsChangedFlag)) << "首次加载超时";
+    ASSERT_EQ(vm.items().size(), 1);
+
+    // 换到无监听端口（网络层错误，瞬时）：数据保留 + 静默（不发页内提示）
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "失败回调超时";
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_EQ(errorCount.load(), 0) << "瞬时故障走退避重试，不打扰（静默）";
+    EXPECT_EQ(vm.items().size(), 1) << "网络错误保留旧数据";
+
+    QObject::disconnect(&vm, &InventoryViewModel::itemsChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
+}
+
+// ==================== 重试 tick 在途守卫：不插请求、不断链 ====================
+TEST_F(InventoryVmTest, 重试tick不打断在途请求)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.setRetryDelaysMs({80, 80, 80});
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+
+    // 恢复联网但保持慢响应：手动重拉在途期间让退避 tick 命中
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    stub.delayMs = 400;
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return stub.inventoryReqCount.load() >= 1; })) << "手动重拉未发出";
+
+    // 等 tick（80ms）多次命中在途窗口：不得插新请求（否则在途响应会被 epoch 顶掉）
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_EQ(stub.inventoryReqCount.load(), 1) << "在途期间 tick 不得插请求";
+
+    // 慢响应（400ms）落地：成功 → 清失败态、停表
+    ASSERT_TRUE(waitUntil([&]() { return stub.respondedCount.load() >= 1; })) << "慢响应未完成";
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "响应落地后加载标记未复位";
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+    EXPECT_FALSE(vm.loadFailed()) << "在途请求成功后应退出失败态";
+    EXPECT_EQ(stub.inventoryReqCount.load(), 1) << "整段过程恰一次请求（无 tick 插队）";
+}
+
 } // namespace

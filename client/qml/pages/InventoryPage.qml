@@ -141,6 +141,7 @@ Page {
             Layout.leftMargin: Theme.spacingMedium
             Layout.rightMargin: Theme.spacingMedium
             // 空态三态：未登录 → 提示登录；已登录且过滤词非空 → 无匹配提示；否则 → 暂无库存
+            // （离线视图激活时不显示——加载失败不能假装成"暂无库存"）
             text: !authViewModel.loggedIn ? qsTr("登录后查看你的库存")
                 : (inventoryVM.filterText !== ""
                     ? qsTr("未找到匹配「%1」的食材").arg(inventoryVM.filterText)
@@ -149,7 +150,7 @@ Page {
             font.pointSize: Theme.fontSizeBody
             color: Theme.textHint
             horizontalAlignment: Text.AlignHCenter
-            visible: !inventoryVM.isLoading && inventoryVM.items.length === 0
+            visible: !inventoryVM.isLoading && inventoryVM.items.length === 0 && !inventoryVM.loadFailed
         }
 
         // ========== 页面级状态提示（兜底，对话框未打开时显示） ==========
@@ -251,14 +252,6 @@ Page {
                             }
                         }
                     }
-
-                    BusyIndicator {
-                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                        running: inventoryVM.deletingId === modelData.id
-                        width: 20
-                        height: 20
-                        visible: inventoryVM.deletingId === modelData.id
-                    }
                 }
             }
 
@@ -282,11 +275,28 @@ Page {
         }
     }
 
+    // 首次加载转圈（空白 + 居中转圈）：在途且完全无内容可显示时显示（首次加载、空快照兜底后的
+    // 重试均走这里）；有数据可显示或处于离线视图时，重试在途不弹，避免闪烁
     LoadingIndicator {
         id: loadingIndicator
         fullscreen: true
         message: qsTr("加载中...")
-        isLoading: inventoryVM.isLoading && inventoryVM.items.length === 0
+        isLoading: inventoryVM.isLoading && inventoryVM.items.length === 0 && !inventoryVM.loadFailed
+    }
+
+    // 首页加载失败且无内存数据、无快照 → 居中离线视图（有快照时静默显示快照，本视图不出现）；
+    // active 不带 !isLoading：自动重试/手动刷新在途时视图保持稳定不闪烁；
+    // 刷新按钮仅在非在途时显示（防连点，同时提示刷新在进行）；
+    // 文案按失败类型透传（网络层错误/服务器繁忙/服务端文案），空兜底保留组件默认
+    NetworkOfflineView {
+        id: offlineView
+        anchors.fill: parent
+        active: inventoryVM.loadFailed && inventoryVM.items.length === 0
+        showRetry: !inventoryVM.isLoading
+        message: inventoryVM.loadFailedMessage.length > 0
+                 ? inventoryVM.loadFailedMessage
+                 : qsTr("服务器有点问题，请稍候再试")
+        onRetryRequested: inventoryVM.loadInventory()
     }
 
     Connections {
