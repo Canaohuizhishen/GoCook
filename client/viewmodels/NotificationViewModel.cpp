@@ -24,6 +24,11 @@ void NotificationViewModel::setCurrentType(const QString& type)
 
 void NotificationViewModel::refresh()
 {
+    // 置刷新态：QML 下拉刷新指示器据此显示；各完成回调（成功/失败）统一收尾置 false
+    if (!m_isRefreshing) {
+        m_isRefreshing = true;
+        emit isRefreshingChanged();
+    }
     m_currentPage = 1;
     m_notifications.clear();
     m_announcementIds.clear();

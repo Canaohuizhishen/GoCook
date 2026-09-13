@@ -9,6 +9,7 @@ set(TEST_SOURCES
     test_inventory_vm.cpp
     test_recipe_vm.cpp
     test_auth_vm.cpp
+    test_notification_vm.cpp
 )
 
 add_executable(test_client ${TEST_SOURCES}
@@ -18,6 +19,7 @@ add_executable(test_client ${TEST_SOURCES}
     ../viewmodels/InventoryViewModel.h ../viewmodels/InventoryViewModel.cpp
     ../viewmodels/RecipeViewModel.h ../viewmodels/RecipeViewModel.cpp
     ../viewmodels/AuthViewModel.h ../viewmodels/AuthViewModel.cpp
+    ../viewmodels/NotificationViewModel.h ../viewmodels/NotificationViewModel.cpp
 )
 
 target_include_directories(test_client PRIVATE
