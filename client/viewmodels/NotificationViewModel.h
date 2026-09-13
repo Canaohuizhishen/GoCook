@@ -24,7 +24,7 @@ class NotificationViewModel : public QObject
     Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)
     Q_PROPERTY(QString currentType READ currentType WRITE setCurrentType NOTIFY currentTypeChanged)   ///< ""=全部 / "system"=公告 / 其他（如 "review"）=类型过滤；赋值即切筛并自动刷新
     Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadCountChanged)   ///< 未读数：当前列表 is_read=false 计数（公告视为已读）
-    Q_PROPERTY(bool isRefreshing READ isRefreshing NOTIFY isRefreshingChanged)   ///< 刷新态标记（当前实现无置真路径，恒 false）
+    Q_PROPERTY(bool isRefreshing READ isRefreshing NOTIFY isRefreshingChanged)   ///< 刷新态：refresh() 开始置 true，完成回调置 false（QML 下拉刷新指示器）
 
 public:
     explicit NotificationViewModel(IGoCookApi *api, QObject *parent = nullptr);   ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
@@ -90,5 +90,5 @@ private:
     int m_totalPages = 0;   ///< 总页数
     QString m_currentType;   ///< 当前筛选（""=全部 / "system"=公告 / 其他=类型过滤）
     int m_unreadCount = 0;   ///< 未读数（从列表重算）
-    bool m_isRefreshing = false;   ///< 刷新态（无置真路径，恒 false）
+    bool m_isRefreshing = false;   ///< 刷新态（refresh 置真；各完成回调统一置假）
 };
