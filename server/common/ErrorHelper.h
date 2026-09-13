@@ -44,6 +44,8 @@ inline void handleStandardException(const std::exception &e, httplib::Response &
         case 403: msg = se->what();            LOG_WARN("403: %s", se->what()); break;
         case 401: msg = "身份验证失败";         LOG_WARN("401: %s", se->what()); break;
         case 501: msg = "功能暂未实现";         LOG_WARN("501: %s", se->what()); break;
+        // 503（连接池饱和等瞬时故障）：原样直通——客户端据此识别"服务器繁忙"并自动重试
+        case 503: msg = se->what();            LOG_WARN("503: %s", se->what()); break;
         default:  msg = "服务器内部错误，请稍后重试"; code = 500;
                   LOG_ERROR("未识别的业务异常：%s（状态码 %d）", se->what(), code); break;
     }

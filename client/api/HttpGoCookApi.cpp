@@ -16,6 +16,8 @@
 // 判据（自上而下，首个命中者生效）：
 //   statusCode == -2      → 登录守卫拦截（请求未发出），文案 = kAuthRequiredError
 //   statusCode <= 0       → 网络层错误（断网/拒绝连接/超时），无服务端响应
+//   statusCode == 503     → 服务器繁忙（连接池饱和等瞬时故障），归一为 kServerBusyErrorMessage
+//                           （不透传响应体：文案与重试判定需稳定，不随服务端措辞漂移）
 //   响应 JSON 含非空 error → 业务错误，用服务端精确文案
 //   其余（HTTP > 0）      → 服务器问题（5xx 返回 HTML/空体等），不误导用户去查网络
 static QString errorMessageFor(int statusCode, const QJsonDocument &doc)
@@ -25,7 +27,11 @@ static QString errorMessageFor(int statusCode, const QJsonDocument &doc)
         return HttpGoCookApi::kAuthRequiredError;
     }
     if (statusCode <= 0) {
-        return QStringLiteral("网络连接失败，请检查网络");
+        return HttpGoCookApi::kNetworkErrorMessage;
+    }
+    // 503 = 服务器瞬时繁忙：客户端归一为固定文案（VM 据此自动退避重试）
+    if (statusCode == 503) {
+        return HttpGoCookApi::kServerBusyErrorMessage;
     }
     if (doc.isObject()) {
         const QJsonObject obj = doc.object();
@@ -270,6 +276,15 @@ void HttpGoCookApi::sendRaw(AuthMode authMode,
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         QByteArray responseData = reply->readAll();
         reply->deleteLater();
+        // 网络恢复检测（down→up 边沿，覆盖含手写路径在内的全部请求）：
+        // statusCode<=0 = 网络层错误（断网/超时，未收到任何服务端响应）→ 记失联；
+        // 收到任意真实响应（>0）且此前处于失联 → 视为恢复，emit 一次
+        if (statusCode <= 0) {
+            self->m_networkDown = true;
+        } else if (self->m_networkDown) {
+            self->m_networkDown = false;
+            emit self->networkRestored();
+        }
         // 401 统一触发未授权信号（全局登出/游客兜底），业务解析留给 handler
         if (statusCode == 401) {
             emit self->unauthorized();

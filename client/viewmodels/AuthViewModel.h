@@ -29,7 +29,8 @@ class AuthViewModel : public QObject
     Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)
 
 public:
-    explicit AuthViewModel(IGoCookApi *api, QObject *parent = nullptr);
+    // db：本地库（凭证/快照）。生产传 nullptr（单例 LocalDatabase::instance()）；测试注入独立内存库
+    explicit AuthViewModel(IGoCookApi *api, QObject *parent = nullptr, LocalDatabase *db = nullptr);
 
     bool loggedIn() const { return m_loggedIn; }
     QString username() const { return m_username; }
@@ -114,6 +115,11 @@ private:
     int m_userId;
     QString m_username;
     bool m_initialLoading = true;
+    // 自动登录校验窗口：checkAutoLogin 发起 /api/users/me 校验期间为 true；
+    // 窗口内收到 401（由 unauthorizedHandler 回调标记）即“令牌被服务端明确拒绝”——
+    // checkAutoLogin 失败分支据此区分“会话失效（清理）”与“瞬时故障（保留凭证+快照）”
+    bool m_autoLoginInFlight = false;
+    bool m_autoLoginUnauthorized = false;
 
     // 个人资料数据
     QString m_profileDisplayName;

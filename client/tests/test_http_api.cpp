@@ -6,6 +6,8 @@
 //   T3  updateFavoriteItem（PATCH，绕过 sendRequest）401 也触发 unauthorized（本轮补齐的行为）
 //   T4  uploadAvatar（绕过 sendRequest）401 文案统一
 //   T5  断网（连接拒绝，statusCode=0）→ 统一网络文案，不再抛空 body
+//   T5b 网络恢复边沿（networkRestored）：失联后首个成功恰好一次；未失联/连续成功不发
+//   T5c 服务器繁忙 503 → 归一为固定文案（不透传响应体，VM 据此自动重试）
 //   T6  真正的网络错误仍然重试（原请求 + maxRetries 次，TCP 层计数）
 //   T7  E2E（可选）：真实 GoCook 服务端（设置 GOCOOK_E2E_BASE 时启用）
 //   T8  deleteRecipe 游客守卫（Interactive）：未登录不发请求、emit authRequired、取消后按"请先登录"失败
@@ -151,6 +153,12 @@ public:
         svr.Post("/api/inventory/shopping-lists/42/items/batch", [](const httplib::Request&, httplib::Response& res) {
             res.status = 200;
             res.set_content(R"({"message":"已添加 1 项","items":[]})", "application/json");
+        });
+        // T5c 用：服务器繁忙 503（连接池饱和语义）——响应体文案故意与客户端归一文案不同，
+        // 固化"不透传响应体、一律用固定文案"契约
+        svr.Get("/api/busy", [](const httplib::Request&, httplib::Response& res) {
+            res.status = 503;
+            res.set_content(R"({"error":"系统繁忙，请稍后重试"})", "application/json");
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
@@ -519,6 +527,72 @@ TEST_F(HttpApiTest, NetworkError_ConnectionRefused_UnifiedMessage)
     ASSERT_TRUE(waitUntil(done)) << "回调超时";
     EXPECT_FALSE(ok);
     EXPECT_EQ(err.toStdString(), "网络连接失败，请检查网络") << "断网必须给出网络文案，而不是空 body";
+}
+
+// ==================== T5b：网络恢复（down→up 边沿）信号 ====================
+TEST_F(HttpApiTest, NetworkRestored_EdgeSession)
+{
+    StubServer stub;
+    int restoredCount = 0;
+    QObject::connect(&api, &HttpGoCookApi::networkRestored, [&]() { restoredCount++; });
+
+    // 1) 干净起步：成功响应不发恢复信号（无失联前因）
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    {
+        std::atomic<bool> done{false};
+        api.get("/api/users/me/favorites", [&](bool, const QString&, const QJsonDocument&) { done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "成功请求超时";
+    }
+    EXPECT_EQ(restoredCount, 0) << "未失联过，不得发恢复信号";
+
+    // 2) 断网（连接拒绝）→ 失联态；不触发恢复信号
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    {
+        std::atomic<bool> done{false};
+        api.get("/api/users/me/favorites", [&](bool, const QString&, const QJsonDocument&) { done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "断网请求超时";
+    }
+    EXPECT_EQ(restoredCount, 0);
+
+    // 3) 恢复联网：首个成功响应发一次恢复信号
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    {
+        std::atomic<bool> done{false};
+        api.get("/api/users/me/favorites", [&](bool, const QString&, const QJsonDocument&) { done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "恢复请求超时";
+    }
+    EXPECT_EQ(restoredCount, 1) << "失联后的首个成功响应必须恰好发一次 networkRestored";
+
+    // 4) 持续在线：连续成功不重复发
+    {
+        std::atomic<bool> done{false};
+        api.get("/api/users/me/favorites", [&](bool, const QString&, const QJsonDocument&) { done = true; });
+        ASSERT_TRUE(waitUntil(done)) << "连续成功请求超时";
+    }
+    EXPECT_EQ(restoredCount, 1) << "连续成功不得重复发恢复信号";
+
+    QObject::disconnect(&api, &HttpGoCookApi::networkRestored, nullptr, nullptr);
+}
+
+// ==================== T5c：服务器繁忙 503 → 归一为固定文案（不透传响应体） ====================
+TEST_F(HttpApiTest, ServerBusy503_NormalizedMessage)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    std::atomic<bool> done{false};
+    bool ok = true;
+    QString err;
+    api.get("/api/busy", [&](bool s, const QString& e, const QJsonDocument&) {
+        ok = s;
+        err = e;
+        done = true;
+    });
+    ASSERT_TRUE(waitUntil(done)) << "请求超时";
+
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(err, HttpGoCookApi::kServerBusyErrorMessage)
+        << "503 必须归一为固定文案（不透传响应体），VM 据此判定可自动重试";
 }
 
 // ==================== T6：真正的网络错误仍然重试（连接尝试多于不重试基线） ====================

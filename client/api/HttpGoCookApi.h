@@ -54,6 +54,15 @@ public:
     // 避免魔法字符串在多个文件间散落漂移（文案变更只改这一处；QML 侧比较见 InventoryPage）
     inline static const QString kAuthRequiredError = QStringLiteral("请先登录");
 
+    // 网络层错误的统一文案（无服务端响应，statusCode<=0）：
+    // 唯一出口是 errorMessageFor，VM 层用此常量判定"可自动重试"（如库存快照兜底后的退避重试）
+    inline static const QString kNetworkErrorMessage = QStringLiteral("网络连接失败，请检查网络");
+
+    // 服务器繁忙的统一文案（503：连接池饱和等瞬时故障）：
+    // 与 kNetworkErrorMessage 同属"可自动重试"类；唯一出口同样是 errorMessageFor——
+    // 归一为固定文案、不透传响应体，保证 VM 层重试判定不随服务端措辞漂移
+    inline static const QString kServerBusyErrorMessage = QStringLiteral("服务器繁忙，请稍后重试");
+
     explicit HttpGoCookApi(QObject *parent = nullptr);
 
     // 基础 URL（默认 "http://127.0.0.1:8080"，构造函数中设置）。
@@ -332,7 +341,9 @@ public:
 
     // 注册 401 回调（单槽，后注册覆盖前注册；未注册时静默跳过）。
     // 与 unauthorized() 信号的分工：信号=全局广播（当前无生产消费方，保留供上层挂接），
-    // 本回调=单一订阅者，典型用途是 AuthViewModel 注入“token 失效 → 自动登出”。触发顺序：先信号，后本回调。
+    // 本回调=单一订阅者，典型用途是 AuthViewModel 注入“token 失效 → 自动登出”，
+    // 并在自动登录校验窗口内标记“令牌被服务端明确拒绝”（据此区分会话失效与瞬时故障）。
+    // 触发顺序：先信号，后本回调；二者均在业务回调之前——回调内设置的标志在业务回调时已可见。
     void setUnauthorizedHandler(std::function<void()> handler) {
         m_unauthorizedHandler = std::move(handler);
     }
@@ -358,6 +369,12 @@ signals:
     // 注意：业务 4xx（如 400 参数校验失败）同样会触发；
     // C++ 调用方可传 suppressNetworkError=true 抑制（如详情缓存兜底页面）。
     void networkError(const QString &errorString);
+    // 网络恢复信号（down→up 边沿）：曾收到网络层错误（无服务端响应，statusCode<=0）后，
+    // 首个真实响应（statusCode>0，含 4xx/5xx——服务端能应答即已恢复）到达时发出一次；
+    // 此后持续在线不会重复发出。
+    // 检测点在 sendRaw 的完成回调——覆盖全部请求路径（含上传/导出等手写路径）。
+    // 消费方：main.cpp 接 InventoryViewModel::onNetworkRestored（联网即同步）。
+    void networkRestored();
     // 未授权信号（401）：全局广播；当前无生产消费方（仅测试连接），
     // 401 兜底实际由 setUnauthorizedHandler 回调承载（AuthViewModel 自动登出）。
     void unauthorized();
@@ -441,6 +458,8 @@ private:
     int m_maxRetries = 0;
     // 重试间隔（毫秒）
     int m_retryDelay = 1000;
+    // 网络恢复检测状态：最近一次请求结果是否为"失联"（网络层错误）；首个真实响应触发 networkRestored
+    bool m_networkDown = false;
     // 未授权回调
     std::function<void()> m_unauthorizedHandler;
 };

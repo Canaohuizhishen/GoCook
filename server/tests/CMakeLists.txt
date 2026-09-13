@@ -12,6 +12,7 @@ set(TEST_SOURCES
     test_inventory_integration.cpp
     test_unimplemented_services.cpp
     test_db_executor.cpp
+    test_error_helper.cpp
     test_upload_paths.cpp
     test_upload_file_server.cpp
     test_image_upload_rules.cpp
