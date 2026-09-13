@@ -29,60 +29,60 @@
 class HttpGoCookApi : public QObject, public IGoCookApi
 {
     Q_OBJECT
-    // 暴露给 QML 的属性：基础 URL
+    /// 暴露给 QML 的属性：基础 URL
     Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
-    // 暴露给 QML 的属性：认证令牌
+    /// 暴露给 QML 的属性：认证令牌
     Q_PROPERTY(QString token READ token WRITE setToken NOTIFY tokenChanged)
-    // 暴露给 QML 的属性：最大重试次数（0 表示不重试，仅对 GET 请求有效）
+    /// 暴露给 QML 的属性：最大重试次数（0 表示不重试，仅对 GET 请求有效）
     Q_PROPERTY(int maxRetries READ maxRetries WRITE setMaxRetries NOTIFY maxRetriesChanged)
-    // 暴露给 QML 的属性：重试间隔（毫秒）
+    /// 暴露给 QML 的属性：重试间隔（毫秒）
     Q_PROPERTY(int retryDelay READ retryDelay WRITE setRetryDelay NOTIFY retryDelayChanged)
 
 public:
-    // 接口鉴权模式（每个 API 方法在调用发送门面时声明）：
-    //   Public      游客可调（服务端公开接口），直接发送
-    //   Silent      需登录；未登录时不发送请求、回调失败（GET 加载类，页面呈现"登录后可用"空态）
-    //   Interactive 需登录；未登录时挂起请求并弹应用内登录页，登录成功后自动重放（用户主动写操作）
+    /// 接口鉴权模式（每个 API 方法在调用发送门面时声明）：
+    ///   Public      游客可调（服务端公开接口），直接发送
+    ///   Silent      需登录；未登录时不发送请求、回调失败（GET 加载类，页面呈现"登录后可用"空态）
+    ///   Interactive 需登录；未登录时挂起请求并弹应用内登录页，登录成功后自动重放（用户主动写操作）
     enum class AuthMode { Public, Silent, Interactive };
     // Q_ENUM 注册（供元对象系统/QML 使用）。若将来 QML 要直接传 AuthMode 参数，
     // 需先把类型/枚举报进 QML 类型系统；当前 QML 调用方均不传该参数，
     // 鉴权模式由各接口方法在 .cpp 内按接口语义声明。
     Q_ENUM(AuthMode)
 
-    // 登录守卫拦截的统一失败文案（未登录且接口需登录，请求未发出）：
-    // 唯一出口是 errorMessageFor(-2)，VM 层用此常量区分"守卫拦截"与"网络/服务器错误"，
-    // 避免魔法字符串在多个文件间散落漂移（文案变更只改这一处；QML 侧比较见 InventoryPage）
+    /// 登录守卫拦截的统一失败文案（未登录且接口需登录，请求未发出）：
+    /// 唯一出口是 errorMessageFor(-2)，VM 层用此常量区分"守卫拦截"与"网络/服务器错误"，
+    /// 避免魔法字符串在多个文件间散落漂移（文案变更只改这一处；QML 侧比较见 InventoryPage）
     inline static const QString kAuthRequiredError = QStringLiteral("请先登录");
 
-    // 网络层错误的统一文案（无服务端响应，statusCode<=0）：
-    // 唯一出口是 errorMessageFor，VM 层用此常量判定"可自动重试"（如库存快照兜底后的退避重试）
+    /// 网络层错误的统一文案（无服务端响应，statusCode<=0）：
+    /// 唯一出口是 errorMessageFor，VM 层用此常量判定"可自动重试"（如库存快照兜底后的退避重试）
     inline static const QString kNetworkErrorMessage = QStringLiteral("网络连接失败，请检查网络");
 
-    // 服务器繁忙的统一文案（503：连接池饱和等瞬时故障）：
-    // 与 kNetworkErrorMessage 同属"可自动重试"类；唯一出口同样是 errorMessageFor——
-    // 归一为固定文案、不透传响应体，保证 VM 层重试判定不随服务端措辞漂移
+    /// 服务器繁忙的统一文案（503：连接池饱和等瞬时故障）：
+    /// 与 kNetworkErrorMessage 同属"可自动重试"类；唯一出口同样是 errorMessageFor——
+    /// 归一为固定文案、不透传响应体，保证 VM 层重试判定不随服务端措辞漂移
     inline static const QString kServerBusyErrorMessage = QStringLiteral("服务器繁忙，请稍后重试");
 
-    explicit HttpGoCookApi(QObject *parent = nullptr);
+    explicit HttpGoCookApi(QObject *parent = nullptr);   ///< 构造：设置默认 baseUrl（见 baseUrl 契约）；其余为成员默认值
 
-    // 基础 URL（默认 "http://127.0.0.1:8080"，构造函数中设置）。
-    // 契约：形如 scheme://host[:port]，不要以 '/' 结尾——内部按 m_baseUrl + endpoint 直接拼接
-    // （endpoint 自带前导 '/'）。不校验合法性；变更时 emit baseUrlChanged()。
+    /// 基础 URL（默认 "http://127.0.0.1:8080"，构造函数中设置）。
+    /// 契约：形如 scheme://host[:port]，不要以 '/' 结尾——内部按 m_baseUrl + endpoint 直接拼接
+    /// （endpoint 自带前导 '/'）。不校验合法性；变更时 emit baseUrlChanged()。
     QString baseUrl() const { return m_baseUrl; }
     void setBaseUrl(const QString &url);
 
-    // 认证令牌。变更时 emit tokenChanged() 并联动登录守卫：
-    // 置为非空 → 重放挂起的 Interactive 请求；置空 → 挂起请求按 -2 失败作废。
-    // 接口调用方走 setAuthToken（见“令牌管理”区）；QML 属性绑定用本组。
+    /// 认证令牌。变更时 emit tokenChanged() 并联动登录守卫：
+    /// 置为非空 → 重放挂起的 Interactive 请求；置空 → 挂起请求按 -2 失败作废。
+    /// 接口调用方走 setAuthToken（见“令牌管理”区）；QML 属性绑定用本组。
     QString token() const { return m_token; }
     void setToken(const QString &token);
 
-    // 最大重试次数（默认 0 = 不重试；仅对 GET、且仅网络层错误生效，见 .cpp sendRequest）。
-    // 变更时 emit maxRetriesChanged()。
+    /// 最大重试次数（默认 0 = 不重试；仅对 GET、且仅网络层错误生效，见 .cpp sendRequest）。
+    /// 变更时 emit maxRetriesChanged()。
     int maxRetries() const { return m_maxRetries; }
     void setMaxRetries(int retries);
 
-    // 重试间隔（毫秒，默认 1000）。变更时 emit retryDelayChanged()。
+    /// 重试间隔（毫秒，默认 1000）。变更时 emit retryDelayChanged()。
     int retryDelay() const { return m_retryDelay; }
     void setRetryDelay(int delayMs);
 
@@ -95,43 +95,43 @@ public:
     // 唯一差异：QML 版无 suppressNetworkError 形参，等价固定传 false（除 401/-2 外失败会发全局 networkError）。
     // 现状：QML 侧尚未直接调用这 5 组（仅用信号与 cancelAuthQueue），如新增直调注意上述契约。
     // ============================================================================
-    // 供 QML 调用的 GET 请求方法
+    /// 供 QML 调用的 GET 请求方法
     Q_INVOKABLE void get(const QString &endpoint, const QJSValue &callback,
                          AuthMode authMode = AuthMode::Public);
-    // 供 C++ 调用的 GET 请求方法
-    // suppressNetworkError=true：失败时不发全局 networkError（页面自行呈现离线状态，如详情缓存兜底）
+    /// 供 C++ 调用的 GET 请求方法
+    /// suppressNetworkError=true：失败时不发全局 networkError（页面自行呈现离线状态，如详情缓存兜底）
     void get(const QString &endpoint,
              std::function<void(bool, const QString&, const QJsonDocument&)> callback,
              bool suppressNetworkError = false,
              AuthMode authMode = AuthMode::Public);
-    // 供 QML 调用的 POST 请求方法
+    /// 供 QML 调用的 POST 请求方法
     Q_INVOKABLE void post(const QString &endpoint, const QVariantMap &data, const QJSValue &callback,
                           AuthMode authMode = AuthMode::Public);
-    // 供 C++ 调用的 POST 请求方法（使用 std::function 回调）
+    /// 供 C++ 调用的 POST 请求方法（使用 std::function 回调）
     void post(const QString &endpoint, const QVariantMap &data,
               std::function<void(bool, const QString&, const QJsonDocument&)> callback,
               bool suppressNetworkError = false,
               AuthMode authMode = AuthMode::Public);
-    // 供 QML 调用的 DELETE 请求方法
+    /// 供 QML 调用的 DELETE 请求方法
     Q_INVOKABLE void deleteResource(const QString &endpoint, const QVariantMap &data, const QJSValue &callback,
                                     AuthMode authMode = AuthMode::Public);
-    // 供 C++ 调用的 DELETE 请求方法
+    /// 供 C++ 调用的 DELETE 请求方法
     void deleteResource(const QString &endpoint, const QVariantMap &data,
                         std::function<void(bool, const QString&, const QJsonDocument&)> callback,
                         bool suppressNetworkError = false,
                         AuthMode authMode = AuthMode::Public);
-    // 供 QML 调用的 PUT 请求方法
+    /// 供 QML 调用的 PUT 请求方法
     Q_INVOKABLE void put(const QString &endpoint, const QVariantMap &data, const QJSValue &callback,
                          AuthMode authMode = AuthMode::Public);
-    // 供 C++ 调用的 PUT 请求方法
+    /// 供 C++ 调用的 PUT 请求方法
     void put(const QString &endpoint, const QVariantMap &data,
              std::function<void(bool, const QString&, const QJsonDocument&)> callback,
              bool suppressNetworkError = false,
              AuthMode authMode = AuthMode::Public);
-    // 供 QML 调用的 PATCH 请求方法
+    /// 供 QML 调用的 PATCH 请求方法
     Q_INVOKABLE void patch(const QString &endpoint, const QVariantMap &data, const QJSValue &callback,
                            AuthMode authMode = AuthMode::Public);
-    // 供 C++ 调用的 PATCH 请求方法
+    /// 供 C++ 调用的 PATCH 请求方法
     void patch(const QString &endpoint, const QVariantMap &data,
                std::function<void(bool, const QString&, const QJsonDocument&)> callback,
                bool suppressNetworkError = false,
@@ -339,20 +339,20 @@ public:
     void setAuthToken(const std::string& token) override;   // 等价于 setToken(QString::fromStdString(token))
     std::string authToken() const override;                 // 等价于 token().toStdString()
 
-    // 注册 401 回调（单槽，后注册覆盖前注册；未注册时静默跳过）。
-    // 与 unauthorized() 信号的分工：信号=全局广播（当前无生产消费方，保留供上层挂接），
-    // 本回调=单一订阅者，典型用途是 AuthViewModel 注入“token 失效 → 自动登出”，
-    // 并在自动登录校验窗口内标记“令牌被服务端明确拒绝”（据此区分会话失效与瞬时故障）。
-    // 触发顺序：先信号，后本回调；二者均在业务回调之前——回调内设置的标志在业务回调时已可见。
+    /// 注册 401 回调（单槽，后注册覆盖前注册；未注册时静默跳过）。
+    /// 与 unauthorized() 信号的分工：信号=全局广播（当前无生产消费方，保留供上层挂接），
+    /// 本回调=单一订阅者，典型用途是 AuthViewModel 注入“token 失效 → 自动登出”，
+    /// 并在自动登录校验窗口内标记“令牌被服务端明确拒绝”（据此区分会话失效与瞬时故障）。
+    /// 触发顺序：先信号，后本回调；二者均在业务回调之前——回调内设置的标志在业务回调时已可见。
     void setUnauthorizedHandler(std::function<void()> handler) {
         m_unauthorizedHandler = std::move(handler);
     }
 
-    // 取消全部挂起的 Interactive 请求（应用内登录页被关闭/跳过时调用）：
-    // 每个挂起请求按"请先登录"回调失败，不再重放
+    /// 取消全部挂起的 Interactive 请求（应用内登录页被关闭/跳过时调用）：
+    /// 每个挂起请求按"请先登录"回调失败，不再重放
     Q_INVOKABLE void cancelAuthQueue();
 
-    // 触发未授权回调。当前唯一调用点：sendRaw 的 401 分支（.cpp）。
+    /// 触发未授权回调。当前唯一调用点：sendRaw 的 401 分支（.cpp）。
     void invokeUnauthorizedHandler() {
         if (m_unauthorizedHandler) {
             m_unauthorizedHandler();
@@ -362,24 +362,24 @@ public:
 signals:
     void baseUrlChanged();
     void tokenChanged();
-    // 全局请求失败信号（Main.qml 底部 toast 消费），文案为用户可读中文（errorMessageFor 产出）。
-    // 仅经 sendRequest 门面路径的请求会发出（手写 sendRaw 路径不发）。触发条件：
-    //   1) 网络层错误（statusCode<=0；其中 -1=请求未能发出、不重试直接发出；0 为 GET 时先按 maxRetries 重试，耗尽后才发出）；
-    //   2) 服务端返回非 2xx（401 与守卫拦截 -2 除外：401 走 unauthorized，-2 静默）。
-    // 注意：业务 4xx（如 400 参数校验失败）同样会触发；
-    // C++ 调用方可传 suppressNetworkError=true 抑制（如详情缓存兜底页面）。
+    /// 全局请求失败信号（Main.qml 底部 toast 消费），文案为用户可读中文（errorMessageFor 产出）。
+    /// 仅经 sendRequest 门面路径的请求会发出（手写 sendRaw 路径不发）。触发条件：
+    ///   1) 网络层错误（statusCode<=0；其中 -1=请求未能发出、不重试直接发出；0 为 GET 时先按 maxRetries 重试，耗尽后才发出）；
+    ///   2) 服务端返回非 2xx（401 与守卫拦截 -2 除外：401 走 unauthorized，-2 静默）。
+    /// 注意：业务 4xx（如 400 参数校验失败）同样会触发；
+    /// C++ 调用方可传 suppressNetworkError=true 抑制（如详情缓存兜底页面）。
     void networkError(const QString &errorString);
-    // 网络恢复信号（down→up 边沿）：曾收到网络层错误（无服务端响应，statusCode<=0）后，
-    // 首个真实响应（statusCode>0，含 4xx/5xx——服务端能应答即已恢复）到达时发出一次；
-    // 此后持续在线不会重复发出。
-    // 检测点在 sendRaw 的完成回调——覆盖全部请求路径（含上传/导出等手写路径）。
-    // 消费方：main.cpp 接 InventoryViewModel::onNetworkRestored（联网即同步）。
+    /// 网络恢复信号（down→up 边沿）：曾收到网络层错误（无服务端响应，statusCode<=0）后，
+    /// 首个真实响应（statusCode>0，含 4xx/5xx——服务端能应答即已恢复）到达时发出一次；
+    /// 此后持续在线不会重复发出。
+    /// 检测点在 sendRaw 的完成回调——覆盖全部请求路径（含上传/导出等手写路径）。
+    /// 消费方：main.cpp 接 InventoryViewModel::onNetworkRestored（联网即同步）。
     void networkRestored();
-    // 未授权信号（401）：全局广播；当前无生产消费方（仅测试连接），
-    // 401 兜底实际由 setUnauthorizedHandler 回调承载（AuthViewModel 自动登出）。
+    /// 未授权信号（401）：全局广播；当前无生产消费方（仅测试连接），
+    /// 401 兜底实际由 setUnauthorizedHandler 回调承载（AuthViewModel 自动登出）。
     void unauthorized();
-    // 登录守卫信号：存在未登录时被挂起的 Interactive 请求，
-    // 上层应弹出应用内登录页；登录成功后请求自动重放，登录页可关闭（取消则调 cancelAuthQueue）
+    /// 登录守卫信号：存在未登录时被挂起的 Interactive 请求，
+    /// 上层应弹出应用内登录页；登录成功后请求自动重放，登录页可关闭（取消则调 cancelAuthQueue）
     void authRequired();
     void maxRetriesChanged();
     void retryDelayChanged();

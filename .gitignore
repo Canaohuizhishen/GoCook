@@ -99,3 +99,6 @@ server/uploads/avatars
 
 # reasonix 本地工具目录
 .reasonix/
+
+# Doxygen 生成物（docs/ 下其它文件为设计文档，须保留）
+docs/doxygen/
