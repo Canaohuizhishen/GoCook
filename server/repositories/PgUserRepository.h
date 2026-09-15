@@ -87,9 +87,9 @@ public:
                              const gocook::models::UpdateGroupRequest& req) override;
     // 删除收藏分组
     void deleteFavoriteGroup(int userId, int groupId) override;
-    // 更新收藏项属性（分组/可见性）
-    void updateFavoriteItem(int userId, int favoriteId,
-                            const gocook::models::UpdateFavoriteRequest& req) override;
+    // 批量更新收藏项属性（分组/可见性，单条=单元素列表）
+    void batchUpdateFavorites(int userId,
+                              const gocook::models::BatchUpdateFavoritesRequest& req) override;
     // 批量删除收藏
     void batchDeleteFavorites(
         int userId, const gocook::models::BatchDeleteFavoritesRequest& req) override;

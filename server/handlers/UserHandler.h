@@ -51,8 +51,8 @@ public:
     void updateFavoriteGroup(const httplib::Request& req, httplib::Response& res);
     void deleteFavoriteGroup(const httplib::Request& req, httplib::Response& res);
 
-    // 更新收藏项属性（移动分组/可见性，需认证）
-    void updateFavoriteItem(const httplib::Request& req, httplib::Response& res);
+    // 批量更新收藏项属性（移动分组/可见性，单条=单元素列表，需认证）
+    void batchUpdateFavorites(const httplib::Request& req, httplib::Response& res);
     // 批量删除收藏（需认证）
     void batchDeleteFavorites(const httplib::Request& req, httplib::Response& res);
 

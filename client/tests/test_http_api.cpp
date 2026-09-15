@@ -3,7 +3,7 @@
 // 覆盖（对应 NetDemo README 第五节① 抓出的真 bug 及后续统一修复）：
 //   T1  业务 400（空关键词）不触发 GET 重试 —— 回归测试：修复前会连发 maxRetries+1 次
 //   T2  401 → unauthorized 信号 + 服务端精确文案
-//   T3  updateFavoriteItem（PATCH，绕过 sendRequest）401 也触发 unauthorized（本轮补齐的行为）
+//   T3  batchUpdateFavorites（PATCH，绕过 sendRequest）401 也触发 unauthorized（本轮补齐的行为）
 //   T4  uploadAvatar（绕过 sendRequest）401 文案统一
 //   T5  断网（连接拒绝，statusCode=0）→ 统一网络文案，不再抛空 body
 //   T5b 网络恢复边沿（networkRestored）：失联后首个成功恰好一次；未失联/连续成功不发
@@ -86,7 +86,7 @@ public:
             res.status = 401;
             res.set_content(R"({"error":"无效的访问令牌"})", "application/json");
         });
-        svr.Patch("/api/users/me/favorites/1", [](const httplib::Request&, httplib::Response& res) {
+        svr.Patch("/api/users/me/favorites/batch", [](const httplib::Request&, httplib::Response& res) {
             res.status = 401;
             res.set_content(R"({"error":"无效的访问令牌"})", "application/json");
         });
@@ -336,8 +336,8 @@ TEST_F(HttpApiTest, Unauthorized401_SignalAndMessage)
     EXPECT_EQ(err.toStdString(), "无效的访问令牌") << "应使用服务端精确文案";
 }
 
-// ==================== T3：updateFavoriteItem（PATCH）401 也触发 unauthorized ====================
-TEST_F(HttpApiTest, UpdateFavoriteItem401_TriggersUnauthorized)
+// ==================== T3：batchUpdateFavorites（PATCH）401 也触发 unauthorized ====================
+TEST_F(HttpApiTest, BatchUpdateFavorites401_TriggersUnauthorized)
 {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -351,8 +351,10 @@ TEST_F(HttpApiTest, UpdateFavoriteItem401_TriggersUnauthorized)
     std::atomic<bool> done{false};
     bool ok = true;
     std::string err;
-    gocook::models::UpdateFavoriteRequest req;
-    api.updateFavoriteItem(1, req, [&](bool s, const std::string& e) {
+    gocook::models::BatchUpdateFavoritesRequest req;
+    req.favorite_ids = {1};
+    req.group_id = 2;
+    api.batchUpdateFavorites(req, [&](bool s, const std::string& e) {
         ok = s;
         err = e;
         done = true;

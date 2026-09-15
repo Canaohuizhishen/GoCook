@@ -453,12 +453,18 @@ void UserServiceImpl::updateFavoriteGroup(int userId, int groupId, const UpdateG
 void UserServiceImpl::deleteFavoriteGroup(int userId, int groupId) {
     userRepo_->deleteFavoriteGroup(userId, groupId);
 }
-void UserServiceImpl::updateFavoriteItem(int userId, int favoriteId, const UpdateFavoriteRequest& req) {
+void UserServiceImpl::batchUpdateFavorites(int userId, const BatchUpdateFavoritesRequest& req) {
+    if (req.favorite_ids.empty())
+        throw ServiceException("favorite_ids 不能为空", 400);
+    if (!req.group_id.has_value() && !req.is_public.has_value())
+        throw ServiceException("缺少更新字段", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
-    userRepo_->updateFavoriteItem(userId, favoriteId, req);
+    userRepo_->batchUpdateFavorites(userId, req);
 }
 void UserServiceImpl::batchDeleteFavorites(int userId, const BatchDeleteFavoritesRequest& req) {
+    if (req.favorite_ids.empty())
+        throw ServiceException("favorite_ids 不能为空", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     userRepo_->batchDeleteFavorites(userId, req);

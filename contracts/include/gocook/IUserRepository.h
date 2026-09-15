@@ -217,13 +217,12 @@ public:
     virtual void deleteFavoriteGroup(int userId, int groupId) = 0;
 
     /**
-     * @brief 更新收藏项属性（分组/可见性）。
+     * @brief 批量更新收藏项属性（分组/可见性；单条更新 = 单元素列表）。
      * @param userId 用户 ID
-     * @param favoriteId 收藏记录 ID
-     * @param req 待更新的属性
+     * @param req 待更新的收藏 ID 列表与属性
      */
-    virtual void updateFavoriteItem(int userId, int favoriteId,
-                                    const models::UpdateFavoriteRequest& req) = 0;
+    virtual void batchUpdateFavorites(
+        int userId, const models::BatchUpdateFavoritesRequest& req) = 0;
 
     /**
      * @brief 批量删除收藏。

@@ -878,7 +878,7 @@ TEST(UserServiceTest, 删除收藏分组成功) {
 
 // ==================== 收藏项操作 ====================
 
-TEST(UserServiceTest, 更新收藏项属性成功) {
+TEST(UserServiceTest, 批量更新收藏项属性成功) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
@@ -886,12 +886,13 @@ TEST(UserServiceTest, 更新收藏项属性成功) {
     auto profile = makeUserProfile(42);
     EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
 
-    UpdateFavoriteRequest req;
+    BatchUpdateFavoritesRequest req;
+    req.favorite_ids = {1, 2};
     req.group_id = 3;
     req.is_public = false;
-    EXPECT_CALL(*repo, updateFavoriteItem(42, 1, _)).Times(1);
+    EXPECT_CALL(*repo, batchUpdateFavorites(42, _)).Times(1);
 
-    EXPECT_NO_THROW(service.updateFavoriteItem(42, 1, req));
+    EXPECT_NO_THROW(service.batchUpdateFavorites(42, req));
 }
 
 TEST(UserServiceTest, 批量删除收藏成功) {
@@ -951,17 +952,23 @@ TEST(UserServiceTest, 标记通知已读成功) {
 
 // ==================== 边界测试 ====================
 
-TEST(UserServiceTest, 批量删除收藏空ID列表) {
+TEST(UserServiceTest, 批量删除收藏空ID列表被拒) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    auto profile = makeUserProfile(42);
-    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
-    EXPECT_CALL(*repo, batchDeleteFavorites(42, _)).Times(1);
+    // 空列表在 findById 之前收口（与批量更新对称）：不查用户、不进仓库
+    EXPECT_CALL(*repo, findById(_)).Times(0);
+    EXPECT_CALL(*repo, batchDeleteFavorites(42, _)).Times(0);
 
     BatchDeleteFavoritesRequest req{};
-    EXPECT_NO_THROW(service.batchDeleteFavorites(42, req));
+    try {
+        service.batchDeleteFavorites(42, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_EQ(std::string(e.what()), "favorite_ids 不能为空");
+    }
 }
 
 TEST(UserServiceTest, 创建收藏分组名称重复) {
@@ -983,22 +990,39 @@ TEST(UserServiceTest, 创建收藏分组名称重复) {
     }
 }
 
-TEST(UserServiceTest, 更新不存在的收藏项) {
+TEST(UserServiceTest, 批量更新收藏项空ID列表被拒) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    auto profile = makeUserProfile(42);
-    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
-    EXPECT_CALL(*repo, updateFavoriteItem(42, 999, _))
-        .WillOnce(Throw(ServiceException("收藏项不存在", 404)));
+    EXPECT_CALL(*repo, batchUpdateFavorites(42, _)).Times(0);
 
-    UpdateFavoriteRequest req;
+    BatchUpdateFavoritesRequest req;
+    req.group_id = 3;
     try {
-        service.updateFavoriteItem(42, 999, req);
+        service.batchUpdateFavorites(42, req);
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
-        EXPECT_EQ(e.statusCode(), 404);
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_EQ(std::string(e.what()), "favorite_ids 不能为空");
+    }
+}
+
+TEST(UserServiceTest, 批量更新收藏项缺少更新字段被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, batchUpdateFavorites(42, _)).Times(0);
+
+    BatchUpdateFavoritesRequest req;
+    req.favorite_ids = {1};
+    try {
+        service.batchUpdateFavorites(42, req);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_EQ(std::string(e.what()), "缺少更新字段");
     }
 }
 

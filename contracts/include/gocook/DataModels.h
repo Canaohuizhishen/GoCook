@@ -167,15 +167,16 @@ namespace gocook::models {
         std::string name;   ///< 新的分组名
     };
 
-    /// 更新收藏项属性请求
-    struct UpdateFavoriteRequest {
-        std::optional<int> group_id;     ///< 目标分组 ID，nullopt 表示不修改
-        std::optional<bool> is_public;   ///< 是否公开可见，nullopt 表示不修改
-    };
-
-    /// 批量删除收藏请求
+    /// 批量删除收藏请求（favorite_ids 非空；单条删除 = 单元素列表）
     struct BatchDeleteFavoritesRequest {
         std::vector<int> favorite_ids;   ///< 待删除的收藏记录 ID 列表
+    };
+
+    /// 批量更新收藏项属性请求（favorite_ids 非空且至少一个更新字段；单条更新 = 单元素列表）
+    struct BatchUpdateFavoritesRequest {
+        std::vector<int> favorite_ids;   ///< 待更新的收藏记录 ID 列表
+        std::optional<int> group_id;     ///< 目标分组 ID，nullopt 表示不修改
+        std::optional<bool> is_public;   ///< 是否公开可见，nullopt 表示不修改
     };
 
     // ==============================================

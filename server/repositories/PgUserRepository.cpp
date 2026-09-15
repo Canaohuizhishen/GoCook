@@ -718,37 +718,40 @@ void PgUserRepository::deleteFavoriteGroup(int userId, int groupId) {
     }, "删除分组失败");
 }
 
-void PgUserRepository::updateFavoriteItem(int userId, int favoriteId, const UpdateFavoriteRequest& req) {
+void PgUserRepository::batchUpdateFavorites(int userId, const BatchUpdateFavoritesRequest& req) {
     executeDb(db_, [&](pqxx::work& txn) {
-        if (req.group_id.has_value()) {
-            int gid = req.group_id.value();
-            if (gid > 0) {
-                // 校验该分组属于当前用户
-                LOG_DEBUG("[SQL] SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2 | $1=%d", gid);
-                auto g = txn.exec(
-                    "SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2",
-                    pqxx::params{gid, userId});
-                if (g.empty())
-                    throw ServiceException("分组不存在", 404);
-                LOG_DEBUG("[SQL] UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3 | $1=%d $2=%d", gid, favoriteId);
+        if (req.group_id.has_value() && req.group_id.value() > 0) {
+            // 全批次共用同一目标分组：校验一次该分组属于当前用户
+            LOG_DEBUG("[SQL] SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2 | $1=%d", req.group_id.value());
+            auto g = txn.exec(
+                "SELECT id FROM favorite_groups WHERE id = $1 AND user_id = $2",
+                pqxx::params{req.group_id.value(), userId});
+            if (g.empty())
+                throw ServiceException("分组不存在", 404);
+        }
+        for (const auto& fid : req.favorite_ids) {
+            if (req.group_id.has_value()) {
+                if (req.group_id.value() > 0) {
+                    LOG_DEBUG("[SQL] UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3 | $1=%d $2=%d", req.group_id.value(), fid);
+                    txn.exec(
+                        "UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3",
+                        pqxx::params{req.group_id.value(), fid, userId});
+                } else {
+                    // group_id = 0 表示移到默认收藏夹（设置 NULL）
+                    LOG_DEBUG("[SQL] UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2 | $1=%d", fid);
+                    txn.exec(
+                        "UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2",
+                        pqxx::params{fid, userId});
+                }
+            }
+            if (req.is_public.has_value()) {
+                LOG_DEBUG("[SQL] UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3 | $2=%d", fid);
                 txn.exec(
-                    "UPDATE favorites SET group_id = $1 WHERE id = $2 AND user_id = $3",
-                    pqxx::params{gid, favoriteId, userId});
-            } else {
-                // group_id = 0 表示移到默认收藏夹（设置 NULL）
-                LOG_DEBUG("[SQL] UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2 | $1=%d", favoriteId);
-                txn.exec(
-                    "UPDATE favorites SET group_id = NULL WHERE id = $1 AND user_id = $2",
-                    pqxx::params{favoriteId, userId});
+                    "UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3",
+                    pqxx::params{req.is_public.value(), fid, userId});
             }
         }
-        if (req.is_public.has_value()) {
-            LOG_DEBUG("[SQL] UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3 | $2=%d", favoriteId);
-            txn.exec(
-                "UPDATE favorites SET is_public = $1 WHERE id = $2 AND user_id = $3",
-                pqxx::params{req.is_public.value(), favoriteId, userId});
-        }
-    }, "更新收藏项失败");
+    }, "批量更新失败");
 }
 
 void PgUserRepository::batchDeleteFavorites(int userId, const BatchDeleteFavoritesRequest& req) {

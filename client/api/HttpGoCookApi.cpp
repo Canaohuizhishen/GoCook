@@ -1030,16 +1030,19 @@ void HttpGoCookApi::deleteFavoriteGroup(int groupId,
     }, true, AuthMode::Interactive);
 }
 
-void HttpGoCookApi::updateFavoriteItem(int favoriteId,
-                                       const gocook::models::UpdateFavoriteRequest& request,
-                                       SuccessCallback callback) {
+void HttpGoCookApi::batchUpdateFavorites(const gocook::models::BatchUpdateFavoritesRequest& request,
+                                         SuccessCallback callback) {
     QVariantMap data;
+    QVariantList ids;
+    for (const auto& fid : request.favorite_ids)
+        ids.append(fid);
+    data["favorite_ids"] = ids;
     if (request.group_id.has_value())
         data["group_id"] = request.group_id.value();
     if (request.is_public.has_value())
         data["is_public"] = request.is_public.value();
 
-    QUrl url(m_baseUrl + QString("/api/users/me/favorites/%1").arg(favoriteId));
+    QUrl url(m_baseUrl + QStringLiteral("/api/users/me/favorites/batch"));
     QNetworkRequest req(url);
     req.setTransferTimeout(15000);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");

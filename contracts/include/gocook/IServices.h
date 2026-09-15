@@ -386,18 +386,17 @@ namespace gocook::services {
         virtual void deleteFavoriteGroup(int userId, int groupId) = 0;
 
         /**
-         * @brief 更新收藏项属性。
+         * @brief 批量更新收藏项属性（分组/可见性；单条更新 = 单元素列表）。
          * @param userId 用户 ID
-         * @param favoriteId 收藏记录 ID
-         * @param request 待更新的属性（分组/可见性）
+         * @param request 待更新的收藏 ID 列表与属性
          */
-        virtual void updateFavoriteItem(int userId, int favoriteId,
-                                        const models::UpdateFavoriteRequest& request) = 0;
+        virtual void batchUpdateFavorites(int userId,
+                                          const models::BatchUpdateFavoritesRequest& request) = 0;
 
         /**
          * @brief 批量删除收藏。
          * @param userId 用户 ID
-         * @param request 待删除的收藏 ID 列表
+         * @param request 待删除的收藏 ID 列表（非空；空数组 → 400「favorite_ids 不能为空」）
          */
         virtual void batchDeleteFavorites(int userId,
                                           const models::BatchDeleteFavoritesRequest& request) = 0;

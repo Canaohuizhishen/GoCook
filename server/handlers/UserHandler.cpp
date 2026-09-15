@@ -391,18 +391,19 @@ void UserHandler::deleteFavoriteGroup(const httplib::Request& req, httplib::Resp
     }
 }
 
-void UserHandler::updateFavoriteItem(const httplib::Request& req, httplib::Response& res) {
+void UserHandler::batchUpdateFavorites(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
     try {
-        int favoriteId = std::stoi(req.matches[1]);
         json reqJson = json::parse(req.body);
-        UpdateFavoriteRequest request;
+        Validation::validateBatchUpdateFavoritesRequest(reqJson);
+        BatchUpdateFavoritesRequest request;
+        request.favorite_ids = reqJson["favorite_ids"].get<std::vector<int>>();
         if (reqJson.contains("group_id")) request.group_id = reqJson["group_id"].get<int>();
         if (reqJson.contains("is_public")) request.is_public = reqJson["is_public"].get<bool>();
-        service_.updateFavoriteItem(info.userId, favoriteId, request);
+        service_.batchUpdateFavorites(info.userId, request);
         res.status = 200;
-        res.body = json{{"message", "收藏项已更新"}}.dump();
+        res.body = json{{"message", "批量更新成功"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -415,8 +416,9 @@ void UserHandler::batchDeleteFavorites(const httplib::Request& req, httplib::Res
     if (!info.valid) return;
     try {
         json reqJson = json::parse(req.body);
+        Validation::validateBatchDeleteFavoritesRequest(reqJson);
         BatchDeleteFavoritesRequest request;
-        request.favorite_ids = reqJson.at("favorite_ids").get<std::vector<int>>();
+        request.favorite_ids = reqJson["favorite_ids"].get<std::vector<int>>();
         service_.batchDeleteFavorites(info.userId, request);
         res.status = 200;
         res.body = json{{"message", "批量删除成功"}}.dump();

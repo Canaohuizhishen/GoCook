@@ -986,9 +986,10 @@ void RecipeViewModel::batchRemoveFavorites(const QVariantList &favoriteIds)
 
 void RecipeViewModel::moveFavorite(int favoriteId, int groupId)
 {
-    gocook::models::UpdateFavoriteRequest req;
+    gocook::models::BatchUpdateFavoritesRequest req;
+    req.favorite_ids = {favoriteId};
     req.group_id = groupId;
-    m_api->updateFavoriteItem(favoriteId, req,
+    m_api->batchUpdateFavorites(req,
         [self = QPointer<RecipeViewModel>(this)]
         (bool success, const std::string& error) {
         if (!self) return;
@@ -1003,24 +1004,22 @@ void RecipeViewModel::moveFavorite(int favoriteId, int groupId)
 
 void RecipeViewModel::batchMoveFavorites(const QVariantList &favoriteIds, int groupId)
 {
-    if (favoriteIds.isEmpty()) return;
-    gocook::models::UpdateFavoriteRequest req;
+    gocook::models::BatchUpdateFavoritesRequest req;
+    for (const auto &v : favoriteIds)
+        req.favorite_ids.push_back(v.toInt());
+    if (req.favorite_ids.empty()) return;
     req.group_id = groupId;
-    auto self = QPointer<RecipeViewModel>(this);
-    std::shared_ptr<int> pending = std::make_shared<int>(favoriteIds.size());
-    for (int i = 0; i < favoriteIds.size(); ++i) {
-        m_api->updateFavoriteItem(favoriteIds[i].toInt(), req,
-            [self, pending](bool success, const std::string& error) {
-            if (!self) return;
-            if (!success) {
-                emit self->favoriteOperationFailed(QString::fromStdString(
-                    error.empty() ? "批量移动失败" : error));
-            }
-            if (--(*pending) == 0) {
-                emit self->favoriteMoved();
-            }
-        });
-    }
+    m_api->batchUpdateFavorites(req,
+        [self = QPointer<RecipeViewModel>(this)]
+        (bool success, const std::string& error) {
+        if (!self) return;
+        if (success) {
+            emit self->favoriteMoved();
+        } else {
+            emit self->favoriteOperationFailed(QString::fromStdString(
+                error.empty() ? "批量移动失败" : error));
+        }
+    });
 }
 
 void RecipeViewModel::updateFavoriteGroupName(int groupId, const QString &name)
