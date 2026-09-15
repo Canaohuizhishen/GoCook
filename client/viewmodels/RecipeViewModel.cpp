@@ -594,6 +594,7 @@ void RecipeViewModel::deleteRecipe(int recipeId)
     m_pendingDeleteIds.insert(recipeId);
 
     // 构建新列表（不含目标条目），强制 QML 模型视为完全重建
+    // 避免增量删除在删除/分页交错时出现残留或索引错位
     QVariantList newList;
     bool found = false;
     for (const auto& item : m_myRecipes) {

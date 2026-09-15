@@ -11,8 +11,15 @@ class LocalDatabase;
 /**
  * @brief 库存域 ViewModel：管理库存列表的加载、翻页与增删改。
  *
- * 所有 Q_INVOKABLE 均为异步：立即返回，结果经 Q_PROPERTY + NOTIFY 驱动 QML 绑定刷新，
- * 失败经 errorOccurred 信号通知 QML；底层统一调用 IGoCookApi（HttpGoCookApi 经 HTTP 实现）。
+ * 底层统一调用 IGoCookApi（HttpGoCookApi 经 HTTP 实现）。
+ * 所有 Q_INVOKABLE 异步（立即返回，结果经 Q_PROPERTY + NOTIFY 驱动 QML）；
+ * 失败分通道：操作类走 errorOccurred，加载类走"快照静默兜底 / 离线视图 / 退避重试"分层呈现（见下）。
+ *
+ * 并发/异常四道防线（loadInventory 是交汇点，行为由 test_inventory_vm.cpp 锁定）：
+ *   1. 换词竞态   —— 请求代次：换词/刷新/clearAll 递增，旧响应静默丢弃；
+ *   2. 跨账号串台 —— 发送时快照 token：响应回来 token 已变则丢弃；
+ *   3. 断网无数据 —— 快照兜底：无快照才进离线视图；
+ *   4. 瞬时故障   —— 退避重试：仅网络层错误/503 触发。
  *
  * 离线策略（在线优先 + 联网即同步）：
  *   - 每次成功加载（首页、无过滤）把列表写成库存快照（LocalDatabase，按用户隔离）；
