@@ -13,10 +13,12 @@ set(TEST_SOURCES
     test_unimplemented_services.cpp
     test_db_executor.cpp
     test_error_helper.cpp
+    test_validation.cpp
     test_upload_paths.cpp
     test_upload_file_server.cpp
     test_image_upload_rules.cpp
     test_nutrition_integration.cpp
+    test_favorites_integration.cpp
 )
 
 add_executable(test_services ${TEST_SOURCES})

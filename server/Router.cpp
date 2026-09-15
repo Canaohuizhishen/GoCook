@@ -276,8 +276,10 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Delete(R"(/api/users/me/favorites/groups/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.deleteFavoriteGroup(req, res);
     });
-    svr.Patch(R"(/api/users/me/favorites/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.updateFavoriteItem(req, res);
+    // 批量更新收藏（分组移动/可见性）：单条更新 = 单元素 favorite_ids。
+    // PATCH 与单条属性更新语义对齐，路径与批量删除共用 /batch。
+    svr.Patch("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.batchUpdateFavorites(req, res);
     });
     // 批量删除收藏：注册 POST + DELETE 两个方法。
     // POST 是客户端实际使用的路径（httplib 对 DELETE 携带 body 支持不可靠）；

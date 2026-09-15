@@ -11,12 +11,22 @@
 //   T2  删除分组后 favoritesAllCount 同步减少（乐观移除）
 //   T3  loadMoreFavorites 续页沿用首屏的分组筛选与页大小
 //   T4  searchNextPage 续页沿用首屏页大小
+//
+// 批量移动重构回归用例（客户端计数器聚合 → 服务端单请求原子更新）：
+//   T5  batchMoveFavorites 一次请求发 favoriteMoved，请求体携带全部 id
+//   T6  batchMoveFavorites 失败只发 favoriteOperationFailed（不发 favoriteMoved）
+//   T7  moveFavorite 单条=N=1 复用批量端点
+//   T8  batchRemoveFavorites 空列表守卫：不发请求、无信号（服务端空数组 400 对现客户端不可达）
+//   T9  batchRemoveFavorites 非空列表一次请求发 favoriteRemoved，请求体携带全部 id
+//   T10 batchRemoveFavorites 失败只发 favoriteOperationFailed（不发 favoriteRemoved）
 
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
 
 #include <atomic>
@@ -62,6 +72,13 @@ public:
     std::atomic<int> groupsReqCount{0};
     std::atomic<int> favoriteWriteReqCount{0};
     std::atomic<int> favoriteWriteStatus{200}; // 可切换：200 成功 / 500 失败
+
+    // 最近一次收藏写请求体（PATCH /favorites/batch；单条/批量移动共用，用于断言 N=1 与全量 id）
+    std::string lastFavoriteWriteBody()
+    {
+        std::lock_guard<std::mutex> lk(writeMx);
+        return lastWriteBody;
+    }
 
     ListReq lastFavoriteListReq()
     {
@@ -118,6 +135,26 @@ public:
             res.status = 200;
             res.set_content(R"({"message":"ok"})", "application/json");
         });
+        // 批量更新收藏（PATCH /favorites/batch）：单条移动与批量移动共用同一端点
+        svr.Patch("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
+            favoriteWriteReqCount++;
+            {
+                std::lock_guard<std::mutex> lk(writeMx);
+                lastWriteBody = req.body;
+            }
+            res.status = favoriteWriteStatus.load();
+            res.set_content(R"({"message":"ok"})", "application/json");
+        });
+        // 批量删除收藏（POST /favorites/batch）：供 T8 反向断言——空列表守卫下不应有任何请求到达
+        svr.Post("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
+            favoriteWriteReqCount++;
+            {
+                std::lock_guard<std::mutex> lk(writeMx);
+                lastWriteBody = req.body;
+            }
+            res.status = favoriteWriteStatus.load();
+            res.set_content(R"({"message":"ok"})", "application/json");
+        });
         svr.Get("/api/recipes/search", [this](const httplib::Request& req, httplib::Response& res) {
             const int page = std::stoi(req.get_param_value("page"));
             const int size = std::stoi(req.get_param_value("size"));
@@ -164,6 +201,8 @@ private:
     httplib::Server svr;
     int port = 0;
     std::thread th;
+    std::mutex writeMx;              // 保护收藏写请求体（服务端线程写入，测试线程读取）
+    std::string lastWriteBody;
     std::mutex reqMx;                // 保护两个请求流水（服务端线程写入，测试线程读取）
     std::vector<ListReq> favoriteListReqs;
     std::vector<ListReq> searchReqs;
@@ -371,5 +410,179 @@ TEST_F(RecipeVmTest, searchNextPage续页沿用首屏页大小)
     EXPECT_EQ(req.keyword, "番茄");
 
     QObject::disconnect(&vm, &RecipeViewModel::searchResultsChanged, nullptr, nullptr);
+}
+
+// ==================== T5：batchMoveFavorites 单请求原子化（替代原客户端计数器聚合） ====================
+TEST_F(RecipeVmTest, batchMoveFavorites一次请求发favoriteMoved)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> moved{false};
+    std::atomic<bool> failed{false};
+    QObject::connect(&vm, &RecipeViewModel::favoriteMoved, [&]() { moved = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString&) { failed = true; });
+
+    QVariantList ids;
+    ids << 11 << 12;
+    vm.batchMoveFavorites(ids, 2);
+
+    ASSERT_TRUE(waitUntil(moved)) << "favoriteMoved 超时";
+    EXPECT_FALSE(failed.load()) << "全部成功不得发失败信号";
+    EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1) << "两个 id 必须聚合为一次请求（原实现发 N 次）";
+
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
+    const QJsonArray bodyIds = doc.object()["favorite_ids"].toArray();
+    ASSERT_EQ(bodyIds.size(), 2) << "请求体应携带全部收藏 id";
+    EXPECT_EQ(bodyIds[0].toInt(), 11);
+    EXPECT_EQ(bodyIds[1].toInt(), 12);
+    EXPECT_EQ(doc.object()["group_id"].toInt(), 2);
+
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteMoved, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteOperationFailed, nullptr, nullptr);
+}
+
+// ==================== T6：batchMoveFavorites 失败=原子失败（不发 favoriteMoved） ====================
+TEST_F(RecipeVmTest, batchMoveFavorites失败只发favoriteOperationFailed)
+{
+    FavoriteStubServer stub;
+    stub.favoriteWriteStatus = 500;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> moved{false};
+    std::atomic<bool> failed{false};
+    QObject::connect(&vm, &RecipeViewModel::favoriteMoved, [&]() { moved = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString&) { failed = true; });
+
+    QVariantList ids;
+    ids << 11 << 12;
+    vm.batchMoveFavorites(ids, 2);
+
+    ASSERT_TRUE(waitUntil(failed)) << "favoriteOperationFailed 超时";
+    EXPECT_FALSE(moved.load()) << "失败不得发 favoriteMoved（旧实现部分失败仍会发，页面误判）";
+    EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1);
+
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteMoved, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteOperationFailed, nullptr, nullptr);
+}
+
+// ==================== T7：moveFavorite 单条=N=1 复用批量端点 ====================
+TEST_F(RecipeVmTest, moveFavorite单条请求N等于1)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> moved{false};
+    QObject::connect(&vm, &RecipeViewModel::favoriteMoved, [&]() { moved = true; });
+
+    vm.moveFavorite(21, 3);
+
+    ASSERT_TRUE(waitUntil(moved)) << "favoriteMoved 超时";
+    EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1);
+
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
+    const QJsonArray bodyIds = doc.object()["favorite_ids"].toArray();
+    ASSERT_EQ(bodyIds.size(), 1) << "单条移动应携带单元素 favorite_ids（N=1 复用）";
+    EXPECT_EQ(bodyIds[0].toInt(), 21);
+    EXPECT_EQ(doc.object()["group_id"].toInt(), 3);
+
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteMoved, nullptr, nullptr);
+}
+
+// ==================== T8：batchRemoveFavorites 空列表守卫（不发请求、无信号） ====================
+TEST_F(RecipeVmTest, batchRemoveFavorites空列表不发请求)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> removed{false};
+    std::atomic<bool> failed{false};
+    QObject::connect(&vm, &RecipeViewModel::favoriteRemoved, [&]() { removed = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString&) { failed = true; });
+
+    vm.batchRemoveFavorites(QVariantList{});
+
+    // 空列表守卫应在发出请求前返回：给出与本地网络请求同量级的事件循环窗口，
+    // 断言零请求、零信号（若守卫被破坏，请求会命中桩并被计数，失败信号也会置位）
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 200) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(stub.favoriteWriteReqCount.load(), 0) << "空列表必须不发请求（服务端 400 应对现客户端不可达）";
+    EXPECT_FALSE(removed.load());
+    EXPECT_FALSE(failed.load());
+
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteRemoved, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteOperationFailed, nullptr, nullptr);
+}
+
+// ==================== T9：batchRemoveFavorites 非空列表=单请求成功（正路径） ====================
+TEST_F(RecipeVmTest, batchRemoveFavorites非空列表一次请求发favoriteRemoved)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> removed{false};
+    std::atomic<bool> failed{false};
+    QObject::connect(&vm, &RecipeViewModel::favoriteRemoved, [&]() { removed = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString&) { failed = true; });
+
+    QVariantList ids;
+    ids << 11 << 12;
+    vm.batchRemoveFavorites(ids);
+
+    ASSERT_TRUE(waitUntil(removed)) << "favoriteRemoved 超时";
+    EXPECT_FALSE(failed.load()) << "全部成功不得发失败信号";
+    EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1) << "两个 id 必须聚合为一次请求";
+
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
+    const QJsonArray bodyIds = doc.object()["favorite_ids"].toArray();
+    ASSERT_EQ(bodyIds.size(), 2) << "请求体应携带全部收藏 id";
+    EXPECT_EQ(bodyIds[0].toInt(), 11);
+    EXPECT_EQ(bodyIds[1].toInt(), 12);
+
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteRemoved, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteOperationFailed, nullptr, nullptr);
+}
+
+// ==================== T10：batchRemoveFavorites 失败只发 favoriteOperationFailed ====================
+TEST_F(RecipeVmTest, batchRemoveFavorites失败只发favoriteOperationFailed)
+{
+    FavoriteStubServer stub;
+    stub.favoriteWriteStatus = 500;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> removed{false};
+    std::atomic<bool> failed{false};
+    QObject::connect(&vm, &RecipeViewModel::favoriteRemoved, [&]() { removed = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString&) { failed = true; });
+
+    QVariantList ids;
+    ids << 11 << 12;
+    vm.batchRemoveFavorites(ids);
+
+    ASSERT_TRUE(waitUntil(failed)) << "favoriteOperationFailed 超时";
+    EXPECT_FALSE(removed.load()) << "失败不得发 favoriteRemoved";
+    EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1);
+
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteRemoved, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::favoriteOperationFailed, nullptr, nullptr);
 }
 } // namespace

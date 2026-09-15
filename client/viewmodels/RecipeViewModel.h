@@ -173,9 +173,9 @@ public:
     /// 取消收藏（等服务器确认；成功发 favoriteRemoved）。
     Q_INVOKABLE void removeFavorite(int favoriteId);
     Q_INVOKABLE void batchRemoveFavorites(const QVariantList &favoriteIds);   ///< 批量删除，完成后发 favoriteRemoved
-    /// 移动收藏到指定分组（成功发 favoriteMoved）。
+    /// 移动收藏到指定分组（单条=N=1 复用批量更新端点；成功发 favoriteMoved）。
     Q_INVOKABLE void moveFavorite(int favoriteId, int groupId);
-    Q_INVOKABLE void batchMoveFavorites(const QVariantList &favoriteIds, int groupId);   ///< 批量移动，完成后发 favoriteMoved
+    Q_INVOKABLE void batchMoveFavorites(const QVariantList &favoriteIds, int groupId);   ///< 批量移动（服务端单请求原子更新），成功才发 favoriteMoved
     /// 重命名分组（成功重拉分组列表；失败 favoriteOperationFailed）。
     Q_INVOKABLE void updateFavoriteGroupName(int groupId, const QString &name);
 
@@ -246,8 +246,7 @@ signals:
     void favoriteToggleSuccess(int recipeId, bool isFavorited);
     /// 取消收藏成功（removeFavorite / batchRemoveFavorites）。页面需自行刷新列表与分组。
     void favoriteRemoved();
-    /// 移动完成（moveFavorite / batchMoveFavorites）。批量版全部返回后只发一次；
-    /// 部分失败也发（失败另发 favoriteOperationFailed），不可当作“全部成功”判据。
+    /// 移动成功（moveFavorite / batchMoveFavorites）。服务端单请求原子更新，成功才发。
     void favoriteMoved();
     void favoriteGroupCreated();     ///< 创建成功（分组列表异步重拉中，以 favoriteGroupsChanged 为准）
     void favoriteGroupDeleted();     ///< 乐观删除分组的确认

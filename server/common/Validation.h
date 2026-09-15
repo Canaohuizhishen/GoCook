@@ -4,21 +4,15 @@
 #include <gocook/IServices.h>
 #include <string>
 #include <regex>
+#include <cstdint>
+#include <limits>
 
-/// 统一输入校验。返回 true 表示通过；返回 false 时 error 已设置好 HTTP 响应。
+/// 统一输入校验族（validate* 请求校验函数）：失败即抛 ServiceException(400, 精确文案)，由 ErrorHelper 统一映射为 JSON 400 响应；成功返回 true。
+/// 谓词辅助（isValidEmail / isIntInRange）不抛异常、返回 bool，供校验函数内部使用。
 
 namespace Validation {
 
 using json = nlohmann::json;
-
-/// 检查 JSON 是否包含全部指定字段，缺失时通过 missing 返回第一个缺失字段名
-inline bool hasFields(const json& j, const std::vector<std::string>& keys,
-                      std::string& missing) {
-    for (const auto& k : keys) {
-        if (!j.contains(k)) { missing = k; return false; }
-    }
-    return true;
-}
 
 /// 简单邮箱格式校验（正则）（它无法匹配 IP 地址形式的邮箱（如 user@[192.168.1.1]），
 /// 也无法匹配包含中文的国际化域名（IDN）（如 用户@例子.中国），
@@ -120,6 +114,52 @@ inline bool validateChangePasswordRequest(const json& j) {
     if (!j.contains("new_password") || !j["new_password"].is_string() ||
         j["new_password"].get<std::string>().size() < 6)
         throw gocook::services::ServiceException("新密码不能少于6个字符", 400);
+    return true;
+}
+
+/// 整数范围判定：JSON 值是否为整数且落在 int 可表示范围内。
+/// is_number_integer() 在 nlohmann 中同时覆盖无符号整数；越界值经 get<int>() 可能静默回绕，
+/// 因此在形状校验阶段显式判定，保证后续 get<int>() / get<vector<int>>() 的提取安全。
+inline bool isIntInRange(const json& v) {
+    if (v.is_number_unsigned())
+        return v.get<std::uint64_t>() <=
+               static_cast<std::uint64_t>(std::numeric_limits<int>::max());
+    if (v.is_number_integer()) {
+        const std::int64_t n = v.get<std::int64_t>();
+        return n >= std::numeric_limits<int>::min() && n <= std::numeric_limits<int>::max();
+    }
+    return false;
+}
+
+/// 收藏 ID 列表字段（3.5 批量更新 / 3.6 批量删除共用）：
+/// favorite_ids 必填、必须为数组、元素必须为 int 范围内的整数。
+/// 空列表不在本层判定——3.5 / 3.6 均由服务层统一收口为 400「favorite_ids 不能为空」，这里只管 JSON 形状。
+inline bool validateFavoriteIdsField(const json& j) {
+    if (!j.contains("favorite_ids"))
+        throw gocook::services::ServiceException("缺少 favorite_ids 字段", 400);
+    if (!j["favorite_ids"].is_array())
+        throw gocook::services::ServiceException("favorite_ids 必须为整数数组", 400);
+    for (const auto& v : j["favorite_ids"]) {
+        if (!isIntInRange(v))
+            throw gocook::services::ServiceException("favorite_ids 必须为整数数组", 400);
+    }
+    return true;
+}
+
+/// 批量更新收藏（3.5）：favorite_ids 必填；group_id / is_public 可选，但出现即必须类型正确。
+/// 空列表 / 缺更新字段的业务校验在服务层（同为 400）。
+inline bool validateBatchUpdateFavoritesRequest(const json& j) {
+    validateFavoriteIdsField(j);
+    if (j.contains("group_id") && !isIntInRange(j["group_id"]))
+        throw gocook::services::ServiceException("group_id 必须为整数", 400);
+    if (j.contains("is_public") && !j["is_public"].is_boolean())
+        throw gocook::services::ServiceException("is_public 必须为布尔值", 400);
+    return true;
+}
+
+/// 批量删除收藏（3.6）：favorite_ids 必填；空列表由服务层收口为 400「favorite_ids 不能为空」（与 3.5 对称）。
+inline bool validateBatchDeleteFavoritesRequest(const json& j) {
+    validateFavoriteIdsField(j);
     return true;
 }
 

@@ -81,9 +81,9 @@ public:
                 (int, int, const gocook::models::UpdateGroupRequest&), (override));
     // 删除收藏分组
     MOCK_METHOD(void, deleteFavoriteGroup, (int, int), (override));
-    // 更新收藏项属性
-    MOCK_METHOD(void, updateFavoriteItem,
-                (int, int, const gocook::models::UpdateFavoriteRequest&), (override));
+    // 批量更新收藏项属性（单条=单元素列表）
+    MOCK_METHOD(void, batchUpdateFavorites,
+                (int, const gocook::models::BatchUpdateFavoritesRequest&), (override));
     // 批量删除收藏
     MOCK_METHOD(void, batchDeleteFavorites,
                 (int, const gocook::models::BatchDeleteFavoritesRequest&), (override));

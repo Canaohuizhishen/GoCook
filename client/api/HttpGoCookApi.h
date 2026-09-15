@@ -187,9 +187,8 @@ public:
                              SuccessCallback callback) override;
     void deleteFavoriteGroup(int groupId,
                              SuccessCallback callback) override;
-    void updateFavoriteItem(int favoriteId,
-                            const gocook::models::UpdateFavoriteRequest& request,
-                            SuccessCallback callback) override;
+    void batchUpdateFavorites(const gocook::models::BatchUpdateFavoritesRequest& request,
+                              SuccessCallback callback) override;
     void batchDeleteFavorites(const gocook::models::BatchDeleteFavoritesRequest& request,
                               SuccessCallback callback) override;
     void getNotifications(int page, int size,

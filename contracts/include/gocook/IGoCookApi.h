@@ -364,18 +364,16 @@ public:
                                      SuccessCallback callback) = 0;
 
     /**
-     * @brief 更新收藏项属性（分组、可见性）
-     * @param favoriteId 收藏项ID
-     * @param request 更新内容
+     * @brief 批量更新收藏项属性（分组、可见性；单条更新 = 单元素列表）
+     * @param request 包含 favorite_ids 与可选更新字段
      * @param callback 回调 (success, error)
      */
-    virtual void updateFavoriteItem(int favoriteId,
-                                    const gocook::models::UpdateFavoriteRequest& request,
-                                    SuccessCallback callback) = 0;
+    virtual void batchUpdateFavorites(const gocook::models::BatchUpdateFavoritesRequest& request,
+                                      SuccessCallback callback) = 0;
 
     /**
      * @brief 批量删除收藏
-     * @param request 包含要删除的 favorite_ids
+     * @param request 包含要删除的 favorite_ids（非空；空数组 → 400「favorite_ids 不能为空」）
      * @param callback 回调 (success, error)
      */
     virtual void batchDeleteFavorites(const gocook::models::BatchDeleteFavoritesRequest& request,
