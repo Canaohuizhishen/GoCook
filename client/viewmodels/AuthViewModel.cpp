@@ -10,6 +10,7 @@ AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent, LocalDatabase *db
     , m_loggedIn(false)
     , m_userId(0)
 {
+    // 注册 401 未授权回调
     // 401 统一入口：已登录 → 会话失效自动登出；未登录且在自动登录校验窗口内 →
     // 标记“令牌被服务端明确拒绝”（sendRaw 先触发本回调再回调业务结果，标志在回调时可见）
     m_api->setUnauthorizedHandler([self = QPointer<AuthViewModel>(this)]() {
@@ -41,7 +42,9 @@ void AuthViewModel::login(const QString &username, const QString &password)
 
         QString token = QString::fromStdString(data.token);
         QString apiUsername = QString::fromStdString(data.username);
+        // 持久化登录态
         self->m_db->saveUser(data.user_id, apiUsername, token);
+        // 触发 tokenChanged → 挂起的 Interactive 请求自动重放
         self->m_api->setAuthToken(data.token);
         self->setLoggedIn(true, data.user_id, apiUsername);
         emit self->loginSuccess();
@@ -95,13 +98,16 @@ void AuthViewModel::logout()
 
 void AuthViewModel::checkAutoLogin()
 {
+    // 从本地 SQLite 数据库 m_db 取用户行
     QVariantMap user = m_db->getUser();
     if (!user.isEmpty()) {
+        // 恢复 token
         QString token = user["token"].toString();
         m_api->setAuthToken(token.toStdString());
         // 校验窗口开启：窗口内的 401 由 unauthorizedHandler 标记（见构造函数）
         m_autoLoginInFlight = true;
         m_autoLoginUnauthorized = false;
+        // 调 getCurrentUser() 去服务端校验这个 token 是否还有效
         m_api->getCurrentUser([self = QPointer<AuthViewModel>(this), token](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
             if (!self) return;
             const bool unauthorized = self->m_autoLoginUnauthorized;
@@ -175,7 +181,7 @@ void AuthViewModel::saveProfile(const QString &displayName,
         req.email = email.toStdString();
     if (!phone.isEmpty())
         req.phone = phone.toStdString();
-    if (m_pendingAvatarId > 0)
+    if (m_pendingAvatarId > 0) // > 0 说明上传了新头像
         req.avatar_id = m_pendingAvatarId;
 
     m_api->updateProfile(req, [self = QPointer<AuthViewModel>(this)]
@@ -187,13 +193,20 @@ void AuthViewModel::saveProfile(const QString &displayName,
             emit self->profileSaveFailed(QString::fromStdString(error));
             return;
         }
+
+        // 回写本地状态
         self->m_profileDisplayName = QString::fromStdString(profile.display_name);
         self->m_profileEmail = QString::fromStdString(profile.email);
         self->m_profilePhone = QString::fromStdString(profile.phone);
         self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
+
+        // 版本号自增，版本号一变，URL 变，强制重新拉图
         self->m_avatarVersion++;
         emit self->avatarVersionChanged();
-        self->m_pendingAvatarId = 0;   // 头像已确认，清空待处理 ID
+
+        // 头像已确认，清空待处理 ID
+        self->m_pendingAvatarId = 0;
+
         emit self->profileChanged();
         emit self->profileSaved();
     });
