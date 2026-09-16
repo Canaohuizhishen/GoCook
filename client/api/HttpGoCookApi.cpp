@@ -555,8 +555,6 @@ void HttpGoCookApi::updateProfile(const gocook::models::UpdateProfileRequest& pr
         data["phone"] = QString::fromStdString(profile.phone.value());
     if (profile.avatar_url.has_value())
         data["avatar_url"] = QString::fromStdString(profile.avatar_url.value());
-    if (profile.avatar_id.has_value())
-        data["avatar_id"] = profile.avatar_id.value();
 
     put("/api/users/me/profile", data, [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
         if (!success) {
@@ -748,13 +746,34 @@ void HttpGoCookApi::uploadAvatar(const std::string& filePath,
         if (doc.isObject()) {
             QJsonObject obj = doc.object();
             gocook::models::AvatarUploadResponse resp;
-            resp.avatar_id = obj["avatar_id"].toInt();
             resp.avatar_url = obj["avatar_url"].toString().toStdString();
+            if (resp.avatar_url.empty()) {
+                // 暂存引用是"保存绑定"的唯一凭据：缺失即视为无效响应（防静默进入无引用 pending）
+                if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无效的响应格式");
+                return;
+            }
             if (callback) callback(true, resp, "");
         } else {
             if (callback) callback(false, gocook::models::AvatarUploadResponse{}, "无效的响应格式");
         }
     });
+}
+
+void HttpGoCookApi::discardPendingAvatar(const std::string& avatarUrl,
+                                         SuccessCallback callback)
+{
+    // 放弃未保存的暂存头像（编辑页"返回"时调用）：DELETE 带 JSON 体，
+    // 经 deleteResource → sendRequest 收口（Content-Length 恒存在，规避 httplib 无体 DELETE 挂死）
+    QVariantMap data;
+    data["avatar_url"] = QString::fromStdString(avatarUrl);
+    deleteResource(QStringLiteral("/api/users/me/avatar"), data,
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+        if (!success) {
+            if (callback) callback(false, errorStr.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    }, true, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::uploadRecipeImage(int recipeId,

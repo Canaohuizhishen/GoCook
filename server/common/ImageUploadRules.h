@@ -136,6 +136,25 @@ inline UploadError classifyUpload(const std::string& content,
     return UploadError::None;
 }
 
+/// 分类失败的标准错误文案（头像 / 菜谱封面 / 步骤图三个上传入口共用，杜绝三处文案漂移）。
+/// 仅对非 None 的 UploadError 调用；None 不是错误态，返回空串。
+inline const char* uploadErrorMessage(UploadError err) {
+    switch (err) {
+        case UploadError::UnsupportedType:
+            return "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）";
+        case UploadError::TooLarge:
+            return "图片大小不能超过5MB";
+        case UploadError::ContentMismatch:
+            return "图片内容与格式不符，请重新选择";
+        case UploadError::None:
+            break;
+    }
+    return "";  // None 不是错误态；调用方不应走到这里
+}
+
+/// 上传体为空时的统一提示（三个上传入口共用）。
+inline constexpr const char* kEmptyImageMessage = "请选择图片";
+
 /// 将上传内容写入 /tmp 下唯一命名的临时文件。
 /// @param tag 业务前缀（如 "avatar_1"），最终路径为 /tmp/gocook_<tag>_<时间戳><ext>。
 /// @return 成功返回完整路径，失败（如无法打开文件）返回 nullopt。

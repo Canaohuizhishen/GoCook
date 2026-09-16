@@ -57,10 +57,10 @@ public:
                 (int, int, int), (override));
     // 查询独立营养报告
     MOCK_METHOD(gocook::models::NutritionReport, findNutrition, (int), (override));
-    // 更新菜谱封面图片
-    MOCK_METHOD(std::string, updateRecipeImage, (int, const std::string&), (override));
-    // 更新菜谱步骤图片
-    MOCK_METHOD(std::string, updateStepImage, (int, int, const std::string&), (override));
+    // 更新菜谱封面图片（userId, recipeId, imagePath）
+    MOCK_METHOD(std::string, updateRecipeImage, (int, int, const std::string&), (override));
+    // 更新菜谱步骤图片（userId, recipeId, stepIndex, imagePath）
+    MOCK_METHOD(std::string, updateStepImage, (int, int, int, const std::string&), (override));
     // 删除待审核菜谱
     MOCK_METHOD(void, deleteRecipe, (int, int), (override));
 };

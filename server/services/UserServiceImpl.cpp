@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cctype>
 #include "../common/Logger.h"
+#include "../common/AvatarFiles.h"
 #include "../common/EmailSender.h"
 #include "bcrypt/crypt_blowfish.h"
 #include <openssl/crypto.h>
@@ -292,8 +293,7 @@ void UserServiceImpl::resetPassword(const std::string& token, const std::string&
 UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileRequest& profile) {
     // 校验：至少需提供一个字段
     if (!profile.display_name.has_value() && !profile.avatar_url.has_value() &&
-        !profile.avatar_id.has_value() && !profile.email.has_value() &&
-        !profile.phone.has_value()) {
+        !profile.email.has_value() && !profile.phone.has_value()) {
         throw ServiceException("没有提供需要更新的字段", 400);
     }
 
@@ -302,13 +302,21 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
         throw ServiceException("昵称不能为空", 400);
     }
 
-    // 解析 avatar_id：若 avatar_id 等于 userId，保留当前 avatar_url
-    // （上传时已设置）。若 avatar_id 已设置但不同，则忽略它。
-    UpdateProfileRequest resolvedProfile = profile;
-    if (profile.avatar_id.has_value() && profile.avatar_id.value() == userId) {
-        // 保留现有 avatar_url — 将 resolvedProfile.avatar_url 设为 nullopt
-        // 以免仓库层的 COALESCE 覆盖它
-        resolvedProfile.avatar_url = std::nullopt;
+    // 头像绑定校验（两阶段协议第二段：上传仅暂存，保存时才绑定）：
+    //   - 托管命名空间（/uploads/avatars/...）：必须是本人前缀且文件真实存在
+    //     （防"绑定他人文件 / 路径穿越 / 已被回收的失效引用"）
+    //   - 其余仅接受 http(s) 外部链接（spec 允许手动填写外部链接）
+    if (profile.avatar_url.has_value()) {
+        const std::string& url = profile.avatar_url.value();
+        if (AvatarFiles::isManagedAvatarUrl(url, userId)) {
+            if (!AvatarFiles::fileExists(url)) {
+                throw ServiceException("头像文件不存在，请重新上传", 400);
+            }
+        } else if (url.rfind("/uploads/", 0) == 0) {
+            throw ServiceException("无效的头像引用", 400);
+        } else if (url.rfind("http://", 0) != 0 && url.rfind("https://", 0) != 0) {
+            throw ServiceException("头像链接格式无效", 400);
+        }
     }
 
     // 若邮箱被修改则检查唯一性
@@ -321,7 +329,7 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
         }
     }
 
-    userRepo_->updateProfile(userId, resolvedProfile);
+    userRepo_->updateProfile(userId, profile);
 
     // 返回更新后的用户资料
     auto updated = userRepo_->findById(userId);
@@ -376,6 +384,23 @@ AvatarUploadResponse UserServiceImpl::uploadAvatar(int userId, const std::string
         throw ServiceException("文件路径无效", 400);
     }
     return userRepo_->uploadAvatar(userId, filePath);
+}
+
+void UserServiceImpl::discardPendingAvatar(int userId, const std::string& avatarUrl) {
+    // 归属校验：只允许放弃"本人上传的托管头像"（防越权删除他人文件）
+    if (!AvatarFiles::isManagedAvatarUrl(avatarUrl, userId)) {
+        throw ServiceException("无效的头像引用", 400);
+    }
+    // 正在使用的头像不可丢弃（否则会删掉线上正在展示的头像）
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) {
+        throw ServiceException("用户不存在", 404);
+    }
+    if (user->avatar_url == avatarUrl) {
+        throw ServiceException("该头像正在使用中，无法放弃", 400);
+    }
+    // 幂等：文件已不存在也返回成功；删除失败仅告警（GC 兜底）
+    AvatarFiles::removeFile(avatarUrl);
 }
 UserPreferences UserServiceImpl::getPreferences(int userId) {
     // 先确认用户存在

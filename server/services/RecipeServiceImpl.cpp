@@ -602,12 +602,12 @@ NutritionReport RecipeServiceImpl::getRecipeNutrition(int recipeId) {
     return recipeRepo_->findNutrition(recipeId);
 }
 
-std::string RecipeServiceImpl::uploadRecipeImage(int recipeId, const std::string& filePath) {
-    return recipeRepo_->updateRecipeImage(recipeId, filePath);
+std::string RecipeServiceImpl::uploadRecipeImage(int userId, int recipeId, const std::string& filePath) {
+    return recipeRepo_->updateRecipeImage(userId, recipeId, filePath);
 }
 
-std::string RecipeServiceImpl::uploadStepImage(int recipeId, int stepIndex, const std::string& filePath) {
-    return recipeRepo_->updateStepImage(recipeId, stepIndex, filePath);
+std::string RecipeServiceImpl::uploadStepImage(int userId, int recipeId, int stepIndex, const std::string& filePath) {
+    return recipeRepo_->updateStepImage(userId, recipeId, stepIndex, filePath);
 }
 
 void RecipeServiceImpl::deleteRecipe(int userId, int recipeId) {

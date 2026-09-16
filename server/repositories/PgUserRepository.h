@@ -57,7 +57,7 @@ public:
     // 注销账户
     void deleteAccount(int userId) override;
 
-    // 保存头像文件并记录头像信息，返回 URL 与 ID
+    // 上传头像文件（仅暂存：落盘并返回引用，不改变用户资料；绑定在 updateProfile 完成）
     gocook::models::AvatarUploadResponse uploadAvatar(
         int userId, const std::string& filePath) override;
 

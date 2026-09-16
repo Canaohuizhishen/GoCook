@@ -1,4 +1,5 @@
 #include "AuthViewModel.h"
+#include <QDebug>
 #include <QPointer>
 #include <gocook/IGoCookApi.h>
 #include "../api/HttpGoCookApi.h"
@@ -181,8 +182,8 @@ void AuthViewModel::saveProfile(const QString &displayName,
         req.email = email.toStdString();
     if (!phone.isEmpty())
         req.phone = phone.toStdString();
-    if (m_pendingAvatarId > 0) // > 0 说明上传了新头像
-        req.avatar_id = m_pendingAvatarId;
+    if (!m_pendingAvatarUrl.isEmpty())  // 有未保存的暂存头像：随保存一并绑定生效
+        req.avatar_url = m_pendingAvatarUrl.toStdString();
 
     m_api->updateProfile(req, [self = QPointer<AuthViewModel>(this)]
                          (bool success,
@@ -204,8 +205,8 @@ void AuthViewModel::saveProfile(const QString &displayName,
         self->m_avatarVersion++;
         emit self->avatarVersionChanged();
 
-        // 头像已确认，清空待处理 ID
-        self->m_pendingAvatarId = 0;
+        // 头像已绑定生效，清空待处理引用
+        self->m_pendingAvatarUrl.clear();
 
         emit self->profileChanged();
         emit self->profileSaved();
@@ -217,21 +218,55 @@ void AuthViewModel::uploadAvatar(const QString &filePath) {
         emit avatarUploadFailed(QStringLiteral("未登录，请先登录"));
         return;
     }
-    m_api->uploadAvatar(filePath.toStdString(), [self = QPointer<AuthViewModel>(this)]
+    // 重传语义：旧暂存保留至新上传成功后才丢弃（失败时旧暂存原样保留，预览不落空；
+    // 丢弃失败由服务端 GC 兜底）
+    const QString previousUrl = m_pendingAvatarUrl;
+    const int seq = ++m_avatarUploadSeq;  // 上传代次：只接受最后一次上传的回调
+    m_api->uploadAvatar(filePath.toStdString(), [self = QPointer<AuthViewModel>(this), seq, previousUrl]
                         (bool success,
                          const gocook::models::AvatarUploadResponse& resp,
                          const std::string& error) {
         if (!self) return;
-        if (!success) {
-            emit self->avatarUploadFailed(QString::fromStdString(error));
+        if (seq != self->m_avatarUploadSeq) {
+            // 陈旧回调（期间发生了放弃/重传/登出）：该暂存文件已无人认领，尽力丢弃
+            if (success) self->m_api->discardPendingAvatar(resp.avatar_url, nullptr);
             return;
         }
-        self->m_pendingAvatarId = resp.avatar_id;
-        self->m_profileAvatarUrl = QString::fromStdString(resp.avatar_url);
-        self->m_avatarVersion++;
-        emit self->avatarVersionChanged();
-        emit self->profileChanged();
-        emit self->avatarUploaded(QString::fromStdString(resp.avatar_url));
+        if (!success) {
+            emit self->avatarUploadFailed(QString::fromStdString(error));
+            return;  // 旧暂存（previousUrl）保持 pending：预览与"保存将绑定"语义一致
+        }
+        // 新上传成功：旧暂存使命结束，尽力丢弃（已绑定 / 与新 URL 相同不丢，防误删在用或刚生成的文件）
+        const QString newUrl = QString::fromStdString(resp.avatar_url);
+        if (!previousUrl.isEmpty() && previousUrl != self->m_profileAvatarUrl
+            && previousUrl != newUrl) {
+            self->m_api->discardPendingAvatar(previousUrl.toStdString(), nullptr);
+        }
+        // 仅暂存：不改动已保存资料（m_profileAvatarUrl），等 saveProfile 绑定后才正式生效
+        self->m_pendingAvatarUrl = newUrl;
+        emit self->avatarUploaded(self->m_pendingAvatarUrl);
+    });
+}
+
+bool AuthViewModel::hasPendingAvatar() const {
+    return !m_pendingAvatarUrl.isEmpty();
+}
+
+void AuthViewModel::discardPendingAvatar() {
+    ++m_avatarUploadSeq;  // 作废在途上传：其回调视为陈旧并丢弃对应文件
+    if (m_pendingAvatarUrl.isEmpty()) return;
+
+    const QString url = m_pendingAvatarUrl;
+    m_pendingAvatarUrl.clear();  // 本地立即清空（UI 先回滚）；服务端删除尽力而为
+    m_api->discardPendingAvatar(url.toStdString(),
+        [self = QPointer<AuthViewModel>(this), url](bool success, const std::string &error) {
+        if (!self) return;
+        if (!success) {
+            // 删除失败不打扰用户：残留文件由服务端 GC（24h 宽限期）兜底回收
+            qWarning().noquote() << "[AuthViewModel] 放弃暂存头像失败（服务端 GC 兜底）："
+                                 << QString::fromStdString(error);
+        }
+        emit self->avatarDiscarded(url);
     });
 }
 
@@ -449,6 +484,9 @@ QString AuthViewModel::apiBaseUrl() const {
 void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
 {
     if (!loggedIn) {
+        // 未保存的暂存头像一并作废：清引用 + 递增代次（在途上传回调据此丢弃文件）
+        ++m_avatarUploadSeq;
+        m_pendingAvatarUrl.clear();
         // 登出 / 注销 / token 失效：清空上一登录态的个人资料残留（头像等），避免游客态继续显示
         if (!m_profileDisplayName.isEmpty() || !m_profileEmail.isEmpty() ||
             !m_profilePhone.isEmpty() || !m_profileAvatarUrl.isEmpty()) {

@@ -2,6 +2,9 @@
 #include <gmock/gmock.h>
 #include <jwt-cpp/jwt.h>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <optional>
 #include "../services/UserServiceImpl.h"
 #include "MockUserRepository.h"
 #include "../common/EmailSender.h"
@@ -26,6 +29,37 @@ namespace {
     UserProfile makeUserProfile(int id = 42) {
         return {id, "testuser", "Test User", "test@example.com",
                 "13800138000", "http://example.com/avatar.png", true, "2026-01-01"};
+    }
+
+    // 环境变量守卫：用例内 set，作用域结束恢复原值（与 test_upload_paths.cpp 同一模式）
+    class EnvGuard {
+    public:
+        explicit EnvGuard(const char* name) : name_(name) {
+            if (const char* v = std::getenv(name); v != nullptr)
+                saved_ = std::string(v);
+        }
+        ~EnvGuard() {
+            if (saved_) setenv(name_.c_str(), saved_->c_str(), 1);
+            else unsetenv(name_.c_str());
+        }
+        void set(const char* value) { setenv(name_.c_str(), value, 1); }
+    private:
+        std::string name_;
+        std::optional<std::string> saved_;
+    };
+
+    /// 建独立临时上传根目录，并可选写入一个托管头像文件（<base>/avatars/<filename>）
+    std::filesystem::path makeUploadsRoot(const std::string& tag,
+                                          const std::string& filename = "") {
+        auto base = std::filesystem::temp_directory_path() / ("gocook_avatar_bind_" + tag);
+        std::error_code ec;
+        std::filesystem::remove_all(base, ec);
+        std::filesystem::create_directories(base / "avatars");
+        if (!filename.empty()) {
+            std::ofstream ofs(base / "avatars" / filename, std::ios::binary);
+            ofs << "x";
+        }
+        return base;
     }
 }
 
@@ -550,14 +584,12 @@ TEST(UserServiceTest, 上传头像成功) {
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     AvatarUploadResponse expectedResp;
-    expectedResp.avatar_id = 42;
     expectedResp.avatar_url = "/uploads/avatars/user_42_12345.jpg";
 
     EXPECT_CALL(*repo, uploadAvatar(42, "/tmp/test_avatar.jpg"))
         .WillOnce(Return(expectedResp));
 
     auto result = service.uploadAvatar(42, "/tmp/test_avatar.jpg");
-    EXPECT_EQ(result.avatar_id, 42);
     EXPECT_EQ(result.avatar_url, "/uploads/avatars/user_42_12345.jpg");
 }
 
@@ -570,6 +602,151 @@ TEST(UserServiceTest, 上传头像空路径) {
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 400);
+    }
+}
+
+// ==================== 头像绑定（保存时生效） ====================
+
+TEST(UserServiceTest, 更新资料绑定本人暂存头像成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    const auto base = makeUploadsRoot("bind_ok", "user_42_12345.jpg");
+    EnvGuard guard("GOCOOK_UPLOADS_DIR");
+    guard.set(base.c_str());
+
+    UpdateProfileRequest profile;
+    profile.avatar_url = "/uploads/avatars/user_42_12345.jpg";
+
+    EXPECT_CALL(*repo, updateProfile(42, Field(&UpdateProfileRequest::avatar_url,
+        Optional(std::string("/uploads/avatars/user_42_12345.jpg"))))).Times(1);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeUserProfile(42)));
+
+    EXPECT_NO_THROW(service.updateProfile(42, profile));
+
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST(UserServiceTest, 更新资料绑定他人前缀头像被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    UpdateProfileRequest profile;
+    profile.avatar_url = "/uploads/avatars/user_99_12345.jpg";  // 非本人前缀
+
+    try {
+        service.updateProfile(42, profile);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "无效的头像引用");
+    }
+}
+
+TEST(UserServiceTest, 更新资料绑定不存在暂存头像被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    const auto base = makeUploadsRoot("bind_missing");  // 空目录：文件不存在
+    EnvGuard guard("GOCOOK_UPLOADS_DIR");
+    guard.set(base.c_str());
+
+    UpdateProfileRequest profile;
+    profile.avatar_url = "/uploads/avatars/user_42_999.jpg";
+
+    try {
+        service.updateProfile(42, profile);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "头像文件不存在，请重新上传");
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST(UserServiceTest, 更新资料绑定外部链接放行) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    UpdateProfileRequest profile;
+    profile.avatar_url = "https://cdn.example.com/avatar.png";
+
+    EXPECT_CALL(*repo, updateProfile(42, _)).Times(1);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeUserProfile(42)));
+
+    EXPECT_NO_THROW(service.updateProfile(42, profile));
+}
+
+TEST(UserServiceTest, 更新资料绑定非法链接格式被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    UpdateProfileRequest profile;
+    profile.avatar_url = "ftp://cdn.example.com/avatar.png";
+
+    try {
+        service.updateProfile(42, profile);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "头像链接格式无效");
+    }
+}
+
+// ==================== 放弃暂存头像 ====================
+
+TEST(UserServiceTest, 放弃暂存头像删除文件) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    const auto base = makeUploadsRoot("discard_ok", "user_42_111.jpg");
+    EnvGuard guard("GOCOOK_UPLOADS_DIR");
+    guard.set(base.c_str());
+
+    auto user = makeUserProfile(42);  // 当前头像指向别的文件
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(user));
+
+    EXPECT_NO_THROW(service.discardPendingAvatar(42, "/uploads/avatars/user_42_111.jpg"));
+    EXPECT_FALSE(std::filesystem::exists(base / "avatars" / "user_42_111.jpg"));
+
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+}
+
+TEST(UserServiceTest, 放弃暂存_当前使用中头像被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto user = makeUserProfile(42);
+    user.avatar_url = "/uploads/avatars/user_42_111.jpg";
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(user));
+
+    try {
+        service.discardPendingAvatar(42, "/uploads/avatars/user_42_111.jpg");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "该头像正在使用中，无法放弃");
+    }
+}
+
+TEST(UserServiceTest, 放弃暂存_他人前缀被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    try {
+        service.discardPendingAvatar(42, "/uploads/avatars/user_99_111.jpg");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_STREQ(e.what(), "无效的头像引用");
     }
 }
 

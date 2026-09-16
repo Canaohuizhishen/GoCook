@@ -5,6 +5,8 @@
 //   T2  401 → unauthorized 信号 + 服务端精确文案
 //   T3  batchUpdateFavorites（PATCH，绕过 sendRequest）401 也触发 unauthorized（本轮补齐的行为）
 //   T4  uploadAvatar（绕过 sendRequest）401 文案统一
+//   T4b discardPendingAvatar（DELETE 带体经 sendRequest 收口）成功 + 带体到达验证
+//   T4c uploadAvatar：2xx 但缺 avatar_url（空对象）→ 判失败"无效的响应格式"
 //   T5  断网（连接拒绝，statusCode=0）→ 统一网络文案，不再抛空 body
 //   T5b 网络恢复边沿（networkRestored）：失联后首个成功恰好一次；未失联/连续成功不发
 //   T5c 服务器繁忙 503 → 归一为固定文案（不透传响应体，VM 据此自动重试）
@@ -68,10 +70,14 @@ class StubServer {
 public:
     std::atomic<int> searchReqCount{0};
     std::atomic<int> avatarReqCount{0};
+    std::atomic<int> avatarMode{0};              // 头像上传响应模式：0=401（T4）；1=200 空对象（T4c）
     std::atomic<int> favoriteReqCount{0};        // POST 收藏（Interactive 挂起/重放计数）
     std::atomic<int> favoritesListReqCount{0};   // GET 收藏列表（Silent 拦截计数）
     std::atomic<int> deleteRecipeReqCount{0};    // DELETE 菜谱（T8 守卫拦截验证）
     std::atomic<int> stepImageReqCount{0};       // POST 步骤图（T10 两段式响应计数）
+    std::atomic<int> discardAvatarReqCount{0};   // DELETE 暂存头像（T4b 计数）
+    std::atomic<int> discardAvatarBodySize{0};   // T4b：DELETE 请求体字节数（验证带体到达）
+    std::atomic<bool> discardAvatarBodyHasUrl{false}; // T4b：体验证请求体含 avatar_url 字段
 
     StubServer()
     {
@@ -92,8 +98,21 @@ public:
         });
         svr.Post("/api/users/me/avatar", [this](const httplib::Request&, httplib::Response& res) {
             avatarReqCount++;
+            if (avatarMode.load() == 1) {
+                res.status = 200;
+                res.set_content("{}", "application/json");
+                return;
+            }
             res.status = 401;
             res.set_content(R"({"error":"无效的访问令牌"})", "application/json");
+        });
+        // T4b 用：放弃暂存头像（验证 DELETE 带体可达 + 成功响应）
+        svr.Delete("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
+            discardAvatarReqCount++;
+            discardAvatarBodySize = static_cast<int>(req.body.size());
+            discardAvatarBodyHasUrl = req.body.find("avatar_url") != std::string::npos;
+            res.status = 200;
+            res.set_content(R"({"message":"已放弃未保存的头像"})", "application/json");
         });
         svr.Post("/api/recipes/1/image", [](const httplib::Request&, httplib::Response& res) {
             res.status = 401;
@@ -399,6 +418,64 @@ TEST_F(HttpApiTest, UploadAvatar401_UnifiedMessage)
     EXPECT_TRUE(unauthorizedCalled.load());
     EXPECT_EQ(err, "无效的访问令牌") << "401 应返回服务端精确文案而不是硬编码\"未授权\"";
     EXPECT_EQ(stub.avatarReqCount.load(), 1);
+}
+
+// ==================== T4c：uploadAvatar 2xx 但缺 avatar_url → 判失败 ====================
+TEST_F(HttpApiTest, UploadAvatarMissingUrl_Rejected)
+{
+    StubServer stub;
+    stub.avatarMode = 1;  // 200 + 空对象
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("valid-token"));
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    QFile img(dir.filePath("avatar.png"));
+    ASSERT_TRUE(img.open(QIODevice::WriteOnly));
+    img.write("fake-png-bytes");
+    img.close();
+
+    std::atomic<bool> done{false};
+    bool ok = true;
+    std::string err;
+    api.uploadAvatar(img.fileName().toStdString(),
+                     [&](bool s, const gocook::models::AvatarUploadResponse&, const std::string& e) {
+                         ok = s;
+                         err = e;
+                         done = true;
+                     });
+
+    ASSERT_TRUE(waitUntil(done)) << "回调超时";
+    EXPECT_FALSE(ok) << "缺 avatar_url 的 2xx 响应不得判成功（防静默进入无引用 pending）";
+    EXPECT_EQ(err, "无效的响应格式");
+    EXPECT_EQ(stub.avatarReqCount.load(), 1);
+}
+
+// ==================== T4b：discardPendingAvatar（DELETE 带体）成功，且带体到达不挂死 ====================
+TEST_F(HttpApiTest, DiscardPendingAvatar_DeleteWithBodySucceeds)
+{
+    StubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    // 模拟"已登录"（绕过登录守卫）
+    api.setToken(QStringLiteral("valid-token"));
+
+    std::atomic<bool> done{false};
+    bool ok = false;
+    std::string err = "initial";
+    api.discardPendingAvatar("/uploads/avatars/user_1_123.jpg",
+                             [&](bool s, const std::string& e) {
+                                 ok = s;
+                                 err = e;
+                                 done = true;
+                             });
+
+    ASSERT_TRUE(waitUntil(done)) << "回调超时（DELETE 带体不应挂死）";
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(err, "");
+    EXPECT_EQ(stub.discardAvatarReqCount.load(), 1);
+    EXPECT_GT(stub.discardAvatarBodySize.load(), 0)
+        << "DELETE 必须携带非空 JSON 体（Content-Length 恒存在，规避 httplib 无体 DELETE 挂死）";
+    EXPECT_TRUE(stub.discardAvatarBodyHasUrl.load()) << "请求体应含 avatar_url 字段";
 }
 
 // ==================== T4.1：Interactive 未登录 → 挂起 + authRequired，不发请求 ====================

@@ -197,22 +197,24 @@ namespace gocook::services {
         virtual models::NutritionReport getRecipeNutrition(int recipeId) = 0;
 
         /**
-         * @brief 更新菜谱封面图片：上传图片并返回 image_url。
+         * @brief 更新菜谱封面图片：上传图片并返回 image_url（仅作者本人，非作者 403；不存在 404）。
+         * @param userId 操作者用户 ID
          * @param recipeId 菜谱 ID
          * @param filePath 本地图片文件路径
          * @return 可访问的 image_url
          */
-        virtual std::string uploadRecipeImage(int recipeId,
+        virtual std::string uploadRecipeImage(int userId, int recipeId,
                                                const std::string& filePath) = 0;
 
         /**
-         * @brief 更新菜谱某一步骤的图片，返回 image_url。
+         * @brief 更新菜谱某一步骤的图片，返回 image_url（仅作者本人；步骤索引越界 400）。
+         * @param userId 操作者用户 ID
          * @param recipeId 菜谱 ID
          * @param stepIndex 步骤索引（从 0 开始）
          * @param filePath 本地图片文件路径
          * @return 可访问的 image_url
          */
-        virtual std::string uploadStepImage(int recipeId, int stepIndex,
+        virtual std::string uploadStepImage(int userId, int recipeId, int stepIndex,
                                              const std::string& filePath) = 0;
 
         /**
@@ -304,13 +306,20 @@ namespace gocook::services {
         virtual void deleteAccount(int userId) = 0;
 
         /**
-         * @brief 上传头像，返回 URL 和 ID（需认证）。
+         * @brief 上传头像（仅暂存，需在 updateProfile 中传回 avatar_url 完成绑定）。
          * @param userId 用户 ID
          * @param filePath 本地图片文件路径
-         * @return 头像响应（avatar_id 与 avatar_url）
+         * @return 头像响应（avatar_url 暂存引用）
          */
         virtual models::AvatarUploadResponse uploadAvatar(int userId,
                                                           const std::string& filePath) = 0;
+
+        /**
+         * @brief 放弃未保存的暂存头像（需认证，幂等）：删除指定暂存文件。
+         * @param userId 用户 ID
+         * @param avatarUrl 此前上传返回的暂存 avatar_url（须为本人上传且未被绑定）
+         */
+        virtual void discardPendingAvatar(int userId, const std::string& avatarUrl) = 0;
 
         /**
          * @brief 获取用户饮食偏好（需认证）。

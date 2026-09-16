@@ -83,11 +83,11 @@ public:
     // 查询菜谱独立营养报告
     gocook::models::NutritionReport findNutrition(int recipeId) override;
 
-    // 更新菜谱封面图片，返回 image_url
-    std::string updateRecipeImage(int recipeId, const std::string& imagePath) override;
+    // 更新菜谱封面图片（校验作者归属与存在性），返回 image_url
+    std::string updateRecipeImage(int userId, int recipeId, const std::string& imagePath) override;
 
-    // 更新菜谱某一步骤的图片，返回 image_url
-    std::string updateStepImage(int recipeId, int stepIndex, const std::string& imagePath) override;
+    // 更新菜谱某一步骤的图片（校验作者归属、存在性与步骤索引），返回 image_url
+    std::string updateStepImage(int userId, int recipeId, int stepIndex, const std::string& imagePath) override;
 
     // 删除待审核菜谱（仅非 approved 状态可删），同时清理图片文件
     void deleteRecipe(int userId, int recipeId) override;

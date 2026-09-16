@@ -94,8 +94,7 @@ namespace gocook::models {
     /// 更新用户个人资料请求
     struct UpdateProfileRequest {
         std::optional<std::string> display_name;   ///< 显示名（昵称），nullopt 表示不修改
-        std::optional<std::string> avatar_url;     ///< 头像 URL
-        std::optional<int>         avatar_id;      ///< 头像上传返回的资源标识
+        std::optional<std::string> avatar_url;     ///< 头像引用：上传返回的暂存 avatar_url（保存时绑定生效）或外部 http(s) 链接
         std::optional<std::string> email;          ///< 新增：联系邮箱
         std::optional<std::string> phone;          ///< 新增：联系电话
     };
@@ -131,10 +130,9 @@ namespace gocook::models {
         std::vector<AvoidanceItem> suggested_avoidances; ///< 建议忌口项列表
     };
 
-    /// 头像上传响应
+    /// 头像上传响应（上传仅暂存：文件已落盘但未绑定，需经资料更新接口传回 avatar_url 后生效）
     struct AvatarUploadResponse {
-        int avatar_id = 0;      ///< 头像资源 ID
-        std::string avatar_url; ///< 头像 URL（相对路径）
+        std::string avatar_url; ///< 暂存头像 URL（相对路径），保存资料时原样传回以完成绑定
     };
 
     /// 收藏菜谱项

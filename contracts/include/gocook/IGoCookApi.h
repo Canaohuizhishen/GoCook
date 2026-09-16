@@ -270,12 +270,20 @@ public:
     virtual void getHealthProfile(HealthProfileCallback callback) = 0;
 
     /**
-     * @brief 上传头像
+     * @brief 上传头像（仅暂存，保存资料时传回 avatar_url 完成绑定）
      * @param filePath 本地图片文件路径
      * @param callback 回调 (success, AvatarUploadResponse, error)
      */
     virtual void uploadAvatar(const std::string& filePath,
                               AvatarUploadCallback callback) = 0;
+
+    /**
+     * @brief 放弃未保存的暂存头像（幂等删除服务端暂存文件）
+     * @param avatarUrl 此前上传返回的暂存 avatar_url
+     * @param callback 回调 (success, error)
+     */
+    virtual void discardPendingAvatar(const std::string& avatarUrl,
+                                      SuccessCallback callback) = 0;
 
     /**
      * @brief 上传菜谱封面图片
