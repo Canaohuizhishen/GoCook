@@ -46,9 +46,11 @@ public:
                         const std::string& newPassword) override;
     // 注销账户
     void deleteAccount(int userId) override;
-    // 上传头像，返回头像 URL 与资源 ID
+    // 上传头像（仅暂存，保存资料时通过 avatar_url 绑定生效）
     gocook::models::AvatarUploadResponse uploadAvatar(int userId,
                                                        const std::string& filePath) override;
+    // 放弃未保存的暂存头像（幂等删除）
+    void discardPendingAvatar(int userId, const std::string& avatarUrl) override;
     // 获取用户饮食偏好
     gocook::models::UserPreferences getPreferences(int userId) override;
     // 更新用户饮食偏好

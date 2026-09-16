@@ -411,7 +411,7 @@ void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Resp
         const std::string& content = req.body;
 
         if (content.empty()) {
-            setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
+            setErrorResponse(res, 400, ImageUploadRules::kEmptyImageMessage);
             return;
         }
 
@@ -419,15 +419,12 @@ void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Resp
 
         // 规则校验（白名单 + 内容魔数宽容修正），输出真实落盘扩展名
         std::string ext;
-        switch (ImageUploadRules::classifyUpload(content, contentType, ext)) {
+        const auto uploadError = ImageUploadRules::classifyUpload(content, contentType, ext);
+        switch (uploadError) {
             case ImageUploadRules::UploadError::UnsupportedType:
-                setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG");
-                return;
             case ImageUploadRules::UploadError::TooLarge:
-                setErrorResponse(res, 400, "图片大小不能超过5MB");
-                return;
             case ImageUploadRules::UploadError::ContentMismatch:
-                setErrorResponse(res, 400, "图片内容与格式不符，请重新选择");
+                setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
                 return;
             case ImageUploadRules::UploadError::None:
                 break;
@@ -442,7 +439,7 @@ void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Resp
         }
         const std::string& tempPath = *tempPathOpt;
 
-        auto imageUrl = service_.uploadRecipeImage(recipeId, tempPath);
+        auto imageUrl = service_.uploadRecipeImage(info.userId, recipeId, tempPath);
 
         res.status = 200;
         res.set_header("Content-Type", "application/json");
@@ -466,7 +463,7 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
         const std::string& content = req.body;
 
         if (content.empty()) {
-            setErrorResponse(res, 400, "请选择图片");
+            setErrorResponse(res, 400, ImageUploadRules::kEmptyImageMessage);
             return;
         }
 
@@ -474,15 +471,12 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
 
         // 规则校验（白名单 + 内容魔数宽容修正），输出真实落盘扩展名
         std::string ext;
-        switch (ImageUploadRules::classifyUpload(content, contentType, ext)) {
+        const auto uploadError = ImageUploadRules::classifyUpload(content, contentType, ext);
+        switch (uploadError) {
             case ImageUploadRules::UploadError::UnsupportedType:
-                setErrorResponse(res, 400, "不支持的图片格式");
-                return;
             case ImageUploadRules::UploadError::TooLarge:
-                setErrorResponse(res, 400, "图片大小不能超过5MB");
-                return;
             case ImageUploadRules::UploadError::ContentMismatch:
-                setErrorResponse(res, 400, "图片内容与格式不符，请重新选择");
+                setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
                 return;
             case ImageUploadRules::UploadError::None:
                 break;
@@ -498,7 +492,7 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
         }
         const std::string& tempPath = *tempPathOpt;
 
-        std::string imageUrl = service_.uploadStepImage(recipeId, stepIndex, tempPath);
+        std::string imageUrl = service_.uploadStepImage(info.userId, recipeId, stepIndex, tempPath);
 
         res.status = 200;
         res.set_header("Content-Type", "application/json");

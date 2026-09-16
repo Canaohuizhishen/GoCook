@@ -9,6 +9,7 @@
 //   · classifyUpload 宽容修正：声明与内容不符时按真实类型落盘；伪装格式拒绝
 //   · classifyUpload 超限：白名单 → 5MB → 嗅探 的检查顺序（TooLarge 先于内容扫描）
 //   · kMaxImageBytes = 5MB；writeTempImageFile 落盘可读回
+//   · uploadErrorMessage / kEmptyImageMessage：上传错误文案单一来源（字面量锁定，防漂移）
 //
 // 纯函数测试，不依赖数据库与网络。
 
@@ -215,4 +216,18 @@ TEST(ImageUploadRulesTest, writeTempImageFile落盘可读回) {
 
     EXPECT_EQ("file-content", readAll(*pathOpt));
     std::filesystem::remove(*pathOpt);  // 清理临时文件
+}
+
+TEST(ImageUploadRulesTest, 上传错误文案单一来源且与契约一致) {
+    // 文案锁定：三入口（头像/菜谱封面/步骤图）共用同一来源，防再次漂移；
+    // 字面量与 docs/api-spec.md 1.4 错误表保持一致
+    EXPECT_STREQ("不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）",
+                 ImageUploadRules::uploadErrorMessage(UploadError::UnsupportedType));
+    EXPECT_STREQ("图片大小不能超过5MB",
+                 ImageUploadRules::uploadErrorMessage(UploadError::TooLarge));
+    EXPECT_STREQ("图片内容与格式不符，请重新选择",
+                 ImageUploadRules::uploadErrorMessage(UploadError::ContentMismatch));
+    EXPECT_STREQ("请选择图片", ImageUploadRules::kEmptyImageMessage);
+    // None 不是错误态：返回空串（调用方不应使用）
+    EXPECT_STREQ("", ImageUploadRules::uploadErrorMessage(UploadError::None));
 }

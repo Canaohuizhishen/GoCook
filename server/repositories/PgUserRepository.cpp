@@ -4,6 +4,7 @@
 #include "../common/Logger.h"
 #include "../common/DbExecutor.h"
 #include "../common/UploadPaths.h"
+#include "../common/AvatarFiles.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -18,7 +19,7 @@ using namespace gocook::services;
 //   本文件已按"生产级收敛形态"重构：每个方法用 executeDb 包裹（见 ../common/DbExecutor.h），
 //   方法体只剩"差异部分"（SQL + 参数 + 行→结构体映射），异常分层/事务边界由辅助函数统一保证。
 //   两个特例保持手写（原因见方法内注释）：getHealthConditions（吞错误返回空）、
-//   uploadAvatar（文件操作 + 数据库混编 + 自定义错误文案）。
+//   uploadAvatar（文件暂存操作 + 自定义错误文案）。
 
 std::optional<UserAuthInfo> PgUserRepository::findByUsername(const std::string& username) {
     return executeDb(db_, [&](pqxx::work& txn) -> std::optional<UserAuthInfo> {
@@ -200,7 +201,16 @@ void PgUserRepository::resetPasswordAndMarkTokenUsed(
 }
 
 void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& profile) {
+    // 头像换绑：先在事务内记录被顶替的旧值，提交后再回收旧文件
+    // （文件删除不参与事务——沿用"先提交、后删文件、失败告警交 GC"的既成约定）
+    std::string oldAvatarUrl;
     executeDb(db_, [&](pqxx::work& txn) {
+        if (profile.avatar_url.has_value()) {
+            LOG_DEBUG("[SQL] SELECT avatar_url FROM users WHERE id = $1 | $1=%d", userId);
+            pqxx::result cur = txn.exec(
+                "SELECT avatar_url FROM users WHERE id = $1", pqxx::params{userId});
+            if (!cur.empty()) oldAvatarUrl = cur[0]["avatar_url"].as<std::string>("");
+        }
         LOG_DEBUG("[SQL] UPDATE users SET display_name=COALESCE($1,...), ... WHERE id=$5 | $5=%d", userId);
         auto r = txn.exec(
             "UPDATE users SET "
@@ -226,6 +236,14 @@ void PgUserRepository::updateProfile(int userId, const UpdateProfileRequest& pro
             throw ServiceException("用户不存在", 404);
         }
     }, "数据库操作失败");
+
+    // 提交后：回收被顶替的旧头像文件（值未变 / 外部链接 / 非托管路径不处理；
+    // 删除失败仅告警，残留由后台 GC 兜底）
+    if (!oldAvatarUrl.empty()
+        && oldAvatarUrl != profile.avatar_url.value_or("")
+        && AvatarFiles::isManagedAvatarUrl(oldAvatarUrl)) {
+        AvatarFiles::removeFile(oldAvatarUrl);
+    }
 }
 
 // ⚠️ 特例：错误处理策略是"吞掉 DB 异常、返回空列表"（健康条件是可选数据，查不到不该让上层
@@ -277,7 +295,14 @@ void PgUserRepository::changePassword(int userId, const std::string& newPassword
 }
 
 void PgUserRepository::deleteAccount(int userId) {
+    // 注销即清数据：先记录头像 URL，提交后回收头像文件（不留孤儿）
+    std::string avatarUrl;
     executeDb(db_, [&](pqxx::work& txn) {
+        // 0. 取出头像 URL（事务内读取，供提交后回收文件）
+        pqxx::result cur = txn.exec(
+            "SELECT avatar_url FROM users WHERE id = $1", pqxx::params{userId});
+        if (!cur.empty()) avatarUrl = cur[0]["avatar_url"].as<std::string>("");
+
         // 1. 匿名化公开内容：菜谱（author_id 无 CASCADE，注销后作者置空而不是连菜谱一起删）
         LOG_DEBUG("[SQL] UPDATE recipes SET author_id = NULL WHERE author_id = $1 | $1=%d", userId);
         txn.exec("UPDATE recipes SET author_id = NULL WHERE author_id = $1", pqxx::params{userId});
@@ -293,10 +318,16 @@ void PgUserRepository::deleteAccount(int userId) {
             throw ServiceException("用户不存在", 404);
         }
     }, "账户注销失败");
+
+    // 提交后回收头像文件（仅托管路径；失败仅告警，GC 兜底）
+    if (!avatarUrl.empty() && AvatarFiles::isManagedAvatarUrl(avatarUrl)) {
+        AvatarFiles::removeFile(avatarUrl);
+    }
 }
 
-// ⚠️ 特例：文件操作（拷贝/清理）+ 数据库更新混编，且失败文案是自定义的"头像上传失败"。
-// 保持手写——特例显式化，比给 executeDb 加"错误处理策略"参数更清晰。
+// ⚠️ 特例：文件暂存操作（拷贝/清理）+ 自定义失败文案，保持手写。
+// 语义：仅暂存——文件落盘并返回引用，不改变用户资料；绑定发生在 updateProfile
+// （两阶段协议，见 docs/api-spec.md 3.10/3.2）。本方法不触碰数据库。
 AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::string& filePath) {
     try {
         // 根据上传文件的后缀确定扩展名
@@ -313,9 +344,11 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
             else if (lower == ".svg")  ext = ".svg";
         }
 
-        // 生成唯一文件名：user_<id>_<时间戳><扩展名>
+        // 生成唯一文件名：user_<id>_<毫秒时间戳><扩展名>
+        // （毫秒粒度：同一用户同秒内快速重传时，秒级时间戳会生成同名路径互相覆盖，
+        //   并与客户端"重传先丢弃旧暂存"逻辑互相干扰）
         auto now = std::chrono::system_clock::now();
-        auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+        auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(
                       now.time_since_epoch()).count();
         std::string filename = "user_" + std::to_string(userId)
                              + "_" + std::to_string(ts) + ext;
@@ -331,41 +364,35 @@ AvatarUploadResponse PgUserRepository::uploadAvatar(int userId, const std::strin
             LOG_ERROR("头像源文件不存在：%s", filePath.c_str());
         }
 
-        // 把文件复制到永久位置
+        // 把文件复制到永久位置（暂存；保存绑定后才会被引用）
         try {
             std::filesystem::copy(filePath, destPath,
                                   std::filesystem::copy_options::overwrite_existing);
         } catch (const std::filesystem::filesystem_error& fe) {
             LOG_ERROR("复制头像文件失败（%s → %s）：%s",
                       filePath.c_str(), destPath.c_str(), fe.what());
+            std::error_code rmEc;
+            std::filesystem::remove(filePath, rmEc);  // 失败路径不留临时文件
             throw ServiceException("头像文件保存失败");
         }
 
         // 拼接 URL：HTTP 路由路径（与服务路由 R"(/uploads/avatars/(.+))" 匹配）
         std::string avatarUrl = "/uploads/avatars/" + filename;
 
-        // 更新数据库里的 avatar_url（数据库部分也可以单独走 executeDb，
-        // 但整个方法保持手写更直观——文件失败文案与 DB 失败文案不同）
-        auto conn = db_.getConnection();
-        pqxx::work txn(*conn);
-        LOG_DEBUG("[SQL] UPDATE users SET avatar_url = $1 WHERE id = $2 | $1=%s $2=%d", avatarUrl.c_str(), userId);
-        txn.exec(
-            "UPDATE users SET avatar_url = $1 WHERE id = $2",
-            pqxx::params{avatarUrl, userId});
-        txn.commit();
-
-        // 清理临时文件
-        std::filesystem::remove(filePath);
+        // 清理临时文件（error_code 版：清理失败不影响上传结果）
+        std::error_code rmEc;
+        std::filesystem::remove(filePath, rmEc);
 
         AvatarUploadResponse resp;
-        resp.avatar_id = userId;   // 用 userId 作为头像资源标识
-        resp.avatar_url = avatarUrl;
+        resp.avatar_url = avatarUrl;  // 暂存引用；客户端保存时原样传回完成绑定
         return resp;
 
     } catch (const ServiceException&) {
         throw;
     } catch (const std::exception& e) {
-        LOG_WARN("头像上传时数据库出错：%s", e.what());
+        LOG_WARN("头像上传出错：%s", e.what());
+        std::error_code rmEc;
+        std::filesystem::remove(filePath, rmEc);  // 失败路径不留临时文件
         throw ServiceException("头像上传失败");
     }
 }

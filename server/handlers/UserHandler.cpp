@@ -140,7 +140,6 @@ void UserHandler::updateProfile(const httplib::Request& req, httplib::Response& 
         UpdateProfileRequest profile;
         if (reqJson.contains("display_name")) profile.display_name = reqJson["display_name"].get<std::string>();
         if (reqJson.contains("avatar_url")) profile.avatar_url = reqJson["avatar_url"].get<std::string>();
-        if (reqJson.contains("avatar_id")) profile.avatar_id = reqJson["avatar_id"].get<int>();
         if (reqJson.contains("email")) profile.email = reqJson["email"].get<std::string>();
         if (reqJson.contains("phone")) profile.phone = reqJson["phone"].get<std::string>();
         auto updated = service_.updateProfile(info.userId, profile);
@@ -161,7 +160,7 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
         const std::string& content = req.body;
 
         if (content.empty()) {
-            setErrorResponse(res, 400, "请选择 JPG 或 PNG 格式的图片");
+            setErrorResponse(res, 400, ImageUploadRules::kEmptyImageMessage);
             return;
         }
 
@@ -170,15 +169,12 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
 
         // 规则校验（白名单 + 内容魔数宽容修正），输出真实落盘扩展名
         std::string ext;
-        switch (ImageUploadRules::classifyUpload(content, contentType, ext)) {
+        const auto uploadError = ImageUploadRules::classifyUpload(content, contentType, ext);
+        switch (uploadError) {
             case ImageUploadRules::UploadError::UnsupportedType:
-                setErrorResponse(res, 400, "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）");
-                return;
             case ImageUploadRules::UploadError::TooLarge:
-                setErrorResponse(res, 400, "图片大小不能超过5MB");
-                return;
             case ImageUploadRules::UploadError::ContentMismatch:
-                setErrorResponse(res, 400, "图片内容与格式不符，请重新选择");
+                setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
                 return;
             case ImageUploadRules::UploadError::None:
                 break;
@@ -198,11 +194,27 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
 
         res.status = 200;
         res.set_header("Content-Type", "application/json");
-        res.body = json{
-            {"avatar_id", result.avatar_id},
-            {"avatar_url", result.avatar_url}
-        }.dump();
+        res.body = json{{"avatar_url", result.avatar_url}}.dump();
 
+    } catch (const gocook::services::ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void UserHandler::discardPendingAvatar(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        json reqJson = json::parse(req.body);
+        if (!reqJson.contains("avatar_url") || !reqJson["avatar_url"].is_string()) {
+            setErrorResponse(res, 400, "缺少 avatar_url 字段");
+            return;
+        }
+        service_.discardPendingAvatar(info.userId, reqJson["avatar_url"].get<std::string>());
+        res.status = 200;
+        res.body = json{{"message", "已放弃未保存的头像"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

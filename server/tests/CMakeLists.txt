@@ -17,6 +17,11 @@ set(TEST_SOURCES
     test_upload_paths.cpp
     test_upload_file_server.cpp
     test_image_upload_rules.cpp
+    test_avatar_files.cpp
+    test_orphan_gc.cpp
+    test_avatar_lifecycle_integration.cpp
+    test_recipe_image_upload_handler.cpp
+    test_recipe_image_lifecycle_integration.cpp
     test_nutrition_integration.cpp
     test_favorites_integration.cpp
 )

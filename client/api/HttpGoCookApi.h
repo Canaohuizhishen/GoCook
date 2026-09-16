@@ -165,6 +165,8 @@ public:
     void getHealthProfile(HealthProfileCallback callback) override;
     void uploadAvatar(const std::string& filePath,
                       AvatarUploadCallback callback) override;
+    void discardPendingAvatar(const std::string& avatarUrl,
+                              SuccessCallback callback) override;
     void uploadRecipeImage(int recipeId,
                            const std::string& filePath,
                            RecipeImageCallback callback) override;

@@ -184,12 +184,16 @@ public:
      */
     virtual models::NutritionReport findNutrition(int recipeId) = 0;
 
-    /// 更新菜谱封面图片：将 imagePath 文件复制到 uploads 目录，返回可访问的 image_url
-    virtual std::string updateRecipeImage(int recipeId,
+    /// 更新菜谱封面图片：先校验作者归属（非作者 403）与菜谱存在（不存在 404），
+    /// 将 imagePath 文件复制到 uploads 目录后返回可访问的 image_url；
+    /// 所有失败路径清理临时源文件与已复制的目标文件。
+    virtual std::string updateRecipeImage(int userId, int recipeId,
                                           const std::string& imagePath) = 0;
 
-    /// 更新菜谱某一步骤的图片：读 steps JSONB → 改 [stepIndex].image_url → 写回，返回 image_url
-    virtual std::string updateStepImage(int recipeId, int stepIndex,
+    /// 更新菜谱某一步骤的图片：先校验作者归属（非作者 403）/存在性（404）/步骤索引（越界 400），
+    /// 读 steps JSONB → 改 [stepIndex].image_url → 写回，返回 image_url；
+    /// 所有失败路径清理临时源文件与已复制的目标文件。
+    virtual std::string updateStepImage(int userId, int recipeId, int stepIndex,
                                         const std::string& imagePath) = 0;
 
     /// 删除待审核菜谱（仅 status != 'approved' 的菜谱可删除），同时清理图片文件

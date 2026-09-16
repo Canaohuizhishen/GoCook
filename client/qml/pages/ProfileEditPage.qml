@@ -9,6 +9,11 @@ Page {
     title: qsTr("编辑个人资料")
 
     function goBack() {
+        // 未保存的暂存头像随"返回"一并放弃（含在途上传）：服务端删除尽力而为，失败由 GC 兜底
+        authViewModel.discardPendingAvatar()
+        // 显示立即回滚到已保存的头像（页面栈弹出后个人中心也会重新拉取服务端资料）
+        profileEditPage.avatarDisplayUrl = authViewModel.profileAvatarUrl.length > 0
+            ? profileEditPage.apiBaseUrl + authViewModel.profileAvatarUrl : ""
         var item = profileEditPage.parent
         while (item) {
             try { if (typeof item.pop === "function") { item.pop(); return } } catch(e) {}
@@ -32,25 +37,14 @@ Page {
     // API 基础 URL（拼接头像等静态资源），来自 HttpGoCookApi 配置
     readonly property string apiBaseUrl: authViewModel.apiBaseUrl
 
-    // ========== 调试信息（输出到终端） ==========
-    function dbg(msg) { console.log("[QML-AVATAR] [" + new Date().toLocaleTimeString() + "] " + msg) }
-
     // ========== 原生文件选择器（调用系统对话框） ==========
     NativeFileDialog {
         id: avatarFileDialog
         onFileSelected: function(localPath) {
-            profileEditPage.dbg("NativeFileDialog 已选择文件：" + localPath)
-
             pendingAvatarPath = localPath
-            profileEditPage.dbg("pendingAvatarPath = " + pendingAvatarPath)
             statusText.text = qsTr("正在上传头像...")
             profileEditPage.avatarUploading = true
-            profileEditPage.dbg("调用 uploadAvatar...")
             authViewModel.uploadAvatar(pendingAvatarPath)
-            profileEditPage.dbg("uploadAvatar 调用完毕")
-        }
-        onRejected: {
-            profileEditPage.dbg("NativeFileDialog 已取消（用户取消选择）")
         }
     }
 
@@ -130,18 +124,6 @@ Page {
                 text: qsTr("点击更换头像")
                 font.family: Theme.fontFamily; font.pointSize: Theme.fontSizeCaption
                 color: Theme.textHint
-            }
-
-            // ★ 调试：显示当前头像 URL
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: "URL: " + profileEditPage.avatarDisplayUrl
-                font.family: Theme.fontFamily; font.pointSize: 9
-                color: "gray"
-                visible: profileEditPage.avatarDisplayUrl.toString().length > 0
-                elide: Text.ElideMiddle
-                maximumLineCount: 2
-                wrapMode: Text.Wrap
             }
 
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.dividerColor }
@@ -255,6 +237,8 @@ Page {
     Connections {
         target: authViewModel
         function onProfileChanged() {
+            // 有未保存的暂存头像时，资料刷新不得覆盖暂存预览
+            if (authViewModel.hasPendingAvatar()) return
             var url = authViewModel.profileAvatarUrl
             if (url.length > 0)
                 profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + url
@@ -264,11 +248,9 @@ Page {
             profileEditPage.goBack()
         }
         function onProfileSaveFailed(error) {
-            console.log("[QML-AVATAR] onProfileSaveFailed: " + error)
             statusText.text = qsTr("保存失败: ") + error
         }
         function onAvatarUploaded(serverUrl) {
-            console.log("[QML-AVATAR] onAvatarUploaded: serverUrl='" + serverUrl + "'")
             profileEditPage.selectedFileUrl = ""
             profileEditPage.pendingAvatarPath = ""
             profileEditPage.avatarUploading = false
@@ -277,10 +259,9 @@ Page {
             Qt.callLater(function() {
                 profileEditPage.avatarDisplayUrl = profileEditPage.apiBaseUrl + serverUrl
             })
-            statusText.text = qsTr("头像已更新")
+            statusText.text = qsTr("头像已上传，点击“保存修改”后生效")
         }
         function onAvatarUploadFailed(error) {
-            console.log("[QML-AVATAR] onAvatarUploadFailed: " + error)
             profileEditPage.avatarUploading = false
             statusText.text = qsTr("头像上传失败: ") + error
         }

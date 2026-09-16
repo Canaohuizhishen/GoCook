@@ -243,6 +243,10 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Post("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.uploadAvatar(req, res);
     });
+    // 放弃未保存的暂存头像（body: {"avatar_url": ...}；编辑页"返回"时调用）
+    svr.Delete("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.discardPendingAvatar(req, res);
+    });
     svr.Put("/api/users/me/password", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.changePassword(req, res);
     });

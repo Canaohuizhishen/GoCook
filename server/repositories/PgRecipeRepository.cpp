@@ -1147,7 +1147,16 @@ NutritionReport PgRecipeRepository::findNutrition(int recipeId) {
 
 // ⚠️ 特例：文件操作（拷贝/清理）+ 数据库更新混编，失败文案自定义（"菜谱图片保存失败"）。
 // 保持手写——与 uploadAvatar 同理，特例显式化。
-std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::string& filePath) {
+// 归属/存在性校验在复制前完成（复用 deleteRecipe 的 403 口径）；所有失败路径
+// 清理临时源文件与已复制的目标文件（对齐头像域"失败路径不留文件"约定）。
+std::string PgRecipeRepository::updateRecipeImage(int userId, int recipeId, const std::string& filePath) {
+    bool destCopied = false;
+    std::string destPath;
+    auto cleanupFiles = [&]() {
+        std::error_code ec;
+        if (destCopied) std::filesystem::remove(destPath, ec);  // 失败路径不留已复制文件
+        std::filesystem::remove(filePath, ec);                  // 失败路径不留临时源文件
+    };
     try {
         // 解析文件扩展名
         std::string ext = ".jpg";
@@ -1168,31 +1177,45 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
         std::string filename = "recipe_" + std::to_string(recipeId)
                              + "_" + std::to_string(ts) + ext;
 
-        // 上传目录规则统一见 ../common/UploadPaths.h
-        std::string uploadDir = UploadPaths::baseDir() + "/recipes/";
-        std::filesystem::create_directories(uploadDir);
-        std::string destPath = uploadDir + "/" + filename;
-
-        // 把上传的临时文件复制到永久位置
-        std::filesystem::copy(filePath, destPath,
-                              std::filesystem::copy_options::overwrite_existing);
-
-        std::string imageUrl = "/uploads/recipes/" + filename;
-
-        // 更新数据库里的 image_url
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
+
+        // 1. 归属/存在性校验（复制前完成：失败时不产生任何文件残留）
+        pqxx::result rows = txn.exec(
+            "SELECT author_id FROM recipes WHERE id = $1", pqxx::params{recipeId});
+        if (rows.empty()) {
+            throw ServiceException("菜谱不存在", 404);
+        }
+        const auto& authorField = rows[0]["author_id"];
+        const int authorId = authorField.is_null() ? -1 : authorField.as<int>();
+        if (authorId != userId) {
+            throw ServiceException("仅可编辑自己投稿的菜谱", 403);
+        }
+
+        // 2. 拷贝到永久位置（上传目录规则统一见 ../common/UploadPaths.h）
+        std::string uploadDir = UploadPaths::baseDir() + "/recipes/";
+        std::filesystem::create_directories(uploadDir);
+        destPath = uploadDir + "/" + filename;
+        std::filesystem::copy(filePath, destPath,
+                              std::filesystem::copy_options::overwrite_existing);
+        destCopied = true;
+
+        // 3. 更新数据库里的 image_url
+        std::string imageUrl = "/uploads/recipes/" + filename;
         txn.exec("UPDATE recipes SET image_url = $1 WHERE id = $2",
                         pqxx::params{imageUrl, recipeId});
         txn.commit();
 
-        // 清理临时文件
-        std::filesystem::remove(filePath);
+        // 4. 清理临时文件（失败不影响结果）
+        std::error_code rmEc;
+        std::filesystem::remove(filePath, rmEc);
         return imageUrl;
 
     } catch (const ServiceException&) {
+        cleanupFiles();
         throw;
     } catch (const std::exception& e) {
+        cleanupFiles();
         LOG_WARN("更新菜谱主图时数据库出错：%s", e.what());
         throw ServiceException("菜谱图片保存失败");
     }
@@ -1200,7 +1223,15 @@ std::string PgRecipeRepository::updateRecipeImage(int recipeId, const std::strin
 
 // ⚠️ 特例：文件操作 + 数据库更新混编，且要先读 JSONB steps 改完再写回，失败文案自定义
 // （"步骤图片保存失败"）。保持手写。
-std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, const std::string& filePath) {
+// 归属/存在性/步骤索引校验在复制前完成；所有失败路径清理临时源文件与已复制的目标文件。
+std::string PgRecipeRepository::updateStepImage(int userId, int recipeId, int stepIndex, const std::string& filePath) {
+    bool destCopied = false;
+    std::string destPath;
+    auto cleanupFiles = [&]() {
+        std::error_code ec;
+        if (destCopied) std::filesystem::remove(destPath, ec);  // 失败路径不留已复制文件
+        std::filesystem::remove(filePath, ec);                  // 失败路径不留临时源文件
+    };
     try {
         std::string ext = ".jpg";
         auto dotPos = filePath.find_last_of('.');
@@ -1221,45 +1252,50 @@ std::string PgRecipeRepository::updateStepImage(int recipeId, int stepIndex, con
                              + "_step_" + std::to_string(stepIndex)
                              + "_" + std::to_string(ts) + ext;
 
-        // 上传目录规则统一见 ../common/UploadPaths.h
-        std::string uploadDir = UploadPaths::baseDir() + "/recipes/";
-        std::filesystem::create_directories(uploadDir);
-        std::string destPath = uploadDir + "/" + filename;
-
-        // 把上传的临时文件复制到永久位置
-        std::filesystem::copy(filePath, destPath,
-                              std::filesystem::copy_options::overwrite_existing);
-
-        std::string imageUrl = "/uploads/recipes/" + filename;
-
         auto conn = db_.getConnection();
         pqxx::work txn(*conn);
 
-        // 读 JSONB steps，校验步骤索引，把 image_url 写进对应步骤再整体写回
+        // 1. 归属/存在性/步骤索引校验（复制前完成：失败时不产生任何文件残留）
         pqxx::result rows = txn.exec(
-            "SELECT steps FROM recipes WHERE id = $1", pqxx::params{recipeId});
+            "SELECT author_id, steps FROM recipes WHERE id = $1", pqxx::params{recipeId});
         if (rows.empty()) {
             throw ServiceException("菜谱不存在", 404);
         }
-
+        const auto& authorField = rows[0]["author_id"];
+        const int authorId = authorField.is_null() ? -1 : authorField.as<int>();
+        if (authorId != userId) {
+            throw ServiceException("仅可编辑自己投稿的菜谱", 403);
+        }
         json steps = json::parse(rows[0]["steps"].as<std::string>("[]"));
         if (stepIndex < 0 || stepIndex >= (int)steps.size()) {
             throw ServiceException("步骤索引超出范围", 400);
         }
 
-        steps[stepIndex]["image_url"] = imageUrl;
+        // 2. 拷贝到永久位置（上传目录规则统一见 ../common/UploadPaths.h）
+        std::string uploadDir = UploadPaths::baseDir() + "/recipes/";
+        std::filesystem::create_directories(uploadDir);
+        destPath = uploadDir + "/" + filename;
+        std::filesystem::copy(filePath, destPath,
+                              std::filesystem::copy_options::overwrite_existing);
+        destCopied = true;
 
+        // 3. 把 image_url 写进对应步骤再整体写回
+        std::string imageUrl = "/uploads/recipes/" + filename;
+        steps[stepIndex]["image_url"] = imageUrl;
         txn.exec("UPDATE recipes SET steps = $1::jsonb WHERE id = $2",
                         pqxx::params{steps.dump(), recipeId});
         txn.commit();
 
-        // 清理临时文件
-        std::filesystem::remove(filePath);
+        // 4. 清理临时文件（失败不影响结果）
+        std::error_code rmEc;
+        std::filesystem::remove(filePath, rmEc);
         return imageUrl;
 
     } catch (const ServiceException&) {
+        cleanupFiles();
         throw;
     } catch (const std::exception& e) {
+        cleanupFiles();
         LOG_WARN("更新步骤图时数据库出错：%s", e.what());
         throw ServiceException("步骤图片保存失败");
     }

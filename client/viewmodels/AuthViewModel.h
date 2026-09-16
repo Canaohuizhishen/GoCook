@@ -30,7 +30,7 @@ class AuthViewModel : public QObject
     Q_PROPERTY(QString profileEmail READ profileEmail NOTIFY profileChanged)
     Q_PROPERTY(QString profilePhone READ profilePhone NOTIFY profileChanged)
     Q_PROPERTY(QString profileAvatarUrl READ profileAvatarUrl NOTIFY profileChanged)
-    Q_PROPERTY(int avatarVersion READ avatarVersion NOTIFY avatarVersionChanged)   ///< 头像缓存版本号（上传/保存成功后递增，QML 拼 URL 防缓存）
+    Q_PROPERTY(int avatarVersion READ avatarVersion NOTIFY avatarVersionChanged)   ///< 头像缓存版本号（保存成功后递增，QML 拼 URL 防缓存）
 
     // API 基础 URL（用于 QML 拼接头像等静态资源 URL）
     Q_PROPERTY(QString apiBaseUrl READ apiBaseUrl CONSTANT)
@@ -66,11 +66,18 @@ public:
     // 个人资料管理
     /// 拉取个人资料（未登录静默忽略）。注意：失败发 profileSaveFailed（无独立加载失败信号）。
     Q_INVOKABLE void loadProfile();
-    /// 保存资料（未登录静默忽略；携带上次上传待确认的头像 id）。
+    /// 保存资料（未登录静默忽略；携带上次上传的暂存头像，保存成功才绑定生效）。
     /// 成功发 profileSaved；失败发 profileSaveFailed。
     Q_INVOKABLE void saveProfile(const QString &displayName, const QString &email, const QString &phone);
-    /// 上传头像：成功刷新头像并等 saveProfile 确认，发 avatarUploaded；未登录/失败发 avatarUploadFailed。
+    /// 上传头像（仅暂存，不改变已保存资料）：成功发 avatarUploaded(暂存 url)；
+    /// 未登录/失败发 avatarUploadFailed。暂存须经 saveProfile 绑定才生效；
+    /// 重传时旧暂存保留至新上传成功（失败不丢旧暂存，预览与"保存将绑定"语义一致）。
     Q_INVOKABLE void uploadAvatar(const QString &filePath);
+    /// 是否有未保存的暂存头像（编辑页"返回"回滚判断用）。
+    Q_INVOKABLE bool hasPendingAvatar() const;
+    /// 放弃未保存的暂存头像（编辑页"返回"时调用，幂等）：本地立即清空（UI 先回滚），
+    /// 服务端删除尽力而为（失败由服务端 GC 兜底）；同时作废在途上传（其文件由回调侧丢弃）。
+    Q_INVOKABLE void discardPendingAvatar();
     /// 修改密码。成功发 passwordChanged；未登录/失败发 passwordChangeFailed。
     Q_INVOKABLE void changePassword(const QString &currentPassword, const QString &newPassword);
     /// 注销账号：成功后本地清理并登出（发 accountDeleted，不发 logoutFinished）；失败发 accountDeleteFailed。
@@ -109,8 +116,9 @@ signals:
     void avatarVersionChanged();
     void profileSaved();
     void profileSaveFailed(const QString &error);
-    void avatarUploaded(const QString &avatarUrl);
+    void avatarUploaded(const QString &avatarUrl);   ///< 头像已上传为暂存（保存后才生效）
     void avatarUploadFailed(const QString &error);
+    void avatarDiscarded(const QString &avatarUrl);  ///< 放弃暂存头像尝试完成（无论服务端删除成败）
     void passwordChanged();
     void passwordChangeFailed(const QString &error);
     void accountDeleted();
@@ -149,7 +157,8 @@ private:
     QString m_profileDisplayName;   ///< 显示名
     QString m_profileEmail;   ///< 邮箱
     QString m_profilePhone;   ///< 手机号
-    QString m_profileAvatarUrl;   ///< 头像 URL
-    int m_pendingAvatarId = 0;   ///< 上次上传头像的 avatar_id，在 saveProfile 时传递
-    int m_avatarVersion = 0;     ///< 头像缓存版本号，每次成功上传或保存后递增
+    QString m_profileAvatarUrl;   ///< 已保存生效的头像 URL（暂存预览不写这里）
+    QString m_pendingAvatarUrl;   ///< 上次上传待保存的暂存头像 URL；saveProfile 时随请求绑定，放弃时清空
+    int m_avatarUploadSeq = 0;    ///< 上传代次：放弃/重传时作废旧回调，防止陈旧上传覆盖新状态
+    int m_avatarVersion = 0;      ///< 头像缓存版本号，每次保存成功后递增
 };

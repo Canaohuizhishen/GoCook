@@ -102,7 +102,7 @@ public:
                                                 const std::string& token) = 0;
 
     /**
-     * @brief 更新用户个人资料。
+     * @brief 更新用户个人资料（含头像绑定：avatar_url 有值时换绑并在提交后回收被顶替文件）。
      * @param userId 用户 ID
      * @param profile 待更新的资料字段（可选字段为空表示不修改）
      */
@@ -127,10 +127,10 @@ public:
     virtual void deleteAccount(int userId) = 0;
 
     /**
-     * @brief 上传头像，返回头像 URL 与资源 ID。
+     * @brief 上传头像文件（仅暂存：落盘并返回引用，不改变用户资料）。
      * @param userId 用户 ID
      * @param filePath 待上传的本地图片路径
-     * @return 头像响应（avatar_id 与 avatar_url）
+     * @return 头像响应（avatar_url 暂存引用）
      */
     virtual models::AvatarUploadResponse uploadAvatar(
         int userId, const std::string& filePath) = 0;

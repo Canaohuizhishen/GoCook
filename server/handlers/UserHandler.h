@@ -28,8 +28,10 @@ public:
     void getCurrentUser(const httplib::Request& req, httplib::Response& res);
     // 更新当前用户个人资料（需认证）
     void updateProfile(const httplib::Request& req, httplib::Response& res);
-    // 头像上传（需认证）
+    // 头像上传（需认证；仅暂存，保存资料时通过 avatar_url 绑定生效）
     void uploadAvatar(const httplib::Request& req, httplib::Response& res);
+    // 放弃未保存的暂存头像（需认证；幂等）
+    void discardPendingAvatar(const httplib::Request& req, httplib::Response& res);
     // 修改密码（需认证）
     void changePassword(const httplib::Request& req, httplib::Response& res);
     // 注销账户（需认证）

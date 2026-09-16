@@ -7,6 +7,7 @@
 #include "common/Config.h"
 #include "common/Logger.h"
 #include "common/ConnectionPool.h"
+#include "common/UploadOrphanGc.h"
 #include "repositories/PgUserRepository.h"
 #include "repositories/PgRecipeRepository.h"
 #include "repositories/PgInventoryRepository.h"
@@ -149,6 +150,32 @@ int main(int argc, char* argv[]) {
         }
     });
 
+    // 上传孤儿文件 GC：启动即扫一次（顺带清历史存量），此后每 6 小时一次。
+    // 只回收"超过 24h 宽限期仍未被绑定"的头像文件；失败仅告警（下轮重试）。
+    std::thread janitorThread([&db]() {
+        constexpr std::chrono::hours kMinAge{24};   // 宽限期：保护"上传→保存"慢路径
+        constexpr std::chrono::hours kInterval{6};  // 扫描周期
+        auto sweepOnce = [&db, kMinAge]() {
+            try {
+                const auto r = UploadOrphanGc::sweepAvatars(db, kMinAge);
+                LOG_INFO("孤儿文件 GC：扫描 %zu 条，回收 %zu 条，保留 %zu 条，跳过 %zu 条，失败 %zu 条",
+                         r.scanned, r.deleted, r.kept, r.skipped, r.failed);
+            } catch (const std::exception& e) {
+                LOG_WARN("孤儿文件 GC 执行失败（下轮重试）：%s", e.what());
+            }
+        };
+        sweepOnce();
+        while (gRunning) {
+            // 100ms 粒度轮询休眠：停机时最多延迟 100ms 退出。
+            // 注意 6h 需先换算成毫秒再折算 tick 数（hours.count() 是"小时数"而非秒数）
+            const long long ticks =
+                std::chrono::duration_cast<std::chrono::milliseconds>(kInterval).count() / 100;
+            for (long long waited = 0; waited < ticks && gRunning; ++waited)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (gRunning) sweepOnce();
+        }
+    });
+
     LOG_INFO("服务已启动。按 Ctrl+C 停止。");
 
     // 主循环等待信号（SIGINT/SIGTERM）或监听失败触发的 gRunning=false。
@@ -162,6 +189,8 @@ int main(int argc, char* argv[]) {
 
     // 等待后台监听线程完全退出，确保资源释放。
     serverThread.join();
+    // 等待 GC 线程退出（其循环以 gRunning 为条件，最多 100ms 内响应停机）
+    janitorThread.join();
     LOG_INFO("服务已正常停止。");
 
     // 手动刷出日志缓冲区：_Exit() 不会自动刷新 stdio，务必在此落盘，防止启动错误信息丢失。

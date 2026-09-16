@@ -212,7 +212,6 @@ json toJson(const HealthProfileResponse& resp) {
 
 json toJson(const AvatarUploadResponse& resp) {
     return {
-        {"avatar_id", resp.avatar_id},
         {"avatar_url", resp.avatar_url}
     };
 }
