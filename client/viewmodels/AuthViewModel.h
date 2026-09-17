@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <gocook/IGoCookApi.h>
+#include "RequestGuards.h"
 #include "../database/LocalDatabase.h"
 
 /**
@@ -109,6 +110,9 @@ signals:
     void registrationVerified();   ///< verifyRegistration 成功
     void registrationVerifyFailed(const QString &error);   ///< verifyRegistration 失败
     void logoutFinished();
+    /// 会话结束（登录态 true→false 的统一出口：登出 / 401 自动登出 / 注销账号）：
+    /// 消费方在 main.cpp 单点接线清理各 VM 个人数据（新增个人域只改接线处一行）
+    void sessionEnded();
     void initialLoadingChanged();
 
     // 个人资料信号
@@ -159,6 +163,6 @@ private:
     QString m_profilePhone;   ///< 手机号
     QString m_profileAvatarUrl;   ///< 已保存生效的头像 URL（暂存预览不写这里）
     QString m_pendingAvatarUrl;   ///< 上次上传待保存的暂存头像 URL；saveProfile 时随请求绑定，放弃时清空
-    int m_avatarUploadSeq = 0;    ///< 上传代次：放弃/重传时作废旧回调，防止陈旧上传覆盖新状态
+    RequestEpoch m_avatarUploadSeq;   ///< 上传代次（RequestGuards.h::RequestEpoch）：放弃/重传/登出时作废旧回调，防止陈旧上传覆盖新状态
     int m_avatarVersion = 0;      ///< 头像缓存版本号，每次保存成功后递增
 };

@@ -19,6 +19,10 @@
 //   T8  batchRemoveFavorites 空列表守卫：不发请求、无信号（服务端空数组 400 对现客户端不可达）
 //   T9  batchRemoveFavorites 非空列表一次请求发 favoriteRemoved，请求体携带全部 id
 //   T10 batchRemoveFavorites 失败只发 favoriteOperationFailed（不发 favoriteRemoved）
+//
+// 搜索轮次守卫回归用例（搜索补 RequestEpoch 轮次作废；对齐库存“最新意图必达”语义）：
+//   S1  在途期间换词：旧词迟到响应被静默丢弃，结果保留新词（不加守卫时旧词会覆盖新词）
+//   S2  resetSearch 作废在途：清空后旧响应不得再落数据，加载标记复位
 
 #include <gtest/gtest.h>
 
@@ -163,13 +167,17 @@ public:
                 std::lock_guard<std::mutex> lk(reqMx);
                 searchReqs.push_back({page, size, "", keyword});
             }
-            // total_pages 固定 2：保证首屏 hasMore=true 以允许续页请求；data 留空（用例不消费结果数据）
+            // 竞态用例用：含“慢”的关键词延迟返回，模拟旧词响应晚到新词之后
+            if (keyword.find("慢") != std::string::npos)
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            // total_pages 固定 2：保证首屏 hasMore=true 以允许续页请求；
+            // data 回显 keyword 作 name：竞态用例据此断言“展示的是哪个词的结果”
             res.status = 200;
             res.set_content(
                 "{\"pagination\":{\"page\":" + std::to_string(page) +
                 ",\"size\":" + std::to_string(size) +
                 ",\"total\":10,\"total_pages\":2},"
-                "\"data\":[]}",
+                "\"data\":[{\"id\":1,\"name\":\"" + keyword + "\"}]}",
                 "application/json");
         });
 
@@ -584,5 +592,70 @@ TEST_F(RecipeVmTest, batchRemoveFavorites失败只发favoriteOperationFailed)
 
     QObject::disconnect(&vm, &RecipeViewModel::favoriteRemoved, nullptr, nullptr);
     QObject::disconnect(&vm, &RecipeViewModel::favoriteOperationFailed, nullptr, nullptr);
+}
+
+// ==================== S1：在途期间换词——旧词迟到响应被静默丢弃，结果保留新词 ====================
+TEST_F(RecipeVmTest, 搜索在途期间换词旧响应被丢弃新词必达)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> fastLanded{false};
+    std::atomic<bool> errorEmitted{false};
+    QObject::connect(&vm, &RecipeViewModel::searchResultsChanged, [&]() {
+        if (!vm.searchResults().isEmpty())
+            fastLanded = true;
+    });
+    QObject::connect(&vm, &RecipeViewModel::searchErrorOccurred, [&](const QString&) { errorEmitted = true; });
+
+    // 先发“慢词”（服务端延迟 500ms），在途期间再发“快词”（立即返回）：
+    // 新词开启新一轮轮次 → 慢词票据失效，其迟到响应必须被静默丢弃（不得覆盖快词结果）
+    vm.searchRecipes(QStringLiteral("慢词"), 1, 5);
+    vm.searchRecipes(QStringLiteral("快词"), 1, 5);
+    ASSERT_TRUE(waitUntil(fastLanded)) << "快词响应超时";
+
+    // 等到慢词响应窗口（500ms）过去后再断言：展示的仍是快词结果
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 900) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    ASSERT_EQ(vm.searchResults().size(), 1) << "慢词迟到响应不得再落数据";
+    EXPECT_EQ(vm.searchResults()[0].toMap()["name"].toString(), QStringLiteral("快词"))
+        << "结果必须保留最新词（不加守卫时慢词会覆盖快词）";
+    EXPECT_FALSE(errorEmitted.load()) << "过期响应丢弃不得报错";
+    EXPECT_FALSE(vm.searchLoading()) << "加载标记应由新词请求收尾复位";
+
+    QObject::disconnect(&vm, &RecipeViewModel::searchResultsChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::searchErrorOccurred, nullptr, nullptr);
+}
+
+// ==================== S2：resetSearch 作废在途——清空后旧响应不得再落数据 ====================
+TEST_F(RecipeVmTest, resetSearch作废在途旧响应不再落数据)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+
+    vm.searchRecipes(QStringLiteral("慢词"), 1, 5);   // 服务端延迟 500ms
+    vm.resetSearch();                                  // 清空并作废在途
+
+    // 等到慢词响应窗口过去后断言：结果保持为空、空态标记保持未执行、加载标记已复位
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 900) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(vm.searchResults().isEmpty()) << "resetSearch 后旧响应不得回填结果";
+    EXPECT_FALSE(vm.searchPerformed()) << "空态标记不得被旧响应置真";
+    EXPECT_FALSE(vm.searchLoading()) << "resetSearch 应复位加载标记（在途请求已作废）";
 }
 } // namespace

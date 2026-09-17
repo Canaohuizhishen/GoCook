@@ -46,9 +46,9 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     SOURCES viewmodels/NotificationViewModel.cpp viewmodels/NotificationViewModel.h
     SOURCES viewmodels/ShoppingListViewModel.cpp viewmodels/ShoppingListViewModel.h
+    SOURCES viewmodels/RequestGuards.h
     SOURCES dialogs/NativeFileDialog.h dialogs/NativeFileDialog.cpp
     SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
-    SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
     QML_FILES qml/pages/RecommendResultsPage.qml

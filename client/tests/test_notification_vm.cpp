@@ -8,6 +8,7 @@
 //   T5  普通通知 markRead：PATCH 一次 + markReadSuccess + 未读数与 is_read 同步更新
 //   T6  公告删除仅本地移除：deleteSuccess + 列表移除 + 无 DELETE 请求
 //   T7  markAllRead：仅公告列表时整体跳过；含真实通知时走接口并清零未读
+//   T8  clearAll：列表/未读数/刷新态清零并各发信号（main.cpp 登出接线调用）
 
 #include <gtest/gtest.h>
 
@@ -356,6 +357,37 @@ TEST_F(NotificationVmTest, markAllRead仅公告时跳过含通知时清零)
     for (const auto& v : vm.notifications()) {
         EXPECT_TRUE(v.toMap()["is_read"].toBool()) << "全读后本地所有条目 is_read=true";
     }
+}
+
+// ==================== T8：clearAll 清空数据与状态并各发信号 ====================
+TEST_F(NotificationVmTest, clearAll清空数据与状态并各发信号)
+{
+    NotificationStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    NotificationViewModel vm(&api);
+    ASSERT_TRUE(refreshAndWait(vm)) << "刷新加载超时";
+    ASSERT_EQ(vm.notifications().size(), 3);
+    ASSERT_EQ(vm.unreadCount(), 1);
+
+    int listsChanged = 0, moreChanged = 0, unreadChanged = 0, loadingChanged = 0, refreshingChanged = 0;
+    QObject::connect(&vm, &NotificationViewModel::notificationsChanged, [&]() { listsChanged++; });
+    QObject::connect(&vm, &NotificationViewModel::hasMoreChanged, [&]() { moreChanged++; });
+    QObject::connect(&vm, &NotificationViewModel::unreadCountChanged, [&]() { unreadChanged++; });
+    QObject::connect(&vm, &NotificationViewModel::isLoadingChanged, [&]() { loadingChanged++; });
+    QObject::connect(&vm, &NotificationViewModel::isRefreshingChanged, [&]() { refreshingChanged++; });
+
+    vm.clearAll();
+    EXPECT_TRUE(vm.notifications().isEmpty());
+    EXPECT_EQ(vm.unreadCount(), 0) << "未读数必须清零";
+    EXPECT_FALSE(vm.hasMore());
+    EXPECT_FALSE(vm.isLoading());
+    EXPECT_FALSE(vm.isRefreshing()) << "刷新态必须复位";
+    EXPECT_GE(listsChanged, 1) << "clearAll 必须发 notificationsChanged";
+    EXPECT_GE(moreChanged, 1) << "clearAll 必须发 hasMoreChanged";
+    EXPECT_GE(unreadChanged, 1) << "clearAll 必须发 unreadCountChanged";
+    EXPECT_GE(loadingChanged, 1) << "clearAll 必须发 isLoadingChanged";
+    EXPECT_GE(refreshingChanged, 1) << "clearAll 必须发 isRefreshingChanged";
 }
 
 } // namespace

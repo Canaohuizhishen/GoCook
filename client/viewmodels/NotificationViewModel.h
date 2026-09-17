@@ -55,6 +55,9 @@ public:
     Q_INVOKABLE void deleteNotification(int notificationId);
     /// 重置测试数据并自动 refresh（仅开发环境）；失败发 errorOccurred。
     Q_INVOKABLE void resetTestData();
+    /// 清空全部数据与状态（登出 / 401 自动登出 / 注销的统一清理，main.cpp 单点接线调用；
+    /// 非 Q_INVOKABLE——QML 不再手工逐 VM 清理，避免新增个人域时遗漏）。
+    void clearAll();
 
 signals:
     // 注：*Changed 为对应 Q_PROPERTY 的 NOTIFY 伴侣；结果信号的触发见对应方法注释。

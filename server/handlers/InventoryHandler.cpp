@@ -33,6 +33,19 @@ namespace {
         }
         return s.substr(b, e - b);
     }
+
+    // 库存写入请求（POST 累加 / PUT 整行替换）的共用解析：4 字段 + 条件 expiry_date。
+    // 调用前必须先通过 Validation::validateInventoryRequest（字段存在性/类型/取值校验），
+    // 此处假定字段齐全可直接取值。
+    UpsertInventoryRequest parseUpsertRequest(const json& reqJson) {
+        UpsertInventoryRequest item;
+        item.ingredient_name = reqJson["ingredient_name"];
+        item.quantity = reqJson["quantity"];
+        item.unit = reqJson["unit"];
+        if (reqJson.contains("expiry_date"))
+            item.expiry_date = reqJson["expiry_date"];
+        return item;
+    }
 }
 
 InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
@@ -71,12 +84,7 @@ void InventoryHandler::upsertInventory(const httplib::Request& req, httplib::Res
         json reqJson = json::parse(req.body);
         Validation::validateInventoryRequest(reqJson);
 
-        UpsertInventoryRequest item;
-        item.ingredient_name = reqJson["ingredient_name"];
-        item.quantity = reqJson["quantity"];
-        item.unit = reqJson["unit"];
-        if (reqJson.contains("expiry_date"))
-            item.expiry_date = reqJson["expiry_date"];
+        UpsertInventoryRequest item = parseUpsertRequest(reqJson);
 
         int newId = service_.upsertInventory(info.userId, item);
         res.status = 201;
@@ -106,12 +114,7 @@ void InventoryHandler::updateInventoryItem(const httplib::Request& req, httplib:
         json reqJson = json::parse(req.body);
         Validation::validateInventoryRequest(reqJson);
 
-        UpsertInventoryRequest item;
-        item.ingredient_name = reqJson["ingredient_name"];
-        item.quantity = reqJson["quantity"];
-        item.unit = reqJson["unit"];
-        if (reqJson.contains("expiry_date"))
-            item.expiry_date = reqJson["expiry_date"];
+        UpsertInventoryRequest item = parseUpsertRequest(reqJson);
 
         service_.updateInventoryItem(info.userId, itemId, item);
         res.status = 200;

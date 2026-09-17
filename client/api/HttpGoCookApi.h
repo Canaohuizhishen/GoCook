@@ -33,9 +33,11 @@ class HttpGoCookApi : public QObject, public IGoCookApi
     Q_PROPERTY(QString baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
     /// 暴露给 QML 的属性：认证令牌
     Q_PROPERTY(QString token READ token WRITE setToken NOTIFY tokenChanged)
-    /// 暴露给 QML 的属性：最大重试次数（0 表示不重试，仅对 GET 请求有效）
+    /// 暴露给 QML 的属性：最大重试次数（默认 0 = 不重试，仅对 GET 请求有效）。
+    /// 注意：生产运行的重试由应用层负责（库存 VM 的退避重试链，兼作"网络恢复探测器"），
+    /// 本开关保留供测试/嵌入方使用——二者勿同时开启，避免双层重试叠加。
     Q_PROPERTY(int maxRetries READ maxRetries WRITE setMaxRetries NOTIFY maxRetriesChanged)
-    /// 暴露给 QML 的属性：重试间隔（毫秒）
+    /// 暴露给 QML 的属性：重试间隔（毫秒；仅 maxRetries > 0 时生效）
     Q_PROPERTY(int retryDelay READ retryDelay WRITE setRetryDelay NOTIFY retryDelayChanged)
 
 public:

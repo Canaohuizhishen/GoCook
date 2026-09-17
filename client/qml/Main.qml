@@ -416,12 +416,11 @@ ApplicationWindow {
                 }
             } else {
                 // 登出 / token 失效：清空全部守卫残留状态（防陈旧意图在下一次登录时误执行、
-                // authRequired 卡死不再弹登录页），并清空上一账号的库存/收藏数据，进入游客模式继续浏览
+                // authRequired 卡死不再弹登录页）；上一账号数据（库存 / 收藏 / 购物清单 / 通知）
+                // 由 authViewModel.sessionEnded 在 main.cpp 单点接线清理，进入游客模式继续浏览
                 pendingNav = null
                 loginPageOpen = false
                 httpApi.cancelAuthQueue()
-                inventoryVM.clearAll()
-                recipeVM.clearFavorites()
                 stackView.replace(homePage)
             }
         }

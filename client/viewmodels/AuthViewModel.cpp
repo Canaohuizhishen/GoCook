@@ -221,13 +221,13 @@ void AuthViewModel::uploadAvatar(const QString &filePath) {
     // 重传语义：旧暂存保留至新上传成功后才丢弃（失败时旧暂存原样保留，预览不落空；
     // 丢弃失败由服务端 GC 兜底）
     const QString previousUrl = m_pendingAvatarUrl;
-    const int seq = ++m_avatarUploadSeq;  // 上传代次：只接受最后一次上传的回调
+    const int seq = m_avatarUploadSeq.begin();  // 上传代次（RequestEpoch）：只接受最后一次上传的回调
     m_api->uploadAvatar(filePath.toStdString(), [self = QPointer<AuthViewModel>(this), seq, previousUrl]
                         (bool success,
                          const gocook::models::AvatarUploadResponse& resp,
                          const std::string& error) {
         if (!self) return;
-        if (seq != self->m_avatarUploadSeq) {
+        if (!self->m_avatarUploadSeq.isCurrent(seq)) {
             // 陈旧回调（期间发生了放弃/重传/登出）：该暂存文件已无人认领，尽力丢弃
             if (success) self->m_api->discardPendingAvatar(resp.avatar_url, nullptr);
             return;
@@ -253,7 +253,7 @@ bool AuthViewModel::hasPendingAvatar() const {
 }
 
 void AuthViewModel::discardPendingAvatar() {
-    ++m_avatarUploadSeq;  // 作废在途上传：其回调视为陈旧并丢弃对应文件
+    m_avatarUploadSeq.invalidate();  // 作废在途上传：其回调视为陈旧并丢弃对应文件
     if (m_pendingAvatarUrl.isEmpty()) return;
 
     const QString url = m_pendingAvatarUrl;
@@ -484,8 +484,8 @@ QString AuthViewModel::apiBaseUrl() const {
 void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
 {
     if (!loggedIn) {
-        // 未保存的暂存头像一并作废：清引用 + 递增代次（在途上传回调据此丢弃文件）
-        ++m_avatarUploadSeq;
+        // 未保存的暂存头像一并作废：清引用 + 作废在途上传代次（其回调据此丢弃文件）
+        m_avatarUploadSeq.invalidate();
         m_pendingAvatarUrl.clear();
         // 登出 / 注销 / token 失效：清空上一登录态的个人资料残留（头像等），避免游客态继续显示
         if (!m_profileDisplayName.isEmpty() || !m_profileEmail.isEmpty() ||
@@ -500,6 +500,10 @@ void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &userna
     if (m_loggedIn != loggedIn) {
         m_loggedIn = loggedIn;
         emit loggedInChanged();
+        // 会话结束（登录态 true→false 的统一出口：登出 / 401 自动登出 / 注销账号）：
+        // 消费方在 main.cpp 单点接线，清理各 VM 的个人数据（见 main.cpp 组装区）
+        if (!loggedIn)
+            emit sessionEnded();
     }
     if (m_userId != userId) {
         m_userId = userId;

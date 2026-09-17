@@ -12,7 +12,10 @@
 //   服务器繁忙 503→退避自动恢复；过滤态快照兜底按词过滤/重派生；
 //   恢复边沿在自身在途响应到达时不重复拉取；main.cpp 接线由旁路请求触发自动重拉；
 //   删除成功→快照行同步移除/删除失败回滚快照不变；非瞬时失败有数据→页内提示；
-//   瞬时失败有数据→静默保留；重试 tick 在途守卫
+//   瞬时失败有数据→静默保留；重试 tick 在途守卫；
+//   viewState 派生（QML 三处组合判断的收敛）：四态 Empty/InitialLoading/Offline/Content、
+//   离线态优先于初始加载（重试在途不闪烁）、快照兜底→Content、依赖信号转发（QML 绑定刷新）、
+//   枚举经 QML 类型系统按「类型.值」可解析（InventoryPage 绑定契约）
 
 #include <gtest/gtest.h>
 
@@ -885,6 +888,113 @@ TEST_F(InventoryVmTest, 重试tick不打断在途请求)
     QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     EXPECT_FALSE(vm.loadFailed()) << "在途请求成功后应退出失败态";
     EXPECT_EQ(stub.inventoryReqCount.load(), 1) << "整段过程恰一次请求（无 tick 插队）";
+}
+
+// ==================== viewState 派生：四态与依赖信号转发 ====================
+TEST_F(InventoryVmTest, viewState派生四态与信号转发)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    std::atomic<int> viewStateChangedCount{0};
+    QObject::connect(&vm, &InventoryViewModel::viewStateChanged, [&]() { viewStateChangedCount++; });
+
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Empty)
+        << "初始：无数据、未加载、未失败 → Empty";
+
+    stub.delayMs = 300; // 慢响应：制造「在途且无数据」窗口，断言 InitialLoading
+    vm.loadInventory();
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::InitialLoading)
+        << "在途且无数据 → InitialLoading";
+    EXPECT_GE(viewStateChangedCount.load(), 1) << "isLoading 变化必须转发 viewStateChanged";
+
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "加载超时";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Content) << "有数据 → Content";
+    EXPECT_GE(viewStateChangedCount.load(), 3)
+        << "items/isLoading 变化须持续转发（QML 绑定刷新）";
+
+    QObject::disconnect(&vm, &InventoryViewModel::viewStateChanged, nullptr, nullptr);
+}
+
+TEST_F(InventoryVmTest, viewState派生离线态优先于初始加载)
+{
+    InventoryStubServer stub;
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网（无快照）
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.loadFailed(); })) << "断网失败态超时";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Offline) << "失败且无数据 → Offline";
+
+    // 切到慢响应服务手动重拉：在途期间 loadFailed 仍为真、无数据 → 派生必须保持 Offline
+    // （判定顺序 Offline 优先于 InitialLoading——原组合表达式不含 !isLoading，离线视图不闪烁）
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    stub.delayMs = 300;
+    vm.loadInventory();
+    ASSERT_TRUE(vm.isLoading()) << "重拉必须在途";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Offline)
+        << "重试在途不得回退为 InitialLoading";
+
+    // 响应落地成功：失败态清除 → Content
+    ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "重拉超时";
+    EXPECT_FALSE(vm.loadFailed());
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Content);
+}
+
+TEST_F(InventoryVmTest, viewState派生快照兜底为Content)
+{
+    // 预置快照（上次在线同步）：断网 → 静默兜底，有数据可显示 → Content（不进离线态）
+    QVariantList snapshot;
+    snapshot << QVariantMap{{"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0},
+                            {"unit", "个"}, {"addedAt", "2026-05-01T00:00:00Z"}};
+    ASSERT_TRUE(testDb->saveInventoryCache(snapshot));
+
+    api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
+    api.setToken(QStringLiteral("token-A"));
+
+    InventoryViewModel vm(&api, nullptr, testDb);
+    vm.loadInventory();
+    ASSERT_TRUE(waitUntil([&]() { return vm.items().size() == 1; })) << "快照兜底未落地";
+    EXPECT_FALSE(vm.loadFailed()) << "快照兜底不进离线态";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Content) << "快照兜底 → 有数据可显示";
+}
+
+// ==================== viewState 枚举的 QML 可见性（InventoryPage 绑定契约） ====================
+// InventoryPage.qml 以 InventoryViewModel.Empty / InitialLoading / Offline 收敛三处判定，
+// 依赖 Q_ENUM + qmlRegisterUncreatableType（main.cpp 中的注册形态与此一致）。本用例验证枚举值经
+// QML 类型系统按「类型.值」解析且数值与 C++ 一致——防 Q_ENUM 遗漏/枚举重排/类型未注册导致页面绑定失配。
+TEST_F(InventoryVmTest, viewState枚举可被QML解析且与Cpp取值一致)
+{
+    qmlRegisterUncreatableType<InventoryViewModel>("client", 1, 0, "InventoryViewModel",
+                                                   "仅用于枚举访问（视图状态），不可实例化");
+
+    QQmlEngine engine;
+    QQmlComponent comp(&engine);
+    comp.setData(
+        "import QtQml\n"
+        "import client\n"
+        "QtObject {\n"
+        "    property var initialLoading: InventoryViewModel.InitialLoading\n"
+        "    property var empty: InventoryViewModel.Empty\n"
+        "    property var offline: InventoryViewModel.Offline\n"
+        "    property var content: InventoryViewModel.Content\n"
+        "}",
+        QUrl());
+    QScopedPointer<QObject> root(comp.create());
+    ASSERT_FALSE(comp.isError()) << qPrintable(comp.errorString());
+    ASSERT_TRUE(root != nullptr);
+
+    EXPECT_EQ(root->property("initialLoading").toInt(),
+              static_cast<int>(InventoryViewModel::ViewState::InitialLoading));
+    EXPECT_EQ(root->property("empty").toInt(),
+              static_cast<int>(InventoryViewModel::ViewState::Empty));
+    EXPECT_EQ(root->property("offline").toInt(),
+              static_cast<int>(InventoryViewModel::ViewState::Offline));
+    EXPECT_EQ(root->property("content").toInt(),
+              static_cast<int>(InventoryViewModel::ViewState::Content));
 }
 
 } // namespace

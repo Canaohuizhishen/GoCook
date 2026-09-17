@@ -8,6 +8,7 @@
 //   A5 上传暂存 → 保存绑定             → 上传不改已保存资料；PUT 携带 avatar_url；pending 清空
 //   A6 上传暂存 → 放弃回滚             → 本地 pending 立即清空；DELETE 暂存送达；已保存资料不变
 //   A7 重传失败不丢旧暂存              → 失败保持 pending；新上传成功才丢弃旧 URL
+//   A8 会话结束统一信号                → 登录后登出：sessionEnded 恰一次；游客/重复登出不发
 //
 // 判定机制：校验窗口内的 401 由 HttpGoCookApi 的 unauthorizedHandler 标记——
 // 不经字符串匹配、不改任何用户可见文案；本文件端到端锁定该机制（含回调顺序不变量：
@@ -377,6 +378,34 @@ TEST_F(AuthVmTest, 重传失败保留旧暂存成功后才丢弃)
     EXPECT_FALSE(vm.hasPendingAvatar());
     ASSERT_TRUE(waitUntil([&]() { return stub.discardAvatarReqCount.load() == 2; }));
     EXPECT_TRUE(stub.discardBodyHasSecondUrl.load()) << "pending 应已切换为新上传的 URL";
+}
+
+// ==================== A8：sessionEnded —— 会话结束的统一出口 ====================
+TEST_F(AuthVmTest, 会话结束信号登出恰一次游客与重复登出不再发)
+{
+    UsersMeStubServer stub;
+    stub.mode = 0; // 200
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+
+    AuthViewModel vm(&api, nullptr, testDb);
+    std::atomic<int> sessionEndedCount{0};
+    std::atomic<int> logoutFinishedCount{0};
+    QObject::connect(&vm, &AuthViewModel::sessionEnded, [&]() { sessionEndedCount++; });
+    QObject::connect(&vm, &AuthViewModel::logoutFinished, [&]() { logoutFinishedCount++; });
+
+    vm.checkAutoLogin();
+    ASSERT_TRUE(waitUntil([&]() { return !vm.initialLoading(); })) << "校验回调超时";
+    ASSERT_TRUE(vm.loggedIn());
+
+    // 登出：登录态 true→false —— sessionEnded 与 logoutFinished 各恰一次
+    vm.logout();
+    EXPECT_FALSE(vm.loggedIn());
+    EXPECT_EQ(sessionEndedCount.load(), 1) << "登出必须发且仅发一次 sessionEnded";
+    EXPECT_EQ(logoutFinishedCount.load(), 1);
+
+    // 游客态重复登出：已无会话可结束，不得再发
+    vm.logout();
+    EXPECT_EQ(sessionEndedCount.load(), 1) << "重复登出不得重复发 sessionEnded";
 }
 
 } // namespace
