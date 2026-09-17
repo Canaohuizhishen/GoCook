@@ -342,6 +342,25 @@ void NotificationViewModel::resetTestData()
     });
 }
 
+void NotificationViewModel::clearAll()
+{
+    // 登出统一清理（main.cpp 单点接线）：数据与列表状态全部归零，
+    // 五个状态信号一并发出（QML 列表 / 未读角标 / 刷新指示器同步复位）
+    m_notifications.clear();
+    m_announcementIds.clear();
+    m_unreadCount = 0;
+    m_hasMore = false;
+    m_currentPage = 1;
+    m_totalPages = 0;
+    m_isLoading = false;
+    m_isRefreshing = false;
+    emit notificationsChanged();
+    emit hasMoreChanged();
+    emit unreadCountChanged();
+    emit isLoadingChanged();
+    emit isRefreshingChanged();
+}
+
 void NotificationViewModel::recalcUnreadCount()
 {
     int count = 0;

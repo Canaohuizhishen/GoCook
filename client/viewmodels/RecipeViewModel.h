@@ -5,6 +5,7 @@
 #include <QSet>
 #include <memory>
 #include <gocook/IGoCookApi.h>
+#include "RequestGuards.h"
 
 /**
  * @brief 菜谱域 ViewModel：QML 侧唯一的菜谱数据入口（setContextProperty("recipeVM") 注入，main.cpp:60）。
@@ -13,8 +14,10 @@
  * 底层统一调用 IGoCookApi（HttpGoCookApi 经 HTTP 实现）。
  *
  * 三条贯穿全类的设计（具体契约见各成员注释）：
- *   1. 详情族五个请求（detail / nutrition / videos / ratings / myRating）共用
- *      m_detailRequestedId：切换菜谱后旧响应静默作废。
+ *   1. 过期响应作废按语义三分（RequestGuards.h）：详情族五个请求（detail / nutrition / videos /
+ *      ratings / myRating）共用 m_detailRequestedId——“目标键”比对（看的还是这道菜吗）；
+ *      搜索用 m_searchEpoch（RequestEpoch）——“轮次”作废（换词后旧词响应丢弃）；
+ *      收藏用 SessionSnapshot——“会话”作废（登出/换号后旧账号响应丢弃）。
  *   2. 乐观分档：deleteRecipe / deleteRating / deleteFavoriteGroup 由 VM 乐观并回滚；
  *      toggleFavorite 由 QML 乐观（失败自行回滚）；其余写操作等服务器确认后发结果信号。
  *   3. 错误按域分通道（searchErrorOccurred / ratingError / favoriteOperationFailed /
@@ -272,7 +275,8 @@ private:
     bool m_healthFilterApplied = false;   ///< 推荐结果已应用健康过滤
     bool m_detailLoading = false;   ///< 详情/编辑取数在途
     bool m_detailLoadFailed = false;   ///< 详情加载失败且无缓存（页面显示居中离线视图）
-    int m_detailRequestedId = -1;      ///< 详情族共用：非当前菜谱的迟到响应被丢弃（A→B 竞态防护）
+    int m_detailRequestedId = -1;      ///< 详情族共用：非当前菜谱的迟到响应被丢弃（A→B 竞态防护）——
+                                       ///< “目标键”语义（同菜谱兄弟请求互不作废），不同于轮次代次，不做统一
     int m_currentPage = 1;   ///< 公开列表当前页
     int m_pageSize = 30;     ///< 公开列表固定页大小（不随 loadPublicRecipes 的 size 参数更新）
     int m_totalPages = 0;    ///< 公开列表总页数
@@ -286,6 +290,9 @@ private:
     int m_searchPageSize = 20;   ///< 首屏请求的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
     int m_searchTotalPages = 0;   ///< 搜索总页数
     QString m_lastKeyword;   ///< 上一次搜索词（searchNextPage 据此续页）
+    /// 搜索轮次（RequestGuards.h::RequestEpoch）：首屏 begin 取票据、续页沿用当前票据；
+    /// 换词/清空后旧响应到达时票据已失效，静默丢弃（防旧词结果覆盖新词）
+    RequestEpoch m_searchEpoch;
 
     // 营养报告状态
     QVariantMap m_nutritionReport;   ///< 营养报告数据（仅成功时更新）

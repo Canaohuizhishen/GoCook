@@ -1,6 +1,7 @@
 #include "ShoppingListViewModel.h"
 #include <DataMapper.h>
 #include <QPointer>
+#include "RequestGuards.h"
 
 ShoppingListViewModel::ShoppingListViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
@@ -31,6 +32,24 @@ void ShoppingListViewModel::refresh()
     loadShoppingLists();
 }
 
+void ShoppingListViewModel::clearAll()
+{
+    // 登出统一清理（main.cpp 单点接线）：列表 / 详情 / 删除与建单标记全部归零。
+    // 刻意不动 m_pendingRequests：在途请求的回调仍会调用 endLoad 配对计数，清掉会负漂移
+    m_shoppingLists.clear();
+    m_currentList = {};
+    m_pendingDeleteIds.clear();
+    m_deletingListId = -1;
+    m_updatePendingItemId = -1;
+    m_updatePendingChecked = false;
+    m_updateInFlight = false;
+    m_creating = false;
+    emit shoppingListsChanged();
+    emit currentListChanged();
+    emit deletingListIdChanged();
+    emit creatingChanged();
+}
+
 void ShoppingListViewModel::exportShoppingList(int listId)
 {
     beginLoad();
@@ -52,13 +71,18 @@ void ShoppingListViewModel::loadShoppingLists()
 {
     beginLoad();
 
-    m_api->getShoppingLists([self = QPointer<ShoppingListViewModel>(this)](bool success,
+    // 快照当前会话（token，SessionSnapshot）：响应到达时若会话已切换（登出/换号），
+    // 该在途响应属于旧账号——静默丢弃，避免旧账号清单串入当前界面
+    const auto session = SessionSnapshot::capture(m_api);
+    m_api->getShoppingLists([self = QPointer<ShoppingListViewModel>(this), session](bool success,
                                 const std::vector<gocook::models::ShoppingListSummary>& data,
                                 const std::string& error) {
         if (!self) return;
+        self->endLoad();   // 先配对计数：过期响应也不能让 isLoading 卡死
+        if (!session.isCurrent(self->m_api)) return;   // 会话已切换：过期响应作废
+
         if (!success) {
             emit self->errorOccurred(QString::fromStdString(error));
-            self->endLoad();
             return;
         }
 
@@ -71,7 +95,6 @@ void ShoppingListViewModel::loadShoppingLists()
         }
 
         emit self->shoppingListsChanged();
-        self->endLoad();
     });
 }
 
@@ -79,12 +102,16 @@ void ShoppingListViewModel::loadShoppingListDetail(int listId)
 {
     beginLoad();
 
+    // 快照当前会话（token，SessionSnapshot）：登出/换号后到达的过期详情静默丢弃
+    // （endLoad 先行配平计数）
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->getShoppingListDetail(listId,
-        [self = QPointer<ShoppingListViewModel>(this)](bool success,
+        [self = QPointer<ShoppingListViewModel>(this), session](bool success,
                               const gocook::models::ShoppingList& data,
                               const std::string& error) {
             if (!self) return;
             self->endLoad();
+            if (!session.isCurrent(self->m_api)) return;   // 会话已切换：过期响应作废
 
             if (success) {
                 self->m_currentList = DataMapper::toMap(data);

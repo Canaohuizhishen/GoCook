@@ -59,6 +59,9 @@ public:
     Q_INVOKABLE void createListFromRecipe(const QString& name, const QVariantList& missingIngredients);
     /// 重新加载清单列表（等价 loadShoppingLists）。
     Q_INVOKABLE void refresh();
+    /// 清空全部数据与状态（登出 / 401 自动登出 / 注销的统一清理，main.cpp 单点接线调用）。
+    /// 注意：不动 m_pendingRequests——在途请求回调仍需 endLoad 配对计数，不能被清。
+    void clearAll();
     /// 导出清单（当前固定纯文本）；成功发 exportReady(content)，失败发 errorOccurred。
     Q_INVOKABLE void exportShoppingList(int listId);
 

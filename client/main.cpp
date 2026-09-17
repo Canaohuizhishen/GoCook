@@ -31,6 +31,9 @@ int main(int argc, char *argv[])
 
     // 注册 C++ 类型供 QML 使用
     qmlRegisterType<NativeFileDialog>("client", 1, 0, "NativeFileDialog");
+    // 注册库存 VM 类型（不可实例化）：供 QML 访问 ViewState 枚举（如 InventoryViewModel.Offline）
+    qmlRegisterUncreatableType<InventoryViewModel>("client", 1, 0, "InventoryViewModel",
+                                                   "仅用于枚举访问（视图状态），不可实例化");
 
     // 将 Theme.qml 注册为 "client" 模块下的单例
     // Theme.qml 已在 qt_add_qml_module 的 QML_FILES 中列出；此处手动注册
@@ -53,6 +56,13 @@ int main(int argc, char *argv[])
     // 网络恢复 → 库存自动同步（联网即同步；仅数据可能过期时重拉，见 VM）
     QObject::connect(httpApi, &HttpGoCookApi::networkRestored,
                      &inventoryVM, &InventoryViewModel::onNetworkRestored);
+
+    // 会话结束（登出 / 401 自动登出 / 注销）：各 VM 个人数据统一清理——单一收束点，
+    // 新增个人域只在此加一行（替代 QML 手工逐个调用）
+    QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &inventoryVM, &InventoryViewModel::clearAll);
+    QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &recipeVM, &RecipeViewModel::clearFavorites);
+    QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &shoppingListVM, &ShoppingListViewModel::clearAll);
+    QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &notifyVM, &NotificationViewModel::clearAll);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);

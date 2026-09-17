@@ -10,6 +10,8 @@ set(TEST_SOURCES
     test_recipe_vm.cpp
     test_auth_vm.cpp
     test_notification_vm.cpp
+    test_shopping_list_vm.cpp
+    test_request_guards.cpp
 )
 
 add_executable(test_client ${TEST_SOURCES}
@@ -20,6 +22,8 @@ add_executable(test_client ${TEST_SOURCES}
     ../viewmodels/RecipeViewModel.h ../viewmodels/RecipeViewModel.cpp
     ../viewmodels/AuthViewModel.h ../viewmodels/AuthViewModel.cpp
     ../viewmodels/NotificationViewModel.h ../viewmodels/NotificationViewModel.cpp
+    ../viewmodels/ShoppingListViewModel.h ../viewmodels/ShoppingListViewModel.cpp
+    ../viewmodels/RequestGuards.h
 )
 
 target_include_directories(test_client PRIVATE

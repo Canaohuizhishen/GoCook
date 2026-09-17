@@ -307,6 +307,9 @@ void RecipeViewModel::searchRecipes(const QString& keyword, int page, int size)
     m_lastKeyword = keyword;
     m_searchPage = page;
     m_searchPageSize = size;   // 记录页大小：searchNextPage 续页沿用（服务端 offset=(page-1)*size）
+    // 轮次票（RequestEpoch）：首屏（page==1）开启新一轮并作废在途旧词响应（最新词立即发出不被押后）；
+    // 续页沿用当前轮次票据——续页在途期间换词，响应到达时票据已失效，同样被丢弃
+    const int ticket = (page == 1) ? m_searchEpoch.begin() : m_searchEpoch.current();
     m_searchLoading = true;
     if (page == 1) {
         m_searchPerformed = false;
@@ -314,10 +317,13 @@ void RecipeViewModel::searchRecipes(const QString& keyword, int page, int size)
     emit searchLoadingChanged();
 
     m_api->searchRecipes(keyword.toStdString(), page, size, {},
-                         [self = QPointer<RecipeViewModel>(this), page]
+                         [self = QPointer<RecipeViewModel>(this), page, ticket]
                          (bool success, const gocook::models::PagedRecipes& data,
                           const std::string& error) {
                              if (!self) return;
+                             // 票据失效：本响应属已作废的旧轮次（换词/清空后），静默丢弃——
+                             // 不落数据、不改状态（加载标记由最新轮次请求自行收尾）
+                             if (!self->m_searchEpoch.isCurrent(ticket)) return;
                              if (!success) {
                                  emit self->searchErrorOccurred(QString::fromStdString(error));
                                  self->m_searchLoading = false;
@@ -356,15 +362,18 @@ void RecipeViewModel::searchNextPage()
 
 void RecipeViewModel::resetSearch()
 {
+    m_searchEpoch.invalidate();   // 作废在途搜索响应：清空后旧响应到达不得再落数据
     m_searchResults.clear();
     m_searchHasMore = false;
     m_searchPerformed = false;
     m_searchPage = 1;
     m_searchTotalPages = 0;
     m_lastKeyword.clear();
+    m_searchLoading = false;   // 在途请求已被作废（其响应将被丢弃），加载标记在此收尾复位
     emit searchResultsChanged();
     emit searchHasMoreChanged();
     emit searchPerformedChanged();
+    emit searchLoadingChanged();
 }
 
 QVariantMap RecipeViewModel::nutritionReport() const { return m_nutritionReport; }
@@ -750,17 +759,17 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
     emit favoritesLoadFailedChanged();
     emit favoritesLoadingChanged();
 
-    // 快照当前会话（token）：响应到达时若会话已切换（登出/换号），该在途响应属于旧账号，
-    // 静默丢弃——不清状态（clearFavorites 与新加载已接管），避免旧账号数据串入当前界面
-    const std::string tokenAtSend = m_api->authToken();
+    // 快照当前会话（token，SessionSnapshot）：响应到达时若会话已切换（登出/换号），该在途响应属于
+    // 旧账号，静默丢弃——不清状态（clearFavorites 与新加载已接管），避免旧账号数据串入当前界面
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->getFavorites(page, size, group.toStdString(),
-                        [self = QPointer<RecipeViewModel>(this), page, tokenAtSend]
+                        [self = QPointer<RecipeViewModel>(this), page, session]
                         (bool success, const gocook::models::PagedFavorites& data,
                          const std::string& error) {
         if (!self) return;
         // 会话已切换：过期响应作废。不清数据（clearFavorites/新加载已接管），
         // 仅复位加载标记防页面卡死（极端时序下 clearFavorites 可能尚未执行）
-        if (self->m_api->authToken() != tokenAtSend) {
+        if (!session.isCurrent(self->m_api)) {
             if (self->m_favoritesLoading) {
                 self->m_favoritesLoading = false;
                 emit self->favoritesLoadingChanged();

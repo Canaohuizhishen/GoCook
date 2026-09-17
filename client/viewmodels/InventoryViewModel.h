@@ -5,6 +5,7 @@
 #include <QList>
 #include <QTimer>
 #include <gocook/IGoCookApi.h>
+#include "RequestGuards.h"
 
 class LocalDatabase;
 
@@ -15,9 +16,10 @@ class LocalDatabase;
  * 所有 Q_INVOKABLE 异步（立即返回，结果经 Q_PROPERTY + NOTIFY 驱动 QML）；
  * 失败分通道：操作类走 errorOccurred，加载类走"快照静默兜底 / 离线视图 / 退避重试"分层呈现（见下）。
  *
- * 并发/异常四道防线（loadInventory 是交汇点，行为由 test_inventory_vm.cpp 锁定）：
- *   1. 换词竞态   —— 请求代次：换词/刷新/clearAll 递增，旧响应静默丢弃；
- *   2. 跨账号串台 —— 发送时快照 token：响应回来 token 已变则丢弃；
+ * 并发/异常四道防线（loadInventory 是交汇点，行为由 test_inventory_vm.cpp 锁定；
+ * 前两道的判定统一由 RequestGuards.h 值类型承载，见该文件“语义三分”）：
+ *   1. 换词竞态   —— 请求代次（RequestEpoch）：换词/刷新/clearAll 作废在途，旧响应静默丢弃；
+ *   2. 跨账号串台 —— 会话快照（SessionSnapshot）：发送时捕获 token，响应回来已切换则丢弃；
  *   3. 断网无数据 —— 快照兜底：无快照才进离线视图；
  *   4. 瞬时故障   —— 退避重试：仅网络层错误/503 触发。
  *
@@ -33,6 +35,15 @@ class LocalDatabase;
 class InventoryViewModel : public QObject
 {
     Q_OBJECT
+
+public:
+    /// 派生视图状态（对外收敛 QML 组合判断；内部旗标保留）——判定顺序与页面原组合表达式一一对应：
+    ///   Offline（失败且无数据，优先：重试在途时离线视图保持稳定不闪烁）→ InitialLoading（空白加载中）
+    ///   → Empty（空态）→ Content（有数据）
+    enum class ViewState { InitialLoading, Empty, Offline, Content };
+    Q_ENUM(ViewState)
+    Q_PROPERTY(ViewState viewState READ viewState NOTIFY viewStateChanged)
+
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)
@@ -54,6 +65,8 @@ public:
     QString filterText() const;
     bool loadFailed() const;
     QString loadFailedMessage() const;
+    /// 派生视图状态（语义见上方枚举注释；QML 经 viewState 收敛原组合判断）
+    ViewState viewState() const;
     /// 设置过滤词（trim 后生效）：变化时重置到第一页并按新词加载。
     /// Q_INVOKABLE：QML 过滤框防抖后直接调用（Q_PROPERTY WRITE 只支持属性赋值，
     /// 不会生成 QML 可调用的 setFilterText 函数——曾致 InventoryPage 运行时 TypeError）
@@ -92,6 +105,8 @@ signals:
     void loadFailedChanged();
     /// 离线视图文案变化（失败类型变化 / 退出离线态清空）
     void loadFailedMessageChanged();
+    /// 派生 viewState 变化（items / isLoading / loadFailed 任一依赖信号转发，见构造函数）
+    void viewStateChanged();
     /// 操作失败（携带错误描述）
     void errorOccurred(const QString& error);
 
@@ -124,7 +139,7 @@ private:
     QTimer m_retryTimer;       ///< 退避重试定时器（仅失败态运行）
     QList<int> m_retryDelays = {5000, 10000, 20000, 30000}; ///< 退避序列（到末尾后按末尾间隔继续）
     int m_retryAttempt = 0;    ///< 当前退避档位（成功/复位时归零）
-    /// 请求代次：每次发起新一轮首屏请求（换词/刷新/翻页轮次重置）时递增；响应带回发送时代次，
-    /// 到达时代次已落后即属过期（被更新的请求取代），静默丢弃不落数据不改状态
-    int m_epoch = 0;
+    /// 请求代次（RequestGuards.h::RequestEpoch）：新一轮首屏请求（换词/刷新）begin 取票据；
+    /// 响应带回票据，到达时已失效即属过期（被更新的请求取代），静默丢弃不落数据不改状态
+    RequestEpoch m_epoch;
 };

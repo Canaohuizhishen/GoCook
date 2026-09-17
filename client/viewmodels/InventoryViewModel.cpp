@@ -29,6 +29,11 @@ InventoryViewModel::InventoryViewModel(IGoCookApi *api, QObject *parent, LocalDa
     // 退避重试：单次触发，tick 里重拉首页；成功/clearAll/登出时停表（见各分支）
     m_retryTimer.setSingleShot(true);
     connect(&m_retryTimer, &QTimer::timeout, this, &InventoryViewModel::onRetryTick);
+
+    // viewState 为派生属性：任一依赖信号变化即转发通知（QML 绑定刷新）
+    connect(this, &InventoryViewModel::itemsChanged, this, &InventoryViewModel::viewStateChanged);
+    connect(this, &InventoryViewModel::isLoadingChanged, this, &InventoryViewModel::viewStateChanged);
+    connect(this, &InventoryViewModel::loadFailedChanged, this, &InventoryViewModel::viewStateChanged);
 }
 
 QVariantList InventoryViewModel::items() const { return m_items; }
@@ -37,6 +42,17 @@ bool InventoryViewModel::hasMore() const { return m_hasMore; }
 QString InventoryViewModel::filterText() const { return m_filterText; }
 bool InventoryViewModel::loadFailed() const { return m_loadFailed; }
 QString InventoryViewModel::loadFailedMessage() const { return m_loadFailedMessage; }
+
+InventoryViewModel::ViewState InventoryViewModel::viewState() const
+{
+    // 判定顺序与页面原组合表达式一一对应（见 h 中枚举注释）：
+    //   失败且无数据（优先——重试在途时离线视图保持稳定不闪烁）→ 空白加载中 → 空态 → 有数据
+    if (m_loadFailed && m_items.isEmpty())
+        return ViewState::Offline;
+    if (m_items.isEmpty())
+        return m_isLoading ? ViewState::InitialLoading : ViewState::Empty;
+    return ViewState::Content;
+}
 
 void InventoryViewModel::setFilterText(const QString& text)
 {
@@ -66,7 +82,7 @@ void InventoryViewModel::clearAll()
     m_currentPage = 1;
     m_totalPages = 0;
     m_isLoading = false;
-    ++m_epoch;  // 作废在途响应：旧账号/旧轮次的回调到达时代次落后，静默退出
+    m_epoch.invalidate();  // 作废在途响应：旧账号/旧轮次的回调到达时票据已失效，静默退出
     m_filterText.clear();
     m_lastLoadFailed = false;
     m_itemsFromSnapshotFallback = false;
@@ -87,36 +103,35 @@ void InventoryViewModel::loadNextPage()
 void InventoryViewModel::loadInventory(int page, int size)
 {
     // 翻页（page>1）是当前轮次的延续：仅当无在途请求时才发出，防止翻页请求堆叠。
-    // 首屏/换词/刷新（page<=1）= 开启新一轮：递增代次并立即发送，不被在途请求阻塞——
-    // 旧响应到达时代次已落后，由回调侧静默丢弃（见下），无需此处等待或事后补发
+    // 首屏/换词/刷新（page<=1）= 开启新一轮：begin 取票据并作废全部在途、立即发送，不被在途请求阻塞——
+    // 旧响应到达时票据已失效，由回调侧静默丢弃（见下），无需此处等待或事后补发
     // 注：page>1 的唯一入口是 loadNextPage()（其已前置 m_isLoading 拦截），本守卫为防御性
     if (page > 1 && m_isLoading) return;
-    if (page <= 1) ++m_epoch;
+    const int epochAtSend = (page <= 1) ? m_epoch.begin() : m_epoch.current();
     m_isLoading = true;
     emit isLoadingChanged();
 
-    // 快照当前会话（token）与请求代次：响应到达时若会话已切换（登出/换号），该在途响应属于旧账号——
-    // 静默丢弃，避免旧账号数据串入当前界面；会话未变但代次已落后（在途期间换词/刷新/clearAll），
-    // 本响应已被更新的请求取代——同样静默丢弃（数据由最新请求填充，避免旧词结果闪回）
-    const std::string tokenAtSend = m_api->authToken();
-    const int epochAtSend = m_epoch;
+    // 快照当前会话（token，SessionSnapshot）与请求代次票据：响应到达时若会话已切换（登出/换号），
+    // 该在途响应属于旧账号——静默丢弃，避免旧账号数据串入当前界面；会话未变但票据已失效（在途期间
+    // 换词/刷新/clearAll），本响应已被更新的请求取代——同样静默丢弃（数据由最新请求填充，避免旧词结果闪回）
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->getInventory(page, size, m_filterText.toStdString(),
-                        [self = QPointer<InventoryViewModel>(this), page, tokenAtSend, epochAtSend](bool success,
+                        [self = QPointer<InventoryViewModel>(this), page, session, epochAtSend](bool success,
                               const gocook::models::PagedInventory& data,
                               const std::string& error) {
                             if (!self) return;
-                            // 会话已切换：过期响应作废。仅当本响应仍属最新代次（无新请求接管、
+                            // 会话已切换：过期响应作废。仅当本响应仍属最新轮次（无新请求接管、
                             // clearAll 未执行）时复位加载标记防页面卡死；否则状态由新请求/clearAll 管理
-                            if (self->m_api->authToken() != tokenAtSend) {
-                                if (self->m_epoch == epochAtSend && self->m_isLoading) {
+                            if (!session.isCurrent(self->m_api)) {
+                                if (self->m_epoch.isCurrent(epochAtSend) && self->m_isLoading) {
                                     self->m_isLoading = false;
                                     emit self->isLoadingChanged();
                                 }
                                 return;
                             }
-                            // 代次落后：本响应发送后又有更新的请求发出（换词/刷新/clearAll 均会递增）——
+                            // 票据失效：本响应发送后又有更新的请求发出（换词/刷新/clearAll 均会作废）——
                             // 本响应已过时，静默丢弃：不落数据、不动加载标记（最新请求自行收尾）
-                            if (epochAtSend != self->m_epoch) return;
+                            if (!self->m_epoch.isCurrent(epochAtSend)) return;
                             if (!success) {
                                 const QString errorText = QString::fromStdString(error);
                                 // 守卫拦截（未登录，error=请先登录）：清空上一登录态残留数据，
