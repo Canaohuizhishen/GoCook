@@ -366,6 +366,17 @@ TEST(InventoryServiceTest, 更新清单项正确委派Repositories) {
     service.updateShoppingListItem(1, 42, 7, req);
 }
 
+TEST(InventoryServiceTest, 删除清单项正确委派Repositories) {
+    auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto& repo = *mock;
+    InventoryServiceImpl service(std::move(mock));
+
+    EXPECT_CALL(repo, deleteShoppingListItem(1, 42, 7))
+        .Times(1);
+
+    service.deleteShoppingListItem(1, 42, 7);
+}
+
 TEST(InventoryServiceTest, 批量添加清单正确委派Repositories) {
     auto mock = std::make_unique<NiceMock<MockInventoryRepository>>();
     auto& repo = *mock;

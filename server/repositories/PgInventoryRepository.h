@@ -47,6 +47,8 @@ public:
     gocook::models::BatchShoppingResponse batchAddShoppingItems(
         int userId, int listId,
         const std::vector<gocook::models::BatchShoppingItem>& items) override;
+    // 删除购物清单项（已勾选条目同事务回退库存），404 语义同更新
+    void deleteShoppingListItem(int userId, int listId, int itemId) override;
     // 导出购物清单（仅支持 "text" 纯文本；v2.13 起其他格式如 "image" 抛 400——图片导出为客户端本地能力）
     std::string exportShoppingList(int userId, int listId,
                                    const std::string& format) override;

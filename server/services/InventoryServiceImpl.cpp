@@ -97,6 +97,10 @@ void InventoryServiceImpl::updateShoppingListItem(int userId, int listId, int it
 BatchShoppingResponse InventoryServiceImpl::batchAddShoppingItems(int userId, int listId, const std::vector<BatchShoppingItem>& items) {
     return inventoryRepo_->batchAddShoppingItems(userId, listId, items);
 }
+
+void InventoryServiceImpl::deleteShoppingListItem(int userId, int listId, int itemId) {
+    inventoryRepo_->deleteShoppingListItem(userId, listId, itemId);
+}
 std::string InventoryServiceImpl::exportShoppingList(int userId, int listId, const std::string& format) {
     return inventoryRepo_->exportShoppingList(userId, listId, format);
 }

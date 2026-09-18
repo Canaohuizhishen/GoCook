@@ -423,22 +423,23 @@ namespace gocook::models {
         std::string created_at;   ///< 创建时间（ISO 8601）
     };
 
+    /// 批量添加/复合建单时携带的条目（食材名 + 数量 + 单位）
+    struct BatchShoppingItem {
+        std::string ingredient_name;   ///< 食材名称
+        double quantity = 0.0;         ///< 数量
+        std::string unit;              ///< 新增：单位
+    };
+
     /// 创建购物清单请求
     struct CreateShoppingListRequest {
         std::string name;                              ///< 清单名称
         std::optional<std::string> plan_id;            ///< 修正：API 可能传递字符串类型的 plan_id
+        std::vector<BatchShoppingItem> items;          ///< v2.18 可选：建单同时批量添加条目（服务端单事务）
     };
 
     /// 更新购物清单项请求
     struct UpdateShoppingItemRequest {
         bool checked = false;   ///< 是否已购买/勾选
-    };
-
-    /// 批量添加购物清单项请求
-    struct BatchShoppingItem {
-        std::string ingredient_name;   ///< 食材名称
-        double quantity = 0.0;         ///< 数量
-        std::string unit;              ///< 新增：单位
     };
 
     /// 批量添加购物清单项响应

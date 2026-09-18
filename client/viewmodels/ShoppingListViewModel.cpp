@@ -34,19 +34,18 @@ void ShoppingListViewModel::refresh()
 
 void ShoppingListViewModel::clearAll()
 {
-    // 登出统一清理（main.cpp 单点接线）：列表 / 详情 / 删除与建单标记全部归零。
+    // 登出统一清理（main.cpp 单点接线）：列表 / 详情 / 乐观删除集合 / 勾选合并与建单标记全部归零。
     // 刻意不动 m_pendingRequests：在途请求的回调仍会调用 endLoad 配对计数，清掉会负漂移
     m_shoppingLists.clear();
     m_currentList = {};
     m_pendingDeleteIds.clear();
-    m_deletingListId = -1;
+    m_deletingItemIds.clear();
     m_updatePendingItemId = -1;
     m_updatePendingChecked = false;
     m_updateInFlight = false;
     m_creating = false;
     emit shoppingListsChanged();
     emit currentListChanged();
-    emit deletingListIdChanged();
     emit creatingChanged();
 }
 
@@ -173,36 +172,36 @@ void ShoppingListViewModel::updateShoppingListItem(int listId, int itemId, bool 
         });
 }
 
-void ShoppingListViewModel::deleteShoppingList(int listId)
+void ShoppingListViewModel::deleteShoppingListItem(int listId, int itemId)
 {
-    m_pendingDeleteIds.insert(listId);
-    m_deletingListId = listId;
-    emit deletingListIdChanged();
+    // 同一条目删除在途时忽略重复点击（QML 侧同时有 isLoading 禁用，此处兜底）
+    if (m_deletingItemIds.contains(itemId))
+        return;
+    m_deletingItemIds.insert(itemId);
     beginLoad();
 
-    m_api->deleteShoppingList(listId,
-        [self = QPointer<ShoppingListViewModel>(this), listId](bool success, const std::string& error) {
+    m_api->deleteShoppingListItem(listId, itemId,
+        [self = QPointer<ShoppingListViewModel>(this), itemId](bool success, const std::string& error) {
             if (!self) return;
-            self->m_pendingDeleteIds.remove(listId);
-            self->m_deletingListId = -1;
-            emit self->deletingListIdChanged();
+            self->m_deletingItemIds.remove(itemId);
             self->endLoad();
 
-            if (success) {
-                // 移除本地缓存中的该清单
-                QVariantList lists = self->m_shoppingLists;
-                for (int i = 0; i < lists.size(); ++i) {
-                    if (lists[i].toMap()["id"].toInt() == listId) {
-                        lists.removeAt(i);
-                        break;
-                    }
-                }
-                self->m_shoppingLists = lists;
-                emit self->shoppingListsChanged();
-                emit self->shoppingListDeleted(listId);
-            } else {
+            if (!success) {
                 emit self->errorOccurred(QString::fromStdString(error));
+                return;
             }
+
+            // 局部移除该条目，避免整表重拉（与勾选局部更新同思路）
+            QVariantList items = self->m_currentList["items"].toList();
+            for (int i = 0; i < items.size(); ++i) {
+                if (items[i].toMap()["id"].toInt() == itemId) {
+                    items.removeAt(i);
+                    break;
+                }
+            }
+            self->m_currentList["items"] = items;
+            emit self->currentListChanged();
+            emit self->itemUpdated();
         });
 }
 
@@ -314,58 +313,36 @@ void ShoppingListViewModel::createListFromRecipe(const QString& name,
 
     gocook::models::CreateShoppingListRequest req;
     req.name = name.toStdString();
+    // v2.18 复合建单：条目随建单请求一次送达，服务端单事务落库（失败零残留，不再有"空清单"中间态）
+    for (const auto& val : missingIngredients) {
+        QVariantMap map = val.toMap();
+        gocook::models::BatchShoppingItem item;
+        item.ingredient_name = map["name"].toString().toStdString();
+        item.quantity = map["quantity"].toDouble();
+        item.unit = map["unit"].toString().toStdString();
+        req.items.push_back(std::move(item));
+    }
 
     m_api->createShoppingList(req,
-        [self = QPointer<ShoppingListViewModel>(this), name, missingIngredients]
+        [self = QPointer<ShoppingListViewModel>(this), name]
         (bool success, const gocook::models::ShoppingList& data, const std::string& error) {
             if (!self) return;
             self->m_creating = false;
             emit self->creatingChanged();
+            self->endLoad();
 
             if (!success) {
-                self->endLoad();
+                // 复合端点失败 = 服务端整体回滚（未创建任何东西）：推荐卡片走批量失败反馈
                 emit self->shoppingListCreateFailed(QString::fromStdString(error));
+                emit self->batchAddFailed(QString::fromStdString(error));
                 return;
             }
 
-            int listId = data.id;
-
-            std::vector<gocook::models::BatchShoppingItem> batchItems;
-            for (const auto& val : missingIngredients) {
-                QVariantMap map = val.toMap();
-                gocook::models::BatchShoppingItem item;
-                item.ingredient_name = map["name"].toString().toStdString();
-                item.quantity = map["quantity"].toDouble();
-                item.unit = map["unit"].toString().toStdString();
-                batchItems.push_back(std::move(item));
-            }
-
-            if (batchItems.empty()) {
-                self->endLoad();
-                self->m_currentList = DataMapper::toMap(data);
-                emit self->currentListChanged();
-                emit self->shoppingListCreated(name);
-                self->refresh();
-                return;
-            }
-
-            self->m_api->batchAddShoppingItems(listId, batchItems,
-                [self = QPointer<ShoppingListViewModel>(self), listId, name, data]
-                (bool ok, const gocook::models::BatchShoppingResponse& resp,
-                 const std::string& batchError) {
-                    if (!self) return;
-                    self->endLoad();
-                    if (ok) {
-                        self->loadShoppingListDetail(listId);
-                        emit self->batchAddComplete(QString::fromStdString(resp.message));
-                        // 成功后标记列表已创建
-                        self->m_currentList = DataMapper::toMap(data);
-                        emit self->currentListChanged();
-                        emit self->shoppingListCreated(name);
-                    } else {
-                        emit self->batchAddFailed(QString::fromStdString(batchError));
-                    }
-                    self->refresh();
-                });
+            // 创建响应已携带完整条目（含 to_buy 计算），无需再拉一次详情
+            self->m_currentList = DataMapper::toMap(data);
+            emit self->currentListChanged();
+            emit self->batchAddComplete(QStringLiteral("已成功添加 %1 项").arg(static_cast<int>(data.items.size())));
+            emit self->shoppingListCreated(name);
+            self->refresh();
         });
 }

@@ -7,7 +7,11 @@
 //   · updateInventoryItem（PUT）：按 id 整行替换、缺省 expiry_date = 清空（审查修复）、
 //     不存在/他人条目 404、改名改单位撞唯一约束 409（审查修复，行数据不变）
 //   · updateShoppingListItem（勾选回流，api-spec 5.5）：同名同单位累加且不覆盖单位、
-//     同名不同单位新建行且保留旧行
+//     同名不同单位新建行且保留旧行；取消勾选对称回退（触底删行不留零量行、缺行静默 no-op）
+//   · createShoppingList（v2.18 复合建单）：请求携带 items 时与建单同一事务落库，
+//     库存快照与 to_buy 计算与 batchAddShoppingItems 完全一致
+//   · deleteShoppingListItem（v2.18 条目删除）：未勾选不触碰库存、已勾选同事务回退、
+//     越权/不存在 404 且零变更
 //   · PgRecipeRepository::findRecommendedRecipes：库存同名多单位行不撑大 match_count /
 //     available_json（inv_names DISTINCT + inv_display 双 CTE）
 //
@@ -402,7 +406,7 @@ TEST_F(InventoryDbTest, 勾选回流跨单位新建行保留旧行) {
     EXPECT_TRUE(foundNew) << "新行（克）应新建";
 }
 
-TEST_F(InventoryDbTest, 取消勾选与重复勾选不会重复回流) {
+TEST_F(InventoryDbTest, 取消勾选回退且重复勾选不会重复回流) {
     int uid = ensureUser();
     PgInventoryRepository repo(testPool());
 
@@ -414,16 +418,205 @@ TEST_F(InventoryDbTest, 取消勾选与重复勾选不会重复回流) {
 
     gocook::models::UpdateShoppingItemRequest req;
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // false→true：回流一次
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // true→true：不回流
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // false→true：回流一次（2+8=10）
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // true→true：不重复回流（仍 10）
     req.checked = false;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // true→false：不回流
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // true→false：对称回退一次（10−8=2）
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // false→true：再次回流
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // false→true：再次回流（2+8=10）
 
     auto row = fetchRow(invId);
     ASSERT_TRUE(row.has_value());
-    EXPECT_DOUBLE_EQ(row->quantity, 2.0 + 8.0 * 2) << "仅两次 false→true 触发回流，共 +16";
+    EXPECT_DOUBLE_EQ(row->quantity, 2.0 + 8.0 - 8.0 + 8.0) << "勾选加、取消减，仅在边沿触发一次";
+}
+
+TEST_F(InventoryDbTest, 取消勾选回退缺行时静默跳过) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    int invId = repo.upsertInventory(uid, makeReq("集成测试酸奶", 1, "盒"));
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试酸奶", 5, 1, 4, "盒");
+
+    gocook::models::UpdateShoppingItemRequest req;
+    req.checked = true;
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回流 4 → 5
+
+    repo.deleteInventoryItem(uid, invId);                    // 用户手动清掉了库存行
+
+    req.checked = false;
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回退：行不存在 → 不报错、不新建行
+    auto rows = fetchByName(uid, "集成测试酸奶");
+    EXPECT_TRUE(rows.empty()) << "回退不得凭空重建库存行";
+}
+
+TEST_F(InventoryDbTest, 取消勾选回退触底即删行不留零量残留) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    int invId = repo.upsertInventory(uid, makeReq("集成测试黄油", 1, "块"));
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试黄油", 10, 1, 9, "块");
+
+    gocook::models::UpdateShoppingItemRequest req;
+    req.checked = true;
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回流 9 → 10
+
+    // 模拟库存被消耗到低于待购量（直接经连接修改，作用域内用完即还）
+    {
+        auto guard = testPool().getConnection();
+        pqxx::nontransaction ntxn(*guard);
+        ntxn.exec("UPDATE inventory SET quantity = 2 WHERE id = $1", pqxx::params{invId});
+    }
+
+    req.checked = false;
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回退 9：2−9 触底 → 整行删除
+    EXPECT_FALSE(fetchRow(invId).has_value()) << "触底行应被删除，不留 0 量库存行";
+    EXPECT_TRUE(fetchByName(uid, "集成测试黄油").empty());
+}
+
+TEST_F(InventoryDbTest, 取消勾选回退清零不留零量库存行) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    // 用户实测场景：库存里本来没有“猪里脊”→ 勾选（凭空新建）→ 取消勾选 → 不留“0 克”残行
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试猪里脊", 500, 0, 500, "克");
+
+    gocook::models::UpdateShoppingItemRequest req;
+    req.checked = true;
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // 新建 500 克行
+    ASSERT_EQ(fetchByName(uid, "集成测试猪里脊").size(), 1u);
+
+    req.checked = false;
+    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回退清零 → 删行
+    EXPECT_TRUE(fetchByName(uid, "集成测试猪里脊").empty())
+        << "回退清零后不得遗留 0 量库存行";
+}
+
+// ---- createShoppingList 复合建单（v2.18：可选 items，单事务） ----
+
+TEST_F(InventoryDbTest, 创建清单携带条目单事务落库且按库存计算待购) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    repo.upsertInventory(uid, makeReq("集成测试鸡翅", 3, "斤"));
+
+    gocook::models::CreateShoppingListRequest req;
+    req.name = "集成测试清单";
+    gocook::models::BatchShoppingItem withStock;   // 库存 3 → 待购 2
+    withStock.ingredient_name = "集成测试鸡翅";
+    withStock.quantity = 5;
+    withStock.unit = "斤";
+    gocook::models::BatchShoppingItem noStock;     // 无库存 → 待购 2
+    noStock.ingredient_name = "集成测试柠檬";
+    noStock.quantity = 2;
+    noStock.unit = "个";
+    req.items = {withStock, noStock};
+
+    int listId = repo.createShoppingList(uid, req);
+    ASSERT_GT(listId, 0);
+
+    auto detail = repo.findShoppingListDetail(uid, listId);
+    ASSERT_EQ(detail.items.size(), 2u) << "复合建单应在同一事务内落库全部条目";
+    EXPECT_EQ(detail.items[0].ingredient_name, "集成测试鸡翅");
+    EXPECT_DOUBLE_EQ(detail.items[0].inventory_quantity, 3.0);
+    EXPECT_DOUBLE_EQ(detail.items[0].to_buy_quantity, 2.0) << "待购 = max(需购 - 库存, 0)";
+    EXPECT_EQ(detail.items[0].unit, "斤");
+    EXPECT_FALSE(detail.items[0].checked);
+    EXPECT_EQ(detail.items[1].ingredient_name, "集成测试柠檬");
+    EXPECT_DOUBLE_EQ(detail.items[1].inventory_quantity, 0.0);
+    EXPECT_DOUBLE_EQ(detail.items[1].to_buy_quantity, 2.0);
+}
+
+// ---- deleteShoppingListItem（v2.18 条目删除） ----
+
+TEST_F(InventoryDbTest, 删除未勾选条目不触碰库存) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    int invId = repo.upsertInventory(uid, makeReq("集成测试白菜", 2, "颗"));
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试白菜", 5, 2, 3, "颗");
+
+    repo.deleteShoppingListItem(uid, listId, itemId);
+
+    auto detail = repo.findShoppingListDetail(uid, listId);
+    EXPECT_TRUE(detail.items.empty()) << "条目应被删除";
+    auto row = fetchRow(invId);
+    ASSERT_TRUE(row.has_value());
+    EXPECT_DOUBLE_EQ(row->quantity, 2.0) << "未勾选条目删除不得触碰库存";
+}
+
+TEST_F(InventoryDbTest, 删除已勾选条目同事务回退库存) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    int invId = repo.upsertInventory(uid, makeReq("集成测试排骨", 1, "斤"));
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试排骨", 3, 1, 2, "斤");
+
+    gocook::models::UpdateShoppingItemRequest check;
+    check.checked = true;
+    repo.updateShoppingListItem(uid, listId, itemId, check);   // 回流 2 → 3
+
+    repo.deleteShoppingListItem(uid, listId, itemId);
+
+    auto detail = repo.findShoppingListDetail(uid, listId);
+    EXPECT_TRUE(detail.items.empty());
+    auto row = fetchRow(invId);
+    ASSERT_TRUE(row.has_value());
+    EXPECT_DOUBLE_EQ(row->quantity, 1.0) << "删除已勾选条目应视作取消勾选回退（3−2=1）";
+}
+
+TEST_F(InventoryDbTest, 删除已勾选条目回退触底同样删行) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试莲藕", 3, 0, 3, "节");
+
+    gocook::models::UpdateShoppingItemRequest check;
+    check.checked = true;
+    repo.updateShoppingListItem(uid, listId, itemId, check);   // 回流 3 → 3
+    ASSERT_EQ(fetchByName(uid, "集成测试莲藕").size(), 1u);
+
+    repo.deleteShoppingListItem(uid, listId, itemId);          // 删除已勾选条目：回退触底
+    EXPECT_TRUE(fetchByName(uid, "集成测试莲藕").empty()) << "触底回退应删行";
+}
+
+TEST_F(InventoryDbTest, 删除不存在或越权清单条目返回404且零变更) {
+    int uid = ensureUser();
+    PgInventoryRepository repo(testPool());
+
+    gocook::models::CreateShoppingListRequest listReq;
+    listReq.name = "集成测试清单";
+    int listId = repo.createShoppingList(uid, listReq);
+    int itemId = insertUncheckedItem(listId, "集成测试芹菜", 1, 0, 1, "把");
+
+    // 不存在的 itemId
+    expectError([&] { repo.deleteShoppingListItem(uid, listId, itemId + 9999); }, 404, "清单项不存在");
+    // itemId 与 listId 不匹配（把 A 项当作 B 单的条目删）
+    int otherListId = repo.createShoppingList(uid, listReq);
+    expectError([&] { repo.deleteShoppingListItem(uid, otherListId, itemId); }, 404, "清单项不存在");
+    // 他人用户删（B 用户身份删 A 的条目）
+    int uidB = ensureUser("集成测试用户B");
+    expectError([&] { repo.deleteShoppingListItem(uidB, listId, itemId); }, 404, "清单项不存在");
+    // 条目未被误删
+    auto detail = repo.findShoppingListDetail(uid, listId);
+    EXPECT_EQ(detail.items.size(), 1u);
 }
 
 // ---- PgRecipeRepository::findRecommendedRecipes（同名多单位不撑大计数） ----

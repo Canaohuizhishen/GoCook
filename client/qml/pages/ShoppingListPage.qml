@@ -11,14 +11,6 @@ Page {
     signal goBack()
     signal showDetailRequest(int listId)
 
-    // 用于测量文本宽度的隐藏 Text
-    Text {
-        id: deleteMeasurer
-        visible: false
-        font.family: Theme.fontFamily
-        font.pointSize: Theme.fontSizeBody
-    }
-
     // 滑动互斥管理器 —— 同一时刻仅一个列表项可展开
     QtObject {
         id: swipeState
@@ -357,77 +349,6 @@ Page {
                     buttonType: CustomButton.ButtonType.Primary
                     enabled: nameField.text.trim() !== "" && !shoppingListVM.creating
                     onClicked: confirmCreate()
-                }
-            }
-        }
-    }
-
-    // ===== 删除确认对话框 =====
-    Dialog {
-        id: deleteDialog
-        title: qsTr("确认删除")
-        anchors.centerIn: parent
-        modal: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        width: Math.min(parent.width * 0.9, Math.max(300, deleteMeasurer.implicitWidth + 80))
-
-        property int listId: 0
-        property string listName: ""
-        onListNameChanged: {
-            deleteMeasurer.text = qsTr("确定要删除「%1」吗？此操作不可撤销。").arg(listName)
-        }
-
-        background: Rectangle {
-            color: Theme.cardBackground
-            radius: Theme.radiusMedium
-            border.color: Theme.dividerColor
-            border.width: 1
-        }
-
-        ColumnLayout {
-            spacing: Theme.spacingSmall
-            width: parent.width
-
-            Text {
-                text: qsTr("确认删除")
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeH3
-                font.bold: true
-                color: Theme.textPrimary
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Text {
-                text: qsTr("确定要删除「%1」吗？此操作不可撤销。").arg(deleteDialog.listName)
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSizeBody
-                color: Theme.textSecondary
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spacingSmall
-
-                CustomButton {
-                    Layout.fillWidth: true
-                    buttonText: qsTr("取消")
-                    buttonType: CustomButton.ButtonType.Secondary
-                    onClicked: deleteDialog.close()
-                }
-
-                CustomButton {
-                    Layout.fillWidth: true
-                    buttonText: qsTr("删除")
-                    buttonType: CustomButton.ButtonType.Primary
-                    buttonColor: "#d32f2f"
-                    onClicked: {
-                        shoppingListVM.deleteShoppingList(deleteDialog.listId)
-                        deleteDialog.close()
-                    }
                 }
             }
         }

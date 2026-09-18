@@ -16,6 +16,9 @@ Rectangle {
     property real buyWidth: 50
     property real unitWidth: 40
 
+    // 操作列（✕ 删除，v2.18）：导出抓图期间由页面置 false 隐藏
+    property bool showActionColumn: true
+
     Row {
         id: headerRow
         anchors.left: parent.left
@@ -75,6 +78,17 @@ Rectangle {
         Text {
             width: 40; height: 32
             text: qsTr("状态")
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSizeCaption
+            font.bold: true
+            color: Theme.textSecondary
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        Text {
+            visible: root.showActionColumn
+            width: 40; height: 32
+            text: qsTr("操作")
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSizeCaption
             font.bold: true

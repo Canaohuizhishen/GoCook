@@ -11,6 +11,64 @@ using namespace gocook::services;
 //   本文件已按"生产级收敛形态"重构：每个方法用 executeDb 包裹（见 ../common/DbExecutor.h），
 //   方法体只剩"差异部分"（SQL + 参数 + 行→结构体映射），异常分层/事务边界由辅助函数统一保证。
 
+namespace {
+
+// 在给定事务内插入一条清单条目，并返回完整行（含按当前库存算出的待购量）。
+// createShoppingList（v2.18 复合建单）与 batchAddShoppingItems 共用此帮助函数，
+// 保证两条路径的库存快照 / to_buy 计算语义完全一致（沿用历史 batch 行为：
+// 按 用户+食材名 查库存并取首行数量，不区分单位）。
+ShoppingListItem insertShoppingItemTx(pqxx::work& txn, int userId, int listId,
+                                      const BatchShoppingItem& reqItem) {
+    // 查询当前库存量，算出“还差多少要买”（to_buy = max(需要 - 已有, 0)）
+    double invQty = 0.0;
+    pqxx::result invRes = txn.exec(
+        "SELECT quantity FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
+        pqxx::params{userId, reqItem.ingredient_name});
+    if (!invRes.empty()) {
+        invQty = invRes[0]["quantity"].as<double>();
+    }
+
+    double requiredQty = reqItem.quantity;
+    double toBuyQty = std::max(requiredQty - invQty, 0.0);
+
+    pqxx::result insertRes = txn.exec(
+        "INSERT INTO shopping_list_items "
+        "(list_id, ingredient_name, required_quantity, inventory_quantity, to_buy_quantity, unit, checked) "
+        "VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
+        pqxx::params{listId, reqItem.ingredient_name, requiredQty, invQty, toBuyQty, reqItem.unit});
+
+    ShoppingListItem listItem;
+    listItem.id = insertRes[0]["id"].as<int>();
+    listItem.ingredient_name = reqItem.ingredient_name;
+    listItem.required_quantity = requiredQty;
+    listItem.inventory_quantity = invQty;
+    listItem.to_buy_quantity = toBuyQty;
+    listItem.unit = reqItem.unit;
+    listItem.checked = false;
+    return listItem;
+}
+
+// 回退一次清单回流对库存的贡献：按 用户+食材名+单位（即加侧 UPSERT 的同一键）精确扣减。
+// 库存不保留 0 量行（全系统其余写路径均校验 quantity>0）——"扣完即触底"（quantity <= 需购量）
+// 的行直接删除，杜绝"猪里脊 0克"类残行；剩余行必然扣完为正，做普通减法。
+// 行不存在（如用户已手动删除该库存行）自然 no-op，不重建行。
+// updateShoppingListItem 的 true→false 与 deleteShoppingListItem 的已勾选删除共用。
+void revertShoppingRollbackTx(pqxx::work& txn, int userId, const std::string& ingredientName,
+                              double toBuyQty, const std::string& unit) {
+    // 触底行删除（quantity <= toBuyQty 时，扣减结果必 <= 0）
+    txn.exec(
+        "DELETE FROM inventory "
+        "WHERE user_id = $1 AND ingredient_name = $2 AND unit = $3 AND quantity <= $4",
+        pqxx::params{userId, ingredientName, unit, toBuyQty});
+    // 剩余行 quantity > toBuyQty，扣完必为正
+    txn.exec(
+        "UPDATE inventory SET quantity = quantity - $4 "
+        "WHERE user_id = $1 AND ingredient_name = $2 AND unit = $3",
+        pqxx::params{userId, ingredientName, unit, toBuyQty});
+}
+
+} // namespace
+
 PagedInventory PgInventoryRepository::findInventory(int userId, int page, int size) {
     // 无过滤查询 = 过滤查询的空词特例（SQL 单源，避免两段 SQL 漂移）
     return findInventoryFiltered(userId, page, size, "");
@@ -182,7 +240,12 @@ int PgInventoryRepository::createShoppingList(int userId, const CreateShoppingLi
                 "INSERT INTO shopping_lists (user_id, name) VALUES ($1, $2) RETURNING id",
                 pqxx::params{userId, req.name});
         }
-        return res[0]["id"].as<int>();
+        int listId = res[0]["id"].as<int>();
+        // v2.18 复合建单：请求可携带 items，与建单同一事务插入（失败即整体回滚，不留空清单）
+        for (const auto& item : req.items) {
+            insertShoppingItemTx(txn, userId, listId, item);
+        }
+        return listId;
     }, "数据库操作失败");
 }
 
@@ -257,10 +320,12 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
             "UPDATE shopping_list_items SET checked = $1 WHERE id = $2",
             pqxx::params{req.checked, itemId});
 
-        // 库存回流（api-spec 5.5 / v2.8 同步细节）：checked 从 false → true 时触发。
-        // 单语句原子 UPSERT：① 已有 同名同单位 条目 → 数量累加（保留该行自身单位，不做跨单位加法）；
-        // ② 无同名同单位条目 → 自动新建行（沿用清单项单位），同名不同单位旧行保留（spec 5.5 第 4 条）。
-        // 由唯一约束充当并发闸门，勾选与并发回流不会互相丢更新。
+        // 库存回流（api-spec 5.5）：勾选态变化双向对称，与 checked 写入同一事务提交。
+        //   false → true：单语句原子 UPSERT：① 已有 同名同单位 条目 → 数量累加（保留该行自身单位，
+        //     不做跨单位加法）；② 无同名同单位条目 → 自动新建行（沿用清单项单位），同名不同单位旧行
+        //     保留（spec 5.5 第 4 条）。由唯一约束充当并发闸门，勾选与并发回流不会互相丢更新。
+        //   true → false：对称回退——仅当 同名同单位 库存行存在时扣减（GREATEST 钳制非负）；
+        //     行不存在（如用户已手动删除该库存行）则自然 no-op，不重建行。
         if (!oldChecked && req.checked && toBuyQty > 0) {
             LOG_DEBUG("[SQL] updateShoppingListItem 库存回流 UPSERT | ing=%s qty=%.1f unit=%s",
                       ingredientName.c_str(), toBuyQty, unit.c_str());
@@ -271,7 +336,42 @@ void PgInventoryRepository::updateShoppingListItem(int userId, int listId, int i
                 "    quantity = inventory.quantity + EXCLUDED.quantity, "
                 "    added_at = NOW()",
                 pqxx::params{userId, ingredientName, toBuyQty, unit});
+        } else if (oldChecked && !req.checked && toBuyQty > 0) {
+            LOG_DEBUG("[SQL] updateShoppingListItem 库存回退 | ing=%s qty=%.1f unit=%s",
+                      ingredientName.c_str(), toBuyQty, unit.c_str());
+            revertShoppingRollbackTx(txn, userId, ingredientName, toBuyQty, unit);
         }
+    }, "数据库操作失败");
+}
+
+void PgInventoryRepository::deleteShoppingListItem(int userId, int listId, int itemId) {
+    executeDb(db_, [&](pqxx::work& txn) {
+        // 查询条目 + 验证归属（同时取回退所需字段）
+        pqxx::result itemRes = txn.exec(
+            "SELECT sli.checked, sli.ingredient_name, sli.to_buy_quantity, sli.unit "
+            "FROM shopping_list_items sli "
+            "JOIN shopping_lists sl ON sl.id = sli.list_id "
+            "WHERE sli.id = $1 AND sl.id = $2 AND sl.user_id = $3",
+            pqxx::params{itemId, listId, userId});
+
+        if (itemRes.empty()) {
+            throw ServiceException("清单项不存在", 404);
+        }
+
+        bool checked = itemRes[0]["checked"].as<bool>();
+        std::string ingredientName = itemRes[0]["ingredient_name"].c_str();
+        double toBuyQty = itemRes[0]["to_buy_quantity"].as<double>();
+        std::string unit = itemRes[0]["unit"].c_str();
+
+        // 删除已勾选条目 = 视为取消勾选（对称回退库存）再删行，避免“幽灵库存”；
+        // 回退口径与 updateShoppingListItem 的 true→false 完全一致（同事务提交）。
+        if (checked && toBuyQty > 0) {
+            LOG_DEBUG("[SQL] deleteShoppingListItem 库存回退 | ing=%s qty=%.1f unit=%s",
+                      ingredientName.c_str(), toBuyQty, unit.c_str());
+            revertShoppingRollbackTx(txn, userId, ingredientName, toBuyQty, unit);
+        }
+
+        txn.exec("DELETE FROM shopping_list_items WHERE id = $1", pqxx::params{itemId});
     }, "数据库操作失败");
 }
 
@@ -289,33 +389,7 @@ BatchShoppingResponse PgInventoryRepository::batchAddShoppingItems(int userId, i
         int addedCount = 0;
 
         for (const auto& reqItem : items) {
-            // 查询当前库存量，算出"还差多少要买"（to_buy = max(需要 - 已有, 0)）
-            double invQty = 0.0;
-            pqxx::result invRes = txn.exec(
-                "SELECT quantity FROM inventory WHERE user_id = $1 AND ingredient_name = $2",
-                pqxx::params{userId, reqItem.ingredient_name});
-            if (!invRes.empty()) {
-                invQty = invRes[0]["quantity"].as<double>();
-            }
-
-            double requiredQty = reqItem.quantity;
-            double toBuyQty = std::max(requiredQty - invQty, 0.0);
-
-            pqxx::result insertRes = txn.exec(
-                "INSERT INTO shopping_list_items "
-                "(list_id, ingredient_name, required_quantity, inventory_quantity, to_buy_quantity, unit, checked) "
-                "VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
-                pqxx::params{listId, reqItem.ingredient_name, requiredQty, invQty, toBuyQty, reqItem.unit});
-
-            ShoppingListItem listItem;
-            listItem.id = insertRes[0]["id"].as<int>();
-            listItem.ingredient_name = reqItem.ingredient_name;
-            listItem.required_quantity = requiredQty;
-            listItem.inventory_quantity = invQty;
-            listItem.to_buy_quantity = toBuyQty;
-            listItem.unit = reqItem.unit;
-            listItem.checked = false;
-            result.items.push_back(std::move(listItem));
+            result.items.push_back(insertShoppingItemTx(txn, userId, listId, reqItem));
             ++addedCount;
         }
 

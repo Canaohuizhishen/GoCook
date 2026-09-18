@@ -42,6 +42,8 @@ public:
     // 批量添加购物清单项
     MOCK_METHOD(gocook::models::BatchShoppingResponse, batchAddShoppingItems,
                 (int, int, const std::vector<gocook::models::BatchShoppingItem>&), (override));
+    // 删除购物清单项（已勾选条目同事务回退库存）
+    MOCK_METHOD(void, deleteShoppingListItem, (int, int, int), (override));
     // 导出购物清单
     MOCK_METHOD(std::string, exportShoppingList, (int, int, const std::string&), (override));
 };
