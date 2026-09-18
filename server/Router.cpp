@@ -350,6 +350,9 @@ void Router::registerShoppingListRoutes(httplib::Server& svr) {
     svr.Patch(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.updateShoppingListItem(req, res);
     });
+    svr.Delete(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
+        inventoryHandler_.deleteShoppingListItem(req, res);
+    });
     svr.Post(R"(/api/inventory/shopping-lists/(\d+)/items/batch)", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.batchAddShoppingItems(req, res);
     });

@@ -13,8 +13,7 @@
  *
  * 三条贯穿全类的设计（具体契约见各方法注释）：
  *   1. isLoading 为在途请求计数派生（beginLoad/endLoad 包裹每个请求），并发请求安全。
- *   2. 删除两个变体：deleteShoppingList 等服务器确认（行级 deletingListId 标记）；
- *      deleteShoppingListOptimistic 先本地移除、失败插回原位置。
+ *   2. 删除清单：deleteShoppingListOptimistic 先本地移除、失败插回原位置（唯一的删除路径）。
  *   3. 条目勾选连点合并：在途时只记最后一次状态，当前请求返回后自动补发。
  */
 class ShoppingListViewModel : public QObject
@@ -24,7 +23,6 @@ class ShoppingListViewModel : public QObject
     Q_PROPERTY(QVariantMap currentList READ currentList NOTIFY currentListChanged)   ///< 清单详情（加载详情 / 建单成功时写入）
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)   ///< 有请求在途（在途请求计数 > 0 派生）
     Q_PROPERTY(bool creating READ creating NOTIFY creatingChanged)   ///< 建清单请求在途
-    Q_PROPERTY(int deletingListId READ deletingListId NOTIFY deletingListIdChanged)   ///< 正在删除的清单 id（-1=无；供行级删除中状态）
 
 public:
     explicit ShoppingListViewModel(IGoCookApi *api, QObject *parent = nullptr);   ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
@@ -34,7 +32,6 @@ public:
     QVariantMap currentList() const;
     bool isLoading() const { return m_pendingRequests > 0; }   ///< 特殊实现：在途请求计数派生
     bool creating() const;
-    int deletingListId() const { return m_deletingListId; }
 
     // 清单操作
     /// 加载清单列表（替换本地缓存；跳过乐观删除中的条目）。失败发 errorOccurred。
@@ -47,8 +44,9 @@ public:
     /// 更新条目勾选（连点合并：在途时只记最后一次，返回后自动补发）。
     /// 成功发 itemUpdated，失败发 errorOccurred。
     Q_INVOKABLE void updateShoppingListItem(int listId, int itemId, bool checked);
-    /// 删除清单：行级 deletingListId 标记；等接口返回后从列表移除并发 shoppingListDeleted。
-    Q_INVOKABLE void deleteShoppingList(int listId);
+    /// 删除条目（v2.18）：成功从详情本地移除该条目并发 itemUpdated，失败发 errorOccurred。
+    /// 已勾选条目的库存回退由服务端在同一事务内完成（删除 = 取消勾选 + 删行）。
+    Q_INVOKABLE void deleteShoppingListItem(int listId, int itemId);
     /// 乐观删除：立即移除本地条目；失败按原位置插回并发 errorOccurred，成功发 shoppingListDeleted。
     Q_INVOKABLE void deleteShoppingListOptimistic(int listId, QVariantMap listData);
     /// 建空清单：成功写 currentList、发 shoppingListCreated(name) 并刷新列表；
@@ -80,7 +78,6 @@ signals:
     void batchAddFailed(const QString& error);
     void itemUpdated();
     void shoppingListDeleted(int listId);
-    void deletingListIdChanged();
     /// content=导出内容（当前固定纯文本格式）。
     void exportReady(const QString& content);
 
@@ -95,11 +92,11 @@ private:
     QVariantMap m_currentList;   ///< 清单详情数据
     int m_pendingRequests = 0;   ///< 在途请求计数（isLoading 据此翻转）
     bool m_creating = false;   ///< 建单请求在途
-    int m_deletingListId = -1;    ///< 正在删除的 listId（-1 = 无）
     QSet<int> m_pendingDeleteIds; ///< 乐观删除中但 API 尚未返回的 listId
 
     /// 快速连续点击时：只记最后一次状态，避免静默丢弃或并发覆盖
     int m_updatePendingItemId = -1;   ///< 等待中的 itemId（-1 = 无）
     bool m_updatePendingChecked = false;   ///< 等待中的勾选状态
     bool m_updateInFlight = false;    ///< 是否正在发送更新请求
+    QSet<int> m_deletingItemIds;      ///< 删除请求在途的条目 id（重复点击去重）
 };

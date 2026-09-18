@@ -269,6 +269,8 @@ public:
     void updateShoppingListItem(int listId, int itemId,
                                 const gocook::models::UpdateShoppingItemRequest& request,
                                 SuccessCallback callback) override;
+    void deleteShoppingListItem(int listId, int itemId,
+                                SuccessCallback callback) override;
     void batchAddShoppingItems(int listId,
                                const std::vector<gocook::models::BatchShoppingItem>& items,
                                BatchShoppingCallback callback) override;

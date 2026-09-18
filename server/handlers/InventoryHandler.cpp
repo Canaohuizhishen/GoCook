@@ -176,6 +176,16 @@ void InventoryHandler::createShoppingList(const httplib::Request& req, httplib::
         CreateShoppingListRequest request;
         request.name = reqJson.at("name");
         if (reqJson.contains("plan_id")) request.plan_id = reqJson["plan_id"].get<std::string>();
+        // v2.18 可选 items：建单同时批量添加条目（服务端单事务；缺省行为与旧版完全一致）
+        if (reqJson.contains("items") && reqJson["items"].is_array()) {
+            for (const auto& elem : reqJson["items"]) {
+                BatchShoppingItem item;
+                item.ingredient_name = elem.at("ingredient_name");
+                item.quantity = elem.at("quantity");
+                if (elem.contains("unit")) item.unit = elem["unit"];
+                request.items.push_back(std::move(item));
+            }
+        }
         int listId = service_.createShoppingList(info.userId, request);
         auto list = service_.getShoppingListDetail(info.userId, listId);
         res.status = 201;
@@ -229,6 +239,22 @@ void InventoryHandler::updateShoppingListItem(const httplib::Request& req, httpl
         service_.updateShoppingListItem(info.userId, listId, itemId, request);
         res.status = 200;
         res.body = json{{"message", "清单项已更新"}}.dump();
+    } catch (const gocook::services::ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void InventoryHandler::deleteShoppingListItem(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        int listId = std::stoi(req.matches[1]);
+        int itemId = std::stoi(req.matches[2]);
+        service_.deleteShoppingListItem(info.userId, listId, itemId);
+        res.status = 200;
+        res.body = json{{"message", "清单项已删除"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

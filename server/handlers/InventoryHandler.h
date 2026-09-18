@@ -30,6 +30,8 @@ public:
     void deleteShoppingList(const httplib::Request& req, httplib::Response& res);
     // 更新购物清单项状态（需传入 listId 和 itemId 路径参数）
     void updateShoppingListItem(const httplib::Request& req, httplib::Response& res);
+    // 删除购物清单项（已勾选条目同事务回退库存；需传入 listId 和 itemId 路径参数）
+    void deleteShoppingListItem(const httplib::Request& req, httplib::Response& res);
     // 批量添加购物清单项（需传入 listId 路径参数）
     void batchAddShoppingItems(const httplib::Request& req, httplib::Response& res);
     // 导出购物清单

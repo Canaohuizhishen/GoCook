@@ -2058,6 +2058,19 @@ void HttpGoCookApi::createShoppingList(const gocook::models::CreateShoppingListR
     data["name"] = QString::fromStdString(request.name);
     if (request.plan_id.has_value())
         data["plan_id"] = QString::fromStdString(request.plan_id.value());
+    // v2.18 可选 items：建单同时携带条目（服务端单事务落库；缺省时行为与旧版一致）
+    if (!request.items.empty()) {
+        QVariantList items;
+        for (const auto& item : request.items) {
+            QVariantMap obj;
+            obj["ingredient_name"] = QString::fromStdString(item.ingredient_name);
+            obj["quantity"] = item.quantity;
+            if (!item.unit.empty())
+                obj["unit"] = QString::fromStdString(item.unit);
+            items.append(obj);
+        }
+        data["items"] = items;
+    }
 
     // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
     post("/api/inventory/shopping-lists", data, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {
@@ -2166,6 +2179,21 @@ void HttpGoCookApi::updateShoppingListItem(int listId, int itemId,
             if (callback) callback(false, errorMessageFor(statusCode, doc).toStdString());
         }
     });
+}
+
+void HttpGoCookApi::deleteShoppingListItem(int listId, int itemId,
+                                           SuccessCallback callback)
+{
+    QString endpoint = QString("/api/inventory/shopping-lists/%1/items/%2").arg(listId).arg(itemId);
+    // 经 deleteResource → sendRequest 收口（Content-Length 恒存在，规避 httplib 无体 DELETE 挂死）
+    // suppressNetworkError=false：故意让全局 toast 兜底（页面不另行呈现）
+    deleteResource(endpoint, {}, [callback](bool success, const QString& errorMsg, const QJsonDocument&) {
+        if (!success) {
+            if (callback) callback(false, errorMsg.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    }, false, AuthMode::Interactive);
 }
 
 void HttpGoCookApi::batchAddShoppingItems(int listId,

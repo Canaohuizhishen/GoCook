@@ -10,6 +10,10 @@ Page {
     id: recommendPage
     title: qsTr("推荐")
 
+    // 页面内容不得画出页面边界：下拉圆环回缩越过顶边时在页面边界被裁切（从搜索栏下层滑出，
+    // HomePage 的搜索栏在 SwipeView 之外且先于其绘制，不裁切会盖到搜索栏之上）
+    clip: true
+
     signal recipeClicked(int recipeId)
 
     property real pullThreshold: 60
@@ -19,6 +23,7 @@ Page {
     property bool refreshing: false
     property bool readyToRelease: false
     property bool spinning: false
+    property bool pulledEnough: false   // 拖拽期已越过下拉阈值（movementEnded 触发时 contentY 已回零，改读此标记）
 
     readonly property real gridHMargin: Theme.spacingMedium
     readonly property real gridCellWidth: (width - gridHMargin * 2) / 2
@@ -28,7 +33,7 @@ Page {
         if (spinning) ringSpin.start()
         else {
             ringSpin.stop()
-            ringIndicator.rotation = 0
+            ringIndicator.spinAngle = 0   // 复位动画角度（rotation 绑定随即切回拖拽进度）
         }
     }
 
@@ -75,9 +80,19 @@ Page {
             }
         }
 
+        // 拖拽期越过阈值即打标——onMovementEnded 在超拖回弹结束后才触发（实测 contentY 已归零为 0.0），
+        // 不能现读 contentY 判断；回弹只会朝 0 收敛，标记在回弹期间不会被污染。
+        onContentYChanged: {
+            if (!refreshing && contentY < -pullThreshold)
+                pulledEnough = true
+        }
+
         onMovementEnded: {
-            if (refreshing || recipeVM.isLoading) return
-            if (contentY < -pullThreshold) {
+            if (refreshing || recipeVM.isLoading) {
+                pulledEnough = false
+                return
+            }
+            if (pulledEnough) {
                 refreshing = true
                 readyToRelease = false
                 spinning = true
@@ -85,9 +100,8 @@ Page {
                 minSpinTimer.start()
                 recipeVM.refresh()
                 snapHold.start()
-            } else if (contentY < 0) {
-                releaseList.start()
             }
+            pulledEnough = false
         }
 
         onAtYEndChanged: {
@@ -104,6 +118,9 @@ Page {
         height: circleSize
         anchors.horizontalCenter: parent.horizontalCenter
 
+        /// 刷新态持续旋转角度（由 ringSpin 驱动；非刷新态 rotation 直接绑定下拉进度）
+        property real spinAngle: 0
+
         y: refreshing
            ? -recipeGridView.contentY - circleSize - holdPadding
            : Math.max(-circleSize, -recipeGridView.contentY - circleSize - holdPadding)
@@ -113,6 +130,9 @@ Page {
                  : Math.min(-recipeGridView.contentY / pullThreshold, 1.0)
 
         visible: opacity > 0
+
+        // 拖拽期按下拉距离转动（2°/px）；进入刷新态无缝切换为 spinAngle 持续旋转
+        rotation: refreshing ? spinAngle : Math.max(0, -recipeGridView.contentY) * 2
 
         Shape {
             id: ringShape
@@ -149,7 +169,7 @@ Page {
         NumberAnimation {
             id: ringSpin
             target: ringIndicator
-            property: "rotation"
+            property: "spinAngle"
             from: 0; to: 360
             duration: 800
             loops: Animation.Infinite

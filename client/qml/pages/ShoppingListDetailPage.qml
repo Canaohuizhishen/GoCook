@@ -9,6 +9,7 @@ Page {
     title: qsTr("购物清单详情")
 
     property int listId: 0
+    property bool exporting: false   // 导出抓图期间隐藏操作列（✕ 不进导出图片）
 
     signal goBack()
 
@@ -49,7 +50,7 @@ Page {
                 maxUnit = Math.max(maxUnit, nameMeasurer.implicitWidth)
             }
             // 名称列取实际最长文本宽度，不截断
-            var fixedW = maxReq + 14 + maxInv + 14 + maxBuy + 14 + maxUnit + 10 + 40
+            var fixedW = maxReq + 14 + maxInv + 14 + maxBuy + 14 + maxUnit + 10 + 40 + 40   // 末尾两列：勾选 / 删除
             var nameW  = Math.max(maxName + 8, 60)
             // 有多余空间时撑满名称列，无多余空间时保持自然宽度（Flickable 可横向滚动）
             var availW = Math.max(root.width - 48, 260)
@@ -164,6 +165,7 @@ Page {
                         invWidth: maxInvWidth
                         buyWidth: maxBuyWidth
                         unitWidth: maxUnitWidth
+                        showActionColumn: !root.exporting
                     }
 
                     // 食材数据行
@@ -237,6 +239,30 @@ Page {
                                         anchors.fill: parent
                                         enabled: !shoppingListVM.isLoading
                                         onClicked: shoppingListVM.updateShoppingListItem(root.listId, modelData.id, !modelData.checked)
+                                    }
+                                }
+                                // 删除按钮（v2.18）：二次确认后删行；已勾选条目的库存回退由服务端同事务处理
+                                // 导出抓图期间隐藏（与表头 showActionColumn 同步，✕ 不进入导出图片）
+                                Item {
+                                    visible: !root.exporting
+                                    width: 40; height: 40
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✕"
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSizeBody
+                                        color: Theme.errorColor
+                                    }
+                                    MouseArea {
+                                        id: deleteItemMouseArea
+                                        anchors.fill: parent
+                                        enabled: !shoppingListVM.isLoading
+                                        onClicked: {
+                                            deleteItemDialog.pendingItemId = modelData.id
+                                            deleteItemDialog.pendingItemName = modelData.ingredientName || ""
+                                            deleteItemDialog.pendingChecked = modelData.checked
+                                            deleteItemDialog.open()
+                                        }
                                     }
                                 }
                             }
@@ -377,6 +403,23 @@ Page {
         }
     }
 
+    // ===== 删除条目确认对话框（v2.18） =====
+    ConfirmDialog {
+        id: deleteItemDialog
+
+        property int pendingItemId: 0
+        property string pendingItemName: ""
+        property bool pendingChecked: false
+
+        dialogTitle: qsTr("删除食材")
+        message: pendingChecked
+                 ? qsTr("确定要从清单中删除「%1」吗？\n该条目已勾选，删除后将同时回退已加入库存的数量。").arg(pendingItemName)
+                 : qsTr("确定要从清单中删除「%1」吗？").arg(pendingItemName)
+        confirmText: qsTr("删除")
+        confirmColor: Theme.errorColor
+        onConfirmed: shoppingListVM.deleteShoppingListItem(root.listId, pendingItemId)
+    }
+
     // ===== 添加食材对话框 =====
     Dialog {
         id: addItemDialog
@@ -473,7 +516,10 @@ Page {
         // grabToImage 返回 bool（Qt6 QML API）：true = 抓取已发起（result 回调随后触发）；
         // false = 页面尚未渲染/窗口不可见等，回调不会被调用——必须同步判返回值并呈现失败态，
         // 否则抓取失败时仍是无任何反馈的静默（此前只查了回调内 saveToFile，盖不住这一通道）
+        // 导出期间隐藏“操作”列（✕ 不应出现在导出图片里），抓取回调落盘后恢复
+        root.exporting = true
         var grabOk = tableColumn.grabToImage(function(result) {
+            root.exporting = false
             var listName = (shoppingListVM.currentList.name || "shopping-list").replace(/[\\/:*?\"<>|]/g, "_")
             var timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "")
             var fileName = "GoCook-" + listName + "-" + timestamp + ".png"
@@ -485,6 +531,7 @@ Page {
             exportDoneDialog.open()
         })
         if (!grabOk) {
+            root.exporting = false
             exportDoneDialog.success = false
             exportDoneDialog.filePath = ""
             exportDoneDialog.open()

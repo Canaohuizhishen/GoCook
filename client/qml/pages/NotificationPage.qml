@@ -218,6 +218,14 @@ Page {
                     visible: notifyVM.isRefreshing
                     z: 10
 
+                    // 刷新期间持续旋转（此前为静态“↻”徽标，从不旋转）
+                    NumberAnimation on rotation {
+                        from: 0; to: 360
+                        duration: 800
+                        loops: Animation.Infinite
+                        running: notifyVM.isRefreshing
+                    }
+
                     Text {
                         anchors.centerIn: parent
                         text: "\u21bb"

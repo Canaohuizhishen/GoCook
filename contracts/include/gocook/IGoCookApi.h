@@ -658,6 +658,16 @@ public:
                                         SuccessCallback callback) = 0;
 
     /**
+     * @brief 删除购物清单项（v2.18）
+     * @param listId 清单ID
+     * @param itemId 清单项ID
+     * @param callback 回调 (success, error)
+     *                 已勾选条目的库存回退由服务端在同一事务内完成（删除 = 取消勾选 + 删行）
+     */
+    virtual void deleteShoppingListItem(int listId, int itemId,
+                                        SuccessCallback callback) = 0;
+
+    /**
      * @brief 批量添加购物清单项
      * @param listId 清单ID
      * @param items 批量添加请求数组

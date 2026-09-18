@@ -123,6 +123,15 @@ public:
         const std::vector<models::BatchShoppingItem>& items) = 0;
 
     /**
+     * @brief 删除购物清单项。
+     * 删除已勾选条目时同事务回退库存（与更新勾选状态对称：同名同单位扣减、钳制非负、缺行 no-op）。
+     * @param userId 用户 ID
+     * @param listId 清单 ID
+     * @param itemId 清单项 ID
+     */
+    virtual void deleteShoppingListItem(int userId, int listId, int itemId) = 0;
+
+    /**
      * @brief 导出购物清单内容。
      * @param userId 用户 ID
      * @param listId 清单 ID
