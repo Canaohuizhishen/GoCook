@@ -41,10 +41,14 @@ void AnnouncementViewModel::loadPreview()
         (bool success, const gocook::models::PagedAnnouncements& data, const std::string&) {
             if (!self) return;
             if (!session.isCurrent(self->m_api)) return;
-            if (!success || data.data.empty()) return;
+            if (!success || data.data.empty()) return; // 失败或空表：静默保留旧值
+
             const QString title = QString::fromStdString(data.data.front().title);
             const QString createdAt = QString::fromStdString(data.data.front().created_at);
+
+            // 值没变就不发信号，避免 QML 无谓刷新。
             if (title == self->m_previewTitle && createdAt == self->m_previewCreatedAt) return;
+
             self->m_previewTitle = title;
             self->m_previewCreatedAt = createdAt;
             emit self->previewChanged();

@@ -57,10 +57,14 @@ void NotificationViewModel::refresh()
     // 进入页面 / 下拉刷新：两类均置过期（退出重进刷新语义），重载当前分类第一页
     m_review.loaded = false;
     m_interaction.loaded = false;
+
+    // 刷新态：QML 下拉刷新指示器用。
     if (!m_isRefreshing) {
         m_isRefreshing = true;
         emit isRefreshingChanged();
     }
+
+    // 重载当前分类第一页。
     loadCategory(m_currentType, 1, m_pageSize, true);
 }
 
@@ -79,10 +83,10 @@ void NotificationViewModel::loadNextPage()
 
 void NotificationViewModel::loadCategory(const QString& type, int page, int size, bool isRefreshCall)
 {
+    // 在途加载计数 +1。
     beginLoad();
 
     // 快照当前会话（token，SessionSnapshot）：登出/换号后到达的过期响应作废
-    // （endLoad 先行配平计数；数据与汇总缓存已由 clearAll 统一清理）
     const auto session = SessionSnapshot::capture(m_api);
 
     if (page == 1) {
@@ -95,31 +99,50 @@ void NotificationViewModel::loadCategory(const QString& type, int page, int size
     m_api->getNotifications(page, size, type.toStdString(),
         [self = QPointer<NotificationViewModel>(this), session, type, page, isRefreshCall]
         (bool success, const gocook::models::PagedNotifications& data, const std::string& error) {
+            // QPointer 悬垂守卫：ViewModel 已销毁，直接退出。
             if (!self) return;
+
+            // 与 beginLoad 配对，在途计数 -1。
             self->endLoad();
+
+            // 如果是 refresh() 触发的加载，完成时复位刷新态。
+            // 同样无论成功失败、会话是否有效都要复位，防止刷新指示器卡住。
             if (isRefreshCall) {
                 self->m_isRefreshing = false;
                 emit self->isRefreshingChanged();
             }
-            if (!session.isCurrent(self->m_api)) return;   // 会话已切换：过期响应作废
+
+            // 会话已切换：过期响应作废
+            if (!session.isCurrent(self->m_api)) return;
 
             if (!success) {
                 emit self->errorOccurred(QString::fromStdString(error));
                 return;
             }
 
+            // 成功：取该分类的状态引用（review 或 interaction）。
             CategoryState& st = self->stateFor(type);
+
+            // 追加本页条目。
+            // page == 1 时上面已经清空过，所以这里是“替换后追加”；
+            // page > 1 时是续页追加。
             for (const auto& item : data.data)
                 st.items.append(DataMapper::toMap(item));
+
+            // 更新分页元数据
             st.page = data.pagination.page;
             st.totalPages = data.pagination.total_pages;
             st.hasMore = st.page < st.totalPages;
+
+            // 标记该分类本次入页已加载过。
+            // setCurrentType() 的惰性加载据此判断：!loaded 才拉第一页。
             st.loaded = true;
 
             // 进入分类 = 已读：本地去点 + 计数清零 + 上报水位（仅第一页语义）
             if (page == 1)
                 self->reportSeenAndClear(type, data);
 
+            // 如果当前正显示这个分类，通知列表与 hasMore 变化。
             if (self->m_currentType == type) {
                 emit self->notificationsChanged();
                 emit self->hasMoreChanged();
@@ -130,12 +153,15 @@ void NotificationViewModel::loadCategory(const QString& type, int page, int size
 void NotificationViewModel::reportSeenAndClear(const QString& type,
                                                const gocook::models::PagedNotifications& data)
 {
+    // 取本页最大 id 作已读水位。
+    // 不用 front().id：那假设服务端按 id 降序，排序一变就静默上报偏小水位。
+    // 一页最多 20 条，遍历成本可忽略，换对排序零假设。空页 maxId=0，后面直接 return。
     int maxId = 0;
     for (const auto& item : data.data)
         maxId = std::max(maxId, item.id);
 
     // 本地即时表现：已加载条目的未读小点抹平 + 该分类计数清零
-    // （服务端为权威边界；上报失败静默，下一轮汇总会自愈）
+    // （注意：这只是乐观 UI，服务端才是权威；上报失败静默，下一轮汇总会自愈）
     CategoryState& st = stateFor(type);
     bool dotsChanged = false;
     for (int i = 0; i < st.items.size(); ++i) {
@@ -146,21 +172,38 @@ void NotificationViewModel::reportSeenAndClear(const QString& type,
             dotsChanged = true;
         }
     }
+
+    // 只有当前正显示该分类时才发列表变化信号，
+    // 避免无谓刷新另一个分类的 UI。
     if (dotsChanged && m_currentType == type)
         emit notificationsChanged();
+
+    // 该分类未读计数清零。
+    // 本地即时反馈；服务端汇总后续会校正。
     setUnread(type, 0);
 
-    // 水位上报：幂等非必须（服务端 GREATEST 合并），本地记账防重复；失败下次进页重报
+    // 上报水位。
+    // 如果本页没有有效 id，或 maxId 没有超过本地已成功上报的水位，
+    // 就不发请求——避免重复上报。
     if (maxId <= 0)
         return;
     if (maxId <= m_reportedWatermark.value(type, 0))
         return;
+
+    // 再捕获一次会话快照
     const auto session = SessionSnapshot::capture(m_api);
+
     m_api->setNotificationsReadState(type.toStdString(), maxId,
         [self = QPointer<NotificationViewModel>(this), session, type, maxId]
         (bool success, const std::string&) {
             if (!self) return;
+
+            // 会话已切换：丢弃过期响应。
             if (!session.isCurrent(self->m_api)) return;
+
+            // 只有成功且 maxId 仍大于本地已上报值时，才更新本地水位。
+            // 失败静默：下次进入分类会重报；
+            // 服务端保证水位不会回退。
             if (success && maxId > self->m_reportedWatermark.value(type, 0))
                 self->m_reportedWatermark[type] = maxId;
         });
@@ -196,7 +239,11 @@ void NotificationViewModel::refreshUnreadSummary()
             if (!session.isCurrent(self->m_api)) return;
             if (!success) return;   // 失败静默：保留旧缓存/空值，不打断用户
 
+            // 用 changed 标记是否有任何字段变化，只有变化才发信号，避免无谓的 QML 绑定刷新。
             bool changed = false;
+
+            // 三种类型的未读数都应以服务端为准。
+            // 本地删除未读条目（异常情况下）时可能已做过 -1 即时反馈，这里会被服务端权威值覆盖校正。
             if (self->m_reviewUnread != data.unread_review) {
                 self->m_reviewUnread = data.unread_review;
                 changed = true;
@@ -209,6 +256,7 @@ void NotificationViewModel::refreshUnreadSummary()
                 self->m_systemHasNew = data.has_new_announcement;
                 changed = true;
             }
+
             if (changed)
                 emit self->unreadSummaryChanged();
         });
@@ -255,7 +303,7 @@ void NotificationViewModel::deleteNotification(int notificationId)
             if (!removedFrom.isEmpty()) {
                 if (self->m_currentType == removedFrom)
                     emit self->notificationsChanged();
-                // 删未读条目：该分类计数即时 -1（下限 0；汇总仍为权威，下次拉取校正）
+                // 删未读条目（异常状况下）：该分类计数即时 -1（下限 0；汇总仍为权威，下次拉取校正）
                 if (wasUnread)
                     self->adjustUnread(removedFrom, -1);
             }

@@ -343,7 +343,7 @@ Rectangle {
                         enabled: card.cartFeedback === ""
                         onClicked: card.addMissingToCart()
                     }
-                    Text {
+                    Text { // 只用来量宽度
                         id: cartBtnDone
                         visible: false
                         text: "✓"
@@ -351,7 +351,7 @@ Rectangle {
                         font.weight: Font.Bold
                         font.family: Theme.fontFamily
                     }
-                    Text {
+                    Text { // 只用来量宽度
                         id: cartBtnIdle
                         visible: false
                         text: qsTr("+购物车")
@@ -359,7 +359,7 @@ Rectangle {
                         font.weight: Font.Bold
                         font.family: Theme.fontFamily
                     }
-                    Text {
+                    Text { // 真正显示的
                         anchors.centerIn: parent
                         text: card.cartFeedback === "done" ? "✓"
                             : card.cartFeedback === "fail" ? "✕"

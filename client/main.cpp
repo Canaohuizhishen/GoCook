@@ -13,11 +13,15 @@
 
 int main(int argc, char *argv[])
 {
+    // 可选：虚拟键盘。默认注释掉，需要触屏输入法时再开。
     //qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
 
-    // 使用 Breeze 风格
+    // 使用 Breeze 风格，Breeze 是 KDE 默认风格，Linux 桌面观感更好。
     qputenv("QT_QUICK_CONTROLS_STYLE", "org.kde.breeze");
 
+    // 创建应用对象，管理事件循环和 Qt 对象树。
+    // QApplication 继承 QGuiApplication，带 QtWidgets 支持；
+    // 这里用 QApplication 也能兼容文件对话框等桌面能力。
     QApplication app(argc, argv);
 
     // 设置桌面入口文件路径，用于 D-Bus 门户集成（文件对话框、通知等）
@@ -25,7 +29,8 @@ int main(int argc, char *argv[])
     qputenv("QT_QPA_DESKTOP_ENTRY_PATH",
             (QCoreApplication::applicationDirPath() + "/gocook.desktop").toLocal8Bit());
 
-    // QSettings 需要这些标识符来确定配置文件路径
+    // QSettings 需要这些标识符来确定配置文件路径。
+    // 例如主题模式持久化会依赖组织名/域名。
     QCoreApplication::setOrganizationName("GoCook");
     QCoreApplication::setOrganizationDomain("gocook.app");
 
@@ -35,6 +40,7 @@ int main(int argc, char *argv[])
     //   - Theme / PagePolicy 单例：client/CMakeLists.txt 的 QT_QML_SINGLETON_TYPE 声明，
     //     生成 qmldir 的 singleton 条目（资源内 :/client/qmldir），"import client" 即解析。
 
+    // 共享网络依赖：网络层唯一出口。生命周期需覆盖整个应用，挂到 app 对象树下自动释放。
     HttpGoCookApi *httpApi = new HttpGoCookApi(&app);
 
     AuthViewModel authViewModel(httpApi);
@@ -44,7 +50,9 @@ int main(int argc, char *argv[])
     AnnouncementViewModel announcementVM(httpApi, &app);
     ShoppingListViewModel shoppingListVM(httpApi, &app);
 
-    // 网络恢复 → 库存自动同步（联网即同步；仅数据可能过期时重拉，见 VM）
+    // 网络恢复 → 库存自动同步。
+    // HttpGoCookApi 检测到“失联后首个真实响应”时发 networkRestored；
+    // 库存 VM 收到后按需重拉：联网即同步，但只在数据可能过期时才真正请求。
     QObject::connect(httpApi, &HttpGoCookApi::networkRestored,
                      &inventoryVM, &InventoryViewModel::onNetworkRestored);
 
@@ -67,7 +75,12 @@ int main(int argc, char *argv[])
     QObject::connect(&announcementVM, &AnnouncementViewModel::announcementsSeen,
                      &notifyVM, &NotificationViewModel::clearSystemNewFlag);
 
+    // 创建 QML 引擎，负责加载根 QML、创建 QML 对象树
     QQmlApplicationEngine engine;
+
+    // 把 C++ 对象暴露到 QML 根上下文。
+    // 之后所有 QML 文件都可以直接通过名字访问：
+    // authViewModel.xxx、httpApi.xxx、recipeVM.xxx、inventoryVM.xxx 等。
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
     engine.rootContext()->setContextProperty("httpApi", httpApi);
     engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
@@ -76,8 +89,10 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("announcementVM", &announcementVM);
     engine.rootContext()->setContextProperty("shoppingListVM", &shoppingListVM);
 
+    // 根 QML 资源路径。
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
 
+    // QML 加载失败时记录日志。
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
@@ -86,6 +101,8 @@ int main(int argc, char *argv[])
             qCritical("严重错误：QML 加载失败：%s", qPrintable(url.toString()));
         });
 
+    // 根对象创建失败时直接非零退出，避免白屏挂着。
+    // 用 Qt::QueuedConnection 让退出动作排队到事件循环中执行。
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreated,
@@ -98,9 +115,12 @@ int main(int argc, char *argv[])
         },
         Qt::QueuedConnection);
 
+    // 加载根 QML，先把 UI 建出来。
     engine.load(url);
 
+    // 先加载 UI，再异步检查自动登录，避免闪烁。
     authViewModel.checkAutoLogin();
 
+    // 进入事件循环。
     return app.exec();
 }
