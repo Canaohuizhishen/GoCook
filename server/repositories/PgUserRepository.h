@@ -94,14 +94,14 @@ public:
     void batchDeleteFavorites(
         int userId, const gocook::models::BatchDeleteFavoritesRequest& req) override;
 
-    // 查询通知列表（分页，可按类型筛选）
+    // 查询通知列表（分页，可按类型筛选；is_read 由"id > 水位"动态计算）
     gocook::models::PagedNotifications getNotifications(int userId, int page,
                                                         int size,
                                                         const std::string& type) override;
-    // 标记单条通知已读
-    void markNotificationRead(int userId, int notificationId) override;
-    // 全部通知标记已读
-    void markAllNotificationsRead(int userId) override;
+    // 查询未读汇总（消息中心角标：各分类未读数 + 有无新公告）
+    gocook::models::NotificationUnreadSummary getUnreadSummary(int userId) override;
+    // 上报已读水位（幂等：GREATEST 防回退 + 收敛到频道当前最大 id）
+    void updateReadWatermark(int userId, const std::string& channel, int lastSeenId) override;
     // 删除通知
     void deleteNotification(int userId, int notificationId) override;
 

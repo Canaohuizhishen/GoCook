@@ -499,15 +499,27 @@ PagedNotifications UserServiceImpl::getNotifications(int userId, int page, int s
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     return userRepo_->getNotifications(userId, page, size, type);
 }
-void UserServiceImpl::markNotificationRead(int userId, int notificationId) {
+NotificationUnreadSummary UserServiceImpl::getUnreadSummary(int userId) {
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
-    userRepo_->markNotificationRead(userId, notificationId);
+    return userRepo_->getUnreadSummary(userId);
 }
-void UserServiceImpl::markAllNotificationsRead(int userId) {
+void UserServiceImpl::setNotificationsReadState(int userId, const std::string& type, int lastSeenId) {
+    // 参数先收口（对齐“空列表在 findById 之前收口”惯例：非法入参不查库）
+    if (type != "review" && type != "interaction")
+        throw ServiceException("不支持的通知类型", 400);
+    if (lastSeenId < 0)
+        throw ServiceException("last_seen_id 不能为负", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
-    userRepo_->markAllNotificationsRead(userId);
+    userRepo_->updateReadWatermark(userId, type, lastSeenId);
+}
+void UserServiceImpl::setAnnouncementsReadState(int userId, int lastSeenId) {
+    if (lastSeenId < 0)
+        throw ServiceException("last_seen_id 不能为负", 400);
+    auto user = userRepo_->findById(userId);
+    if (!user.has_value()) throw ServiceException("用户不存在", 404);
+    userRepo_->updateReadWatermark(userId, "announcement", lastSeenId);
 }
 void UserServiceImpl::deleteNotification(int userId, int notificationId) {
     auto user = userRepo_->findById(userId);

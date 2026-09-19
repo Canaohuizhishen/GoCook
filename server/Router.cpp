@@ -297,11 +297,14 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Get("/api/users/me/notifications", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getNotifications(req, res);
     });
-    svr.Patch(R"(/api/users/me/notifications/(\d+)/read)", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.markNotificationRead(req, res);
+    svr.Get("/api/users/me/notifications/unread-summary", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.getNotificationsUnreadSummary(req, res);
     });
-    svr.Put("/api/users/me/notifications/read-all", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.markAllNotificationsRead(req, res);
+    svr.Put("/api/users/me/notifications/read-state", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.setNotificationsReadState(req, res);
+    });
+    svr.Put("/api/users/me/announcements/read-state", [this](const httplib::Request& req, httplib::Response& res) {
+        userHandler_.setAnnouncementsReadState(req, res);
     });
     svr.Delete(R"(/api/users/me/notifications/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.deleteNotification(req, res);
@@ -535,25 +538,26 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             }
             int uid = userRes[0]["id"].as<int>();
 
-            // 清空该用户的所有通知
+            // 清空该用户的所有通知与已读水位（保证重置后为“全部未读”的可复现初始态）
             txn.exec("DELETE FROM notifications WHERE user_id = $1", pqxx::params{uid});
+            txn.exec("DELETE FROM read_watermarks WHERE user_id = $1", pqxx::params{uid});
 
-            // 重新插入 4 条测试通知
+            // 重新插入 4 条测试通知（类型枚举收口 review/interaction，v2.23；is_read 列已移除）
             txn.exec(
-                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
-                "VALUES ($1, '系统维护通知', '今晚 22:00-24:00 进行系统升级，届时服务不可用。', 'system', NULL, NULL, NULL, FALSE)",
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
+                "VALUES ($1, '审核结果', '您的菜谱「红烧肉」已通过审核，现在可以在首页看到啦！', 'review', NULL, 1, NULL)",
                 pqxx::params{uid});
             txn.exec(
-                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
-                "VALUES ($1, '审核结果', '您的菜谱「红烧肉」已通过审核，现在可以在首页看到啦！', 'review', NULL, 1, NULL, TRUE)",
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
+                "VALUES ($1, '审核结果', '您的菜谱「清蒸鲈鱼」审核未通过，原因：图片不清晰。', 'review', NULL, 2, 'admin_cook')",
                 pqxx::params{uid});
             txn.exec(
-                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
-                "VALUES ($1, '审核结果', '您的菜谱「清蒸鲈鱼」审核未通过，原因：图片不清晰。', 'review', NULL, 2, 'admin_cook', FALSE)",
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
+                "VALUES ($1, '新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', 567, 'foodie_lily')",
                 pqxx::params{uid});
             txn.exec(
-                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read) "
-                "VALUES ($1, '新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', 567, 'foodie_lily', FALSE)",
+                "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
+                "VALUES ($1, '新的互动', '用户 chef_wang 赞了你的菜谱「番茄炒蛋」', 'interaction', 'recipe_like', 1, 'chef_wang')",
                 pqxx::params{uid});
 
             txn.commit();

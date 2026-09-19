@@ -357,6 +357,29 @@ ApplicationWindow {
             onShowDetailRequest: (data) => {
                 guardedPush(notificationDetailPage, {notificationData: data}, true)
             }
+            onShowSystemNoticeRequest: () => {
+                guardedPush(systemNoticePage, undefined, false)
+            }
+            onShowPlaceholderRequest: (pageTitle) => {
+                guardedPush(featurePlaceholderPage, {pageTitle: pageTitle}, false)
+            }
+        }
+    }
+
+    Component {
+        id: systemNoticePage
+        SystemNoticePage {
+            property var _stackView: stackView
+            onShowDetailRequest: (data) => {
+                guardedPush(notificationDetailPage, {notificationData: data}, true)
+            }
+        }
+    }
+
+    Component {
+        id: featurePlaceholderPage
+        FeaturePlaceholderPage {
+            property var _stackView: stackView
         }
     }
 

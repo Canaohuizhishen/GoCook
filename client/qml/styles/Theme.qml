@@ -75,4 +75,27 @@ QtObject {
     readonly property int durationShort: 150
     readonly property int durationMedium: 300
     readonly property int durationLong: 500
+
+    // ========== 时间格式化工具 ==========
+    // 微信式相对时间：今天 → "HH:mm"；昨天 → "昨天"；更早 → "MM-DD"（跨年也按 MM-DD 展示）。
+    // 输入为服务端本地时间串（"YYYY-MM-DD HH:MM:SS[.微秒]"）；格式不符时原样返回。
+    function formatRelativeTime(raw) {
+        if (!raw || raw.length < 16)
+            return raw ? raw : ""
+        var y = parseInt(raw.substring(0, 4), 10)
+        var mo = parseInt(raw.substring(5, 7), 10)
+        var d = parseInt(raw.substring(8, 10), 10)
+        if (isNaN(y) || isNaN(mo) || isNaN(d))
+            return raw
+        var hhmm = raw.substring(11, 16)
+        var now = new Date()
+        var todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+        var thatMs = new Date(y, mo - 1, d).getTime()
+        var diffDays = Math.round((todayMs - thatMs) / 86400000)
+        if (diffDays <= 0)
+            return hhmm                      // 今天（含轻微时钟偏差的未来值）
+        if (diffDays === 1)
+            return qsTr("昨天")
+        return raw.substring(5, 10)          // MM-DD
+    }
 }

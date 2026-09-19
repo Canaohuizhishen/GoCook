@@ -1150,29 +1150,55 @@ void HttpGoCookApi::getNotifications(int page, int size,
     }, true, AuthMode::Silent);
 }
 
-void HttpGoCookApi::markNotificationRead(int notificationId,
-                                         SuccessCallback callback)
+void HttpGoCookApi::getNotificationsUnreadSummary(UnreadSummaryCallback callback)
 {
-    patch(QString("/api/users/me/notifications/%1/read").arg(notificationId), {},
-        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+    // 角标汇总：后台加载类——未登录不发送（Silent）+ 失败不上全局 toast（由 VM 保留旧缓存）
+    get("/api/users/me/notifications/unread-summary",
+        [callback](bool success, const QString& errorStr, const QJsonDocument& doc) {
         if (!success) {
-            if (callback) callback(false, errorStr.toStdString());
+            if (callback) callback(false, gocook::models::NotificationUnreadSummary{}, errorStr.toStdString());
             return;
         }
-        if (callback) callback(true, "");
-    }, true, AuthMode::Interactive);
+        gocook::models::NotificationUnreadSummary summary;
+        const QJsonObject obj = doc.object();
+        summary.unread_review = obj["review"].toInt();
+        summary.unread_interaction = obj["interaction"].toInt();
+        summary.has_new_announcement = obj["system"].toBool();
+        if (callback) callback(true, summary, "");
+    }, true, AuthMode::Silent);
 }
 
-void HttpGoCookApi::markAllNotificationsRead(SuccessCallback callback)
+void HttpGoCookApi::setNotificationsReadState(const std::string& type, int lastSeenId,
+                                              SuccessCallback callback)
 {
-    put("/api/users/me/notifications/read-all", {},
+    // 进页即已读的水位上报：后台行为，失败静默（下一轮汇总会自愈）
+    QVariantMap body;
+    body["type"] = QString::fromStdString(type);
+    body["last_seen_id"] = lastSeenId;
+    put("/api/users/me/notifications/read-state", body,
         [callback](bool success, const QString& errorStr, const QJsonDocument&) {
         if (!success) {
             if (callback) callback(false, errorStr.toStdString());
             return;
         }
         if (callback) callback(true, "");
-    }, true, AuthMode::Interactive);
+    }, true, AuthMode::Silent);
+}
+
+void HttpGoCookApi::setAnnouncementsReadState(int lastSeenId,
+                                              SuccessCallback callback)
+{
+    // 系统通知页红点上报：后台行为，失败静默
+    QVariantMap body;
+    body["last_seen_id"] = lastSeenId;
+    put("/api/users/me/announcements/read-state", body,
+        [callback](bool success, const QString& errorStr, const QJsonDocument&) {
+        if (!success) {
+            if (callback) callback(false, errorStr.toStdString());
+            return;
+        }
+        if (callback) callback(true, "");
+    }, true, AuthMode::Silent);
 }
 
 void HttpGoCookApi::deleteNotification(int notificationId,

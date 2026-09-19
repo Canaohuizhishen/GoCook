@@ -60,8 +60,9 @@ public:
 
     // 通知中心（需认证）
     void getNotifications(const httplib::Request& req, httplib::Response& res);
-    void markNotificationRead(const httplib::Request& req, httplib::Response& res);
-    void markAllNotificationsRead(const httplib::Request& req, httplib::Response& res);
+    void getNotificationsUnreadSummary(const httplib::Request& req, httplib::Response& res);
+    void setNotificationsReadState(const httplib::Request& req, httplib::Response& res);
+    void setAnnouncementsReadState(const httplib::Request& req, httplib::Response& res);
     void deleteNotification(const httplib::Request& req, httplib::Response& res);
 
 private:

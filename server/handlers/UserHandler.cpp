@@ -457,14 +457,13 @@ void UserHandler::getNotifications(const httplib::Request& req, httplib::Respons
     }
 }
 
-void UserHandler::markNotificationRead(const httplib::Request& req, httplib::Response& res) {
+void UserHandler::getNotificationsUnreadSummary(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
     try {
-        int id = std::stoi(req.matches[1]);
-        service_.markNotificationRead(info.userId, id);
+        auto summary = service_.getUnreadSummary(info.userId);
         res.status = 200;
-        res.body = json{{"message", "已标记为已读"}}.dump();
+        res.body = JsonSerializer::toJson(summary).dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {
@@ -472,13 +471,35 @@ void UserHandler::markNotificationRead(const httplib::Request& req, httplib::Res
     }
 }
 
-void UserHandler::markAllNotificationsRead(const httplib::Request& req, httplib::Response& res) {
+void UserHandler::setNotificationsReadState(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return;
     try {
-        service_.markAllNotificationsRead(info.userId);
+        json reqJson = json::parse(req.body);
+        if (!reqJson.contains("type") || !reqJson.contains("last_seen_id"))
+            throw gocook::services::ServiceException("请求体需包含 type 与 last_seen_id", 400);
+        service_.setNotificationsReadState(info.userId,
+                                           reqJson["type"].get<std::string>(),
+                                           reqJson["last_seen_id"].get<int>());
         res.status = 200;
-        res.body = json{{"message", "全部已标记为已读"}}.dump();
+        res.body = json{{"message", "已读水位已更新"}}.dump();
+    } catch (const gocook::services::ServiceException& e) {
+        handleStandardException(e, res);
+    } catch (const std::exception& e) {
+        handleStandardException(e, res);
+    }
+}
+
+void UserHandler::setAnnouncementsReadState(const httplib::Request& req, httplib::Response& res) {
+    auto info = requireAuth(auth_, req, res);
+    if (!info.valid) return;
+    try {
+        json reqJson = json::parse(req.body);
+        if (!reqJson.contains("last_seen_id"))
+            throw gocook::services::ServiceException("请求体需包含 last_seen_id", 400);
+        service_.setAnnouncementsReadState(info.userId, reqJson["last_seen_id"].get<int>());
+        res.status = 200;
+        res.body = json{{"message", "已读水位已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

@@ -2,332 +2,272 @@
 #include <DataMapper.h>
 #include <QPointer>
 #include <algorithm>
+#include "RequestGuards.h"
 
 NotificationViewModel::NotificationViewModel(IGoCookApi *api, QObject *parent)
     : QObject(parent), m_api(api) {}
 
-QVariantList NotificationViewModel::notifications() const { return m_notifications; }
-bool NotificationViewModel::isLoading() const { return m_isLoading; }
-bool NotificationViewModel::hasMore() const { return m_hasMore; }
-QString NotificationViewModel::currentType() const { return m_currentType; }
-int NotificationViewModel::unreadCount() const { return m_unreadCount; }
+const NotificationViewModel::CategoryState& NotificationViewModel::stateFor(const QString& type) const
+{
+    return (type == QLatin1String("interaction")) ? m_interaction : m_review;
+}
+
+NotificationViewModel::CategoryState& NotificationViewModel::stateFor(const QString& type)
+{
+    return (type == QLatin1String("interaction")) ? m_interaction : m_review;
+}
+
+QVariantList NotificationViewModel::notifications() const { return stateFor(m_currentType).items; }
+bool NotificationViewModel::isLoading() const { return m_pendingLoads > 0; }
+bool NotificationViewModel::hasMore() const { return stateFor(m_currentType).hasMore; }
 bool NotificationViewModel::isRefreshing() const { return m_isRefreshing; }
+QString NotificationViewModel::currentType() const { return m_currentType; }
+int NotificationViewModel::reviewUnread() const { return m_reviewUnread; }
+int NotificationViewModel::interactionUnread() const { return m_interactionUnread; }
+int NotificationViewModel::unreadTotal() const { return m_reviewUnread + m_interactionUnread; }
+bool NotificationViewModel::systemHasNew() const { return m_systemHasNew; }
+
+void NotificationViewModel::beginLoad()
+{
+    if (m_pendingLoads++ == 0)
+        emit isLoadingChanged();
+}
+
+void NotificationViewModel::endLoad()
+{
+    if (--m_pendingLoads == 0)
+        emit isLoadingChanged();
+}
 
 void NotificationViewModel::setCurrentType(const QString& type)
 {
-    if (m_currentType != type) {
-        m_currentType = type;
-        emit currentTypeChanged();
-        refresh();
-    }
+    if (m_currentType == type) return;
+    m_currentType = type;
+    emit currentTypeChanged();
+    emit notificationsChanged();   // 列表数据源切换
+    emit hasMoreChanged();
+
+    // 惰性加载：目标分类本次入页尚未加载过 → 拉第一页（进入分类 = 已读）
+    if (!stateFor(type).loaded)
+        loadCategory(type, 1, m_pageSize, false);
 }
 
 void NotificationViewModel::refresh()
 {
-    // 置刷新态：QML 下拉刷新指示器据此显示；各完成回调（成功/失败）统一收尾置 false
+    // 进入页面 / 下拉刷新：两类均置过期（退出重进刷新语义），重载当前分类第一页
+    m_review.loaded = false;
+    m_interaction.loaded = false;
     if (!m_isRefreshing) {
         m_isRefreshing = true;
         emit isRefreshingChanged();
     }
-    m_currentPage = 1;
-    m_notifications.clear();
-    m_announcementIds.clear();
-    emit notificationsChanged();
-    m_hasMore = false;
-    emit hasMoreChanged();
-    loadNotifications(1, m_pageSize);
-}
-
-void NotificationViewModel::loadNextPage()
-{
-    if (m_isLoading || !m_hasMore) return;
-    loadNotifications(m_currentPage + 1, m_pageSize);
+    loadCategory(m_currentType, 1, m_pageSize, true);
 }
 
 void NotificationViewModel::loadNotifications(int page, int size)
 {
-    // 筛选"系统公告"时只加载公告
-    if (m_currentType == QLatin1String("system")) {
-        loadAnnouncements(page, size);
-        return;
-    }
+    m_pageSize = size;
+    loadCategory(m_currentType, page, size, false);
+}
 
-    m_isLoading = true;
-    emit isLoadingChanged();
+void NotificationViewModel::loadNextPage()
+{
+    const CategoryState& st = stateFor(m_currentType);
+    if (m_pendingLoads > 0 || !st.hasMore) return;
+    loadCategory(m_currentType, st.page + 1, m_pageSize, false);
+}
 
-    // "全部"且第一页：加载公告 + 通知，按 createdAt 降序合并
-    if (m_currentType.isEmpty() && page == 1) {
-        m_notifications.clear();
-        m_announcementIds.clear();
+void NotificationViewModel::loadCategory(const QString& type, int page, int size, bool isRefreshCall)
+{
+    beginLoad();
 
-        m_api->getAnnouncements(1, 50,
-            [self = QPointer<NotificationViewModel>(this), page, size](bool annSuccess,
-                  const gocook::models::PagedAnnouncements& annData,
-                  const std::string&) {
-                if (!self) return;
+    // 快照当前会话（token，SessionSnapshot）：登出/换号后到达的过期响应作废
+    // （endLoad 先行配平计数；数据与汇总缓存已由 clearAll 统一清理）
+    const auto session = SessionSnapshot::capture(m_api);
 
-                // 先收集公告（转为通知格式）
-                QVariantList annItems;
-                if (annSuccess) {
-                    for (const auto& item : annData.data) {
-                        self->m_announcementIds.insert(item.id);
-                        annItems.append(DataMapper::toNotificationMap(item));
-                    }
-                }
-
-                // 再加载通知
-                std::string emptyFilter;
-                self->m_api->getNotifications(page, size, emptyFilter,
-                    [self, annItems](bool notifSuccess,
-                          const gocook::models::PagedNotifications& notifData,
-                          const std::string& error) {
-                        if (!self) return;
-                        if (!notifSuccess) {
-                            // 通知加载失败，至少展示公告
-                            emit self->errorOccurred(QString::fromStdString(error));
-                        }
-
-                        // 合并
-                        QVariantList merged = annItems;
-                        if (notifSuccess) {
-                            for (const auto& item : notifData.data)
-                                merged.append(DataMapper::toMap(item));
-                        }
-
-                        // 按 createdAt 降序排列
-                        std::sort(merged.begin(), merged.end(),
-                            [](const QVariant& a, const QVariant& b) {
-                                return a.toMap()["createdAt"].toString()
-                                     > b.toMap()["createdAt"].toString();
-                            });
-
-                        self->m_notifications = merged;
-                        if (notifSuccess) {
-                            self->m_currentPage = notifData.pagination.page;
-                            self->m_totalPages = notifData.pagination.total_pages;
-                            self->m_hasMore = (self->m_currentPage < self->m_totalPages);
-                        }
-                        self->recalcUnreadCount();
-                        emit self->notificationsChanged();
-                        emit self->hasMoreChanged();
-                        self->m_isLoading = false;
-                        emit self->isLoadingChanged();
-                        self->m_isRefreshing = false;
-                        emit self->isRefreshingChanged();
-                    });
-            });
-        return;
-    }
-
-    // 其他标签的第一页：清空列表（移除上个筛选可能留下的公告）
     if (page == 1) {
-        m_notifications.clear();
-        m_announcementIds.clear();
+        // 第一页 = 首屏替换：清空该分类缓存（双分类各自独立，不触碰另一分类）
+        stateFor(type).items.clear();
+        if (m_currentType == type)
+            emit notificationsChanged();
     }
 
-    // "全部"的后续页：loadNotificationsOnly 追加后需重新排序
-    bool needsResort = m_currentType.isEmpty() && page > 1;
-    loadNotificationsOnly(page, size, needsResort);
-}
-
-void NotificationViewModel::loadNotificationsOnly(int page, int size, bool needsResort)
-{
-    std::string typeFilter = (m_currentType == QLatin1String("system"))
-                             ? std::string()
-                             : m_currentType.toStdString();
-
-    m_api->getNotifications(page, size, typeFilter,
-        [self = QPointer<NotificationViewModel>(this), page, needsResort](bool success,
-              const gocook::models::PagedNotifications& data,
-              const std::string& error) {
+    m_api->getNotifications(page, size, type.toStdString(),
+        [self = QPointer<NotificationViewModel>(this), session, type, page, isRefreshCall]
+        (bool success, const gocook::models::PagedNotifications& data, const std::string& error) {
             if (!self) return;
-            if (!success) {
-                emit self->errorOccurred(QString::fromStdString(error));
-                self->m_isLoading = false;
-                emit self->isLoadingChanged();
+            self->endLoad();
+            if (isRefreshCall) {
                 self->m_isRefreshing = false;
                 emit self->isRefreshingChanged();
+            }
+            if (!session.isCurrent(self->m_api)) return;   // 会话已切换：过期响应作废
+
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
                 return;
             }
 
-            // 注意：page==1 时 m_notifications 已由调用方清空（含公告）
-            // 此处不再 clear，避免清掉已加载的公告
+            CategoryState& st = self->stateFor(type);
             for (const auto& item : data.data)
-                self->m_notifications.append(DataMapper::toMap(item));
+                st.items.append(DataMapper::toMap(item));
+            st.page = data.pagination.page;
+            st.totalPages = data.pagination.total_pages;
+            st.hasMore = st.page < st.totalPages;
+            st.loaded = true;
 
-            // "全部"的后续页：追加后按 createdAt 降序重排
-            if (needsResort) {
-                std::sort(self->m_notifications.begin(), self->m_notifications.end(),
-                    [](const QVariant& a, const QVariant& b) {
-                        return a.toMap()["createdAt"].toString()
-                             > b.toMap()["createdAt"].toString();
-                    });
-            }
+            // 进入分类 = 已读：本地去点 + 计数清零 + 上报水位（仅第一页语义）
+            if (page == 1)
+                self->reportSeenAndClear(type, data);
 
-            self->m_currentPage = data.pagination.page;
-            self->m_totalPages = data.pagination.total_pages;
-            self->m_hasMore = (self->m_currentPage < self->m_totalPages);
-
-            self->recalcUnreadCount();
-
-            emit self->notificationsChanged();
-            emit self->hasMoreChanged();
-            self->m_isLoading = false;
-            emit self->isLoadingChanged();
-            self->m_isRefreshing = false;
-            emit self->isRefreshingChanged();
-        });
-}
-
-void NotificationViewModel::loadAnnouncements(int page, int size)
-{
-    m_isLoading = true;
-    emit isLoadingChanged();
-
-    m_api->getAnnouncements(page, size,
-        [self = QPointer<NotificationViewModel>(this), page](bool success,
-              const gocook::models::PagedAnnouncements& data,
-              const std::string& error) {
-            if (!self) return;
-            if (!success) {
-                emit self->errorOccurred(QString::fromStdString(error));
-                self->m_isLoading = false;
-                emit self->isLoadingChanged();
-                self->m_isRefreshing = false;
-                emit self->isRefreshingChanged();
-                return;
-            }
-
-            if (page == 1) {
-                self->m_notifications.clear();
-                self->m_announcementIds.clear();
-            }
-
-            for (const auto& item : data.data) {
-                self->m_announcementIds.insert(item.id);
-                self->m_notifications.append(DataMapper::toNotificationMap(item));
-            }
-
-            self->m_currentPage = data.pagination.page;
-            self->m_totalPages = data.pagination.total_pages;
-            self->m_hasMore = (self->m_currentPage < self->m_totalPages);
-
-            // 公告全视为已读，不触发 recalcUnreadCount
-            self->recalcUnreadCount();
-
-            emit self->notificationsChanged();
-            emit self->hasMoreChanged();
-            self->m_isLoading = false;
-            emit self->isLoadingChanged();
-            self->m_isRefreshing = false;
-            emit self->isRefreshingChanged();
-        });
-}
-
-void NotificationViewModel::markRead(int notificationId)
-{
-    // 系统公告没有已读状态，跳过
-    if (isAnnouncementItem(notificationId)) {
-        return;
-    }
-
-    m_api->markNotificationRead(notificationId,
-        [self = QPointer<NotificationViewModel>(this), notificationId](bool success, const std::string& error) {
-            if (!self) return;
-            if (success) {
-                // 更新本地列表中的 is_read 状态
-                for (int i = 0; i < self->m_notifications.size(); ++i) {
-                    auto item = self->m_notifications[i].toMap();
-                    if (item["id"].toInt() == notificationId) {
-                        item["is_read"] = true;
-                        self->m_notifications[i] = item;
-                        break;
-                    }
-                }
-                self->recalcUnreadCount();
+            if (self->m_currentType == type) {
                 emit self->notificationsChanged();
-                emit self->markReadSuccess(notificationId);
-            } else {
-                emit self->errorOccurred(QString::fromStdString(error));
+                emit self->hasMoreChanged();
             }
         });
 }
 
-void NotificationViewModel::markAllRead()
+void NotificationViewModel::reportSeenAndClear(const QString& type,
+                                               const gocook::models::PagedNotifications& data)
 {
-    // 如果当前列表中只有系统公告，跳过
-    {
-        bool hasRealNotifications = false;
-        for (const auto& v : m_notifications) {
-            if (!isAnnouncementItem(v.toMap()["id"].toInt())) {
-                hasRealNotifications = true;
-                break;
-            }
+    int maxId = 0;
+    for (const auto& item : data.data)
+        maxId = std::max(maxId, item.id);
+
+    // 本地即时表现：已加载条目的未读小点抹平 + 该分类计数清零
+    // （服务端为权威边界；上报失败静默，下一轮汇总会自愈）
+    CategoryState& st = stateFor(type);
+    bool dotsChanged = false;
+    for (int i = 0; i < st.items.size(); ++i) {
+        QVariantMap item = st.items[i].toMap();
+        if (!item["is_read"].toBool()) {
+            item["is_read"] = true;
+            st.items[i] = item;
+            dotsChanged = true;
         }
-        if (!hasRealNotifications) return;
     }
+    if (dotsChanged && m_currentType == type)
+        emit notificationsChanged();
+    setUnread(type, 0);
 
-    m_api->markAllNotificationsRead(
-        [self = QPointer<NotificationViewModel>(this)](bool success, const std::string& error) {
+    // 水位上报：幂等非必须（服务端 GREATEST 合并），本地记账防重复；失败下次进页重报
+    if (maxId <= 0)
+        return;
+    if (maxId <= m_reportedWatermark.value(type, 0))
+        return;
+    const auto session = SessionSnapshot::capture(m_api);
+    m_api->setNotificationsReadState(type.toStdString(), maxId,
+        [self = QPointer<NotificationViewModel>(this), session, type, maxId]
+        (bool success, const std::string&) {
             if (!self) return;
-            if (success) {
-                // 本地全部标记为已读
-                for (int i = 0; i < self->m_notifications.size(); ++i) {
-                    auto item = self->m_notifications[i].toMap();
-                    item["is_read"] = true;
-                    self->m_notifications[i] = item;
-                }
-                self->m_unreadCount = 0;
-                emit self->notificationsChanged();
-                emit self->unreadCountChanged();
-                emit self->markAllReadSuccess();
-            } else {
-                emit self->errorOccurred(QString::fromStdString(error));
+            if (!session.isCurrent(self->m_api)) return;
+            if (success && maxId > self->m_reportedWatermark.value(type, 0))
+                self->m_reportedWatermark[type] = maxId;
+        });
+}
+
+void NotificationViewModel::setUnread(const QString& type, int value)
+{
+    value = std::max(0, value);
+    if (type == QLatin1String("interaction")) {
+        if (m_interactionUnread == value) return;
+        m_interactionUnread = value;
+    } else {
+        if (m_reviewUnread == value) return;
+        m_reviewUnread = value;
+    }
+    emit unreadSummaryChanged();
+}
+
+void NotificationViewModel::adjustUnread(const QString& type, int delta)
+{
+    const int base = (type == QLatin1String("interaction")) ? m_interactionUnread : m_reviewUnread;
+    setUnread(type, base + delta);
+}
+
+void NotificationViewModel::refreshUnreadSummary()
+{
+    // 快照当前会话：换号后的旧账号汇总不得落入新账号角标
+    const auto session = SessionSnapshot::capture(m_api);
+    m_api->getNotificationsUnreadSummary(
+        [self = QPointer<NotificationViewModel>(this), session]
+        (bool success, const gocook::models::NotificationUnreadSummary& data, const std::string&) {
+            if (!self) return;
+            if (!session.isCurrent(self->m_api)) return;
+            if (!success) return;   // 失败静默：保留旧缓存/空值，不打断用户
+
+            bool changed = false;
+            if (self->m_reviewUnread != data.unread_review) {
+                self->m_reviewUnread = data.unread_review;
+                changed = true;
             }
+            if (self->m_interactionUnread != data.unread_interaction) {
+                self->m_interactionUnread = data.unread_interaction;
+                changed = true;
+            }
+            if (self->m_systemHasNew != data.has_new_announcement) {
+                self->m_systemHasNew = data.has_new_announcement;
+                changed = true;
+            }
+            if (changed)
+                emit self->unreadSummaryChanged();
         });
 }
 
 void NotificationViewModel::deleteNotification(int notificationId)
 {
-    // 系统公告无法由用户删除，直接从本地列表移除
-    if (isAnnouncementItem(notificationId)) {
-        QVariantList updated;
-        for (const auto& v : m_notifications) {
-            if (v.toMap()["id"].toInt() == notificationId) continue;
-            updated.append(v);
-        }
-        m_notifications = updated;
-        emit notificationsChanged();
-        emit deleteSuccess(notificationId);
-        return;
-    }
-
+    // 快照当前会话：换号后的旧账号删除响应不得改动新账号数据
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->deleteNotification(notificationId,
-        [self = QPointer<NotificationViewModel>(this), notificationId](bool success, const std::string& error) {
+        [self = QPointer<NotificationViewModel>(this), session, notificationId]
+        (bool success, const std::string& error) {
             if (!self) return;
-            if (success) {
-                // 从本地列表中移除
-                QVariantList updated;
-                bool removedUnread = false;
-                for (const auto& v : self->m_notifications) {
-                    auto item = v.toMap();
+            if (!session.isCurrent(self->m_api)) return;
+
+            if (!success) {
+                emit self->errorOccurred(QString::fromStdString(error));
+                return;
+            }
+
+            // 从两个分类缓存中定位并移除（条目归属由 id 反查，不依赖当前分类）
+            QString removedFrom;
+            bool wasUnread = false;
+            for (const QString& t : {QStringLiteral("review"), QStringLiteral("interaction")}) {
+                CategoryState& st = self->stateFor(t);
+                QVariantList kept;
+                kept.reserve(st.items.size());
+                bool found = false;
+                for (const auto& v : st.items) {
+                    const QVariantMap item = v.toMap();
                     if (item["id"].toInt() == notificationId) {
-                        if (!item["is_read"].toBool())
-                            removedUnread = true;
+                        found = true;
+                        wasUnread = !item["is_read"].toBool();
                         continue;
                     }
-                    updated.append(v);
+                    kept.append(v);
                 }
-                self->m_notifications = updated;
-                if (removedUnread) {
-                    self->recalcUnreadCount();
+                if (found) {
+                    st.items = kept;
+                    removedFrom = t;
+                    break;
                 }
-                emit self->notificationsChanged();
-                emit self->deleteSuccess(notificationId);
-            } else {
-                emit self->errorOccurred(QString::fromStdString(error));
             }
+            if (!removedFrom.isEmpty()) {
+                if (self->m_currentType == removedFrom)
+                    emit self->notificationsChanged();
+                // 删未读条目：该分类计数即时 -1（下限 0；汇总仍为权威，下次拉取校正）
+                if (wasUnread)
+                    self->adjustUnread(removedFrom, -1);
+            }
+            emit self->deleteSuccess(notificationId);
         });
+}
+
+void NotificationViewModel::clearSystemNewFlag()
+{
+    if (!m_systemHasNew) return;
+    m_systemHasNew = false;
+    emit unreadSummaryChanged();
 }
 
 void NotificationViewModel::resetTestData()
@@ -336,6 +276,7 @@ void NotificationViewModel::resetTestData()
         if (!self) return;
         if (success) {
             self->refresh();
+            self->refreshUnreadSummary();
         } else {
             emit self->errorOccurred(QString::fromStdString(error));
         }
@@ -344,33 +285,19 @@ void NotificationViewModel::resetTestData()
 
 void NotificationViewModel::clearAll()
 {
-    // 登出统一清理（main.cpp 单点接线）：数据与列表状态全部归零，
-    // 五个状态信号一并发出（QML 列表 / 未读角标 / 刷新指示器同步复位）
-    m_notifications.clear();
-    m_announcementIds.clear();
-    m_unreadCount = 0;
-    m_hasMore = false;
-    m_currentPage = 1;
-    m_totalPages = 0;
-    m_isLoading = false;
+    // 登出统一清理（main.cpp 单点接线）：双分类缓存 / 汇总角标 / 已上报水位 / 刷新态全部归零。
+    // 刻意不动 m_pendingLoads：在途请求的回调仍会调用 endLoad 配对计数，清掉会负漂移
+    m_review = CategoryState{};
+    m_interaction = CategoryState{};
+    m_currentType = QStringLiteral("review");
+    m_reviewUnread = 0;
+    m_interactionUnread = 0;
+    m_systemHasNew = false;
+    m_reportedWatermark.clear();
     m_isRefreshing = false;
     emit notificationsChanged();
     emit hasMoreChanged();
-    emit unreadCountChanged();
-    emit isLoadingChanged();
+    emit currentTypeChanged();
+    emit unreadSummaryChanged();
     emit isRefreshingChanged();
-}
-
-void NotificationViewModel::recalcUnreadCount()
-{
-    int count = 0;
-    for (const auto& v : m_notifications) {
-        auto item = v.toMap();
-        if (!item["is_read"].toBool())
-            count++;
-    }
-    if (m_unreadCount != count) {
-        m_unreadCount = count;
-        emit unreadCountChanged();
-    }
 }

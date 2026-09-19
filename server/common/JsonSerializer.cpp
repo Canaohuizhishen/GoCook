@@ -247,10 +247,18 @@ json toJson(const NotificationItem& item) {
         {"content", item.content},
         {"type", item.type},
         {"sub_type", item.sub_type},
-        {"is_read", item.is_read},
+        {"is_read", item.is_read},   // 由"id > 已读水位"动态计算（v2.23）
         {"related_id", item.related_id},
         {"trigger_user_name", item.trigger_user_name},
         {"created_at", item.created_at}
+    };
+}
+
+json toJson(const NotificationUnreadSummary& summary) {
+    return {
+        {"review", summary.unread_review},
+        {"interaction", summary.unread_interaction},
+        {"system", summary.has_new_announcement}
     };
 }
 

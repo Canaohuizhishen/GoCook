@@ -1,12 +1,15 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
 import client
 
-Item {
+// 通知列表项（v2.23）——左滑显露式删除（复用标准组件 SwipeToDeleteItem）：
+//   左滑仅显露删除按钮（点击才删除，不再松手即删）；点内容区：未展开 → 进详情，展开 → 收起；
+//   同一时刻仅一项展开（由页面共享的 swipeManager 互斥）；水平拖动时锁定列表纵向滚动。
+// 外部契约：notificationId/notifTitle/notifContent/createdAt/notifType/isRead
+//          + clicked(data)（进详情）+ deleteRequested()（基类信号；页面用 modelData.id 执行删除）。
+SwipeToDeleteItem {
     id: root
-    width: parent ? parent.width : 300
-    height: 100
+
+    implicitHeight: 100   // 卡片视觉高度（删除时由列表数据源移除，无收缩动画）
 
     property int notificationId: 0
     property string notifTitle: ""
@@ -16,66 +19,28 @@ Item {
     property bool isRead: false
 
     signal clicked(var data)
-    signal deleteRequested(int id)
-    signal readRequested(int id)
 
-    property real swipeOffset: 0
-    property bool deleting: false
+    // 点内容区（未展开时）→ 进详情；展开态的"点即收起"由组件内部消化
+    onContentClicked: root.clicked({
+        id: root.notificationId,
+        title: root.notifTitle,
+        content: root.notifContent,
+        type: root.notifType,
+        createdAt: root.createdAt,
+        is_read: root.isRead
+    })
 
-    Timer {
-        id: deleteTimer
-        interval: 250
-        onTriggered: {
-            root.deleting = false
-            root.swipeOffset = 0
-            root.deleteRequested(root.notificationId)
-        }
-    }
-
-    Behavior on swipeOffset {
-        NumberAnimation {
-            duration: 220
-            easing.type: Easing.OutCubic
-        }
-    }
-
-    // 红色删除区
-    Rectangle {
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        width: 80
-        color: "#E74C3C"
-        visible: root.swipeOffset < -2
-
-        Text {
-            anchors.centerIn: parent
-            text: qsTr("删除")
-            color: "white"
-            font.family: Theme.fontFamily
-            font.pointSize: Theme.fontSizeCaption
-            font.weight: Font.Bold
-        }
-    }
-
-    // 内容卡片
-    Rectangle {
-        id: contentCard
-        x: root.swipeOffset
-        width: parent.width
-        height: parent.height
-        radius: Theme.radiusLarge
-        color: root.isRead ? Theme.cardBackground : Qt.rgba(0.42, 0.53, 0.85, 0.06)
-        clip: true
+    // ========== 卡片内容（放入组件的可滑动内容区；卡面底色/圆角由组件提供） ==========
+    Item {
+        anchors.fill: parent
+        anchors.rightMargin: Theme.spacingMedium
 
         Item {
             id: cardBody
-            anchors {
-                left: parent.left
-                right: parent.right
-                top: parent.top
-                margins: Theme.spacingMedium
-            }
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.topMargin: 14
             height: Math.max(iconRect.height, textBody.height)
 
             // 类型图标
@@ -115,7 +80,7 @@ Item {
                 }
                 spacing: Theme.spacingXSmall
 
-                // 标题行
+                // 标题行（未读加粗 + 圆点）
                 Row {
                     width: textBody.width
                     spacing: Theme.spacingXSmall
@@ -152,76 +117,15 @@ Item {
                     maximumLineCount: 1
                 }
 
-                // 时间
+                // 时间（微信式相对格式：今天 HH:mm / 昨天 / MM-DD）
                 Text {
-                    text: {
-                        var d = root.createdAt || ""
-                        if (d.length >= 16)
-                            return d.substring(0, 10) + " " + d.substring(11, 16)
-                        return d.substring(0, 10)
-                    }
+                    text: Theme.formatRelativeTime(root.createdAt)
                     width: textBody.width
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSizeSmall
                     color: Theme.textHint
                 }
             }
-        }
-
-        // 手势处理
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            property real startX: 0
-            property bool isSwiping: false
-
-            onPressed: function(mouse) {
-                if (root.deleting) return
-                startX = mouse.x
-                isSwiping = false
-            }
-            onPositionChanged: function(mouse) {
-                if (root.deleting) return
-                var dx = mouse.x - startX
-                if (dx < -10) {
-                    isSwiping = true
-                    root.swipeOffset = Math.max(-80, dx)
-                } else if (dx > 2 && root.swipeOffset < 0) {
-                    root.swipeOffset = Math.min(0, dx)
-                }
-            }
-            onClicked: function(mouse) {
-                if (isSwiping || root.deleting) return
-                if (!root.isRead)
-                    root.readRequested(root.notificationId)
-                root.clicked({
-                    id: root.notificationId,
-                    title: root.notifTitle,
-                    content: root.notifContent,
-                    type: root.notifType,
-                    createdAt: root.createdAt,
-                    is_read: root.isRead
-                })
-            }
-            onReleased: function(mouse) {
-                if (!isSwiping || root.deleting) return
-                if (root.swipeOffset < -40) {
-                    root.deleting = true
-                    root.swipeOffset = -root.width
-                    deleteTimer.start()
-                } else {
-                    root.swipeOffset = 0
-                }
-            }
-        }
-
-        // 底部分隔线
-        Rectangle {
-            anchors.bottom: parent.bottom
-            width: parent.width
-            height: 1
-            color: Theme.dividerColor
-            opacity: 0.3
         }
     }
 }

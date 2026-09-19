@@ -45,6 +45,7 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/AuthViewModel.cpp viewmodels/AuthViewModel.h
     SOURCES viewmodels/InventoryViewModel.cpp viewmodels/InventoryViewModel.h
     SOURCES viewmodels/NotificationViewModel.cpp viewmodels/NotificationViewModel.h
+    SOURCES viewmodels/AnnouncementViewModel.cpp viewmodels/AnnouncementViewModel.h
     SOURCES viewmodels/ShoppingListViewModel.cpp viewmodels/ShoppingListViewModel.h
     SOURCES viewmodels/RequestGuards.h
     SOURCES dialogs/NativeFileDialog.h dialogs/NativeFileDialog.cpp
@@ -61,6 +62,8 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/AccountSecurityPage.qml
     QML_FILES qml/pages/NotificationPage.qml
     QML_FILES qml/pages/NotificationDetailPage.qml
+    QML_FILES qml/pages/SystemNoticePage.qml
+    QML_FILES qml/pages/FeaturePlaceholderPage.qml
     QML_FILES qml/pages/SettingsPage.qml
     QML_FILES qml/components/TagChip.qml
     QML_FILES qml/components/SectionHeader.qml
@@ -76,6 +79,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/GroupSelectionDialog.qml
     QML_FILES qml/components/SimpleListInputDialog.qml
     QML_FILES qml/components/NotificationCardDelegate.qml
+    QML_FILES qml/components/AnnouncementCard.qml
     QML_FILES qml/components/ShoppingListTableHeader.qml
 )
 

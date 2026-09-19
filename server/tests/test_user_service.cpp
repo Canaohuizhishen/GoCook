@@ -1098,10 +1098,10 @@ TEST(UserServiceTest, 获取通知列表成功) {
 
     NotificationItem notif;
     notif.id = 101;
-    notif.title = "系统维护通知";
-    notif.content = "今晚 22:00 升级";
-    notif.type = "system";
-    notif.is_read = false;
+    notif.title = "审核结果";
+    notif.content = "您的菜谱已通过审核";
+    notif.type = "review";
+    notif.is_read = false;   // 由仓库按"id > 水位"动态计算，服务层透传
     PagedNotifications expected;
     expected.data = {notif};
     expected.pagination = {1, 1, 1, 20};
@@ -1110,21 +1110,88 @@ TEST(UserServiceTest, 获取通知列表成功) {
 
     auto result = service.getNotifications(42, 1, 20);
     EXPECT_EQ(result.data.size(), 1u);
-    EXPECT_EQ(result.data[0].title, "系统维护通知");
-    EXPECT_EQ(result.data[0].type, "system");
+    EXPECT_EQ(result.data[0].title, "审核结果");
+    EXPECT_EQ(result.data[0].type, "review");
     EXPECT_FALSE(result.data[0].is_read);
 }
 
-TEST(UserServiceTest, 标记通知已读成功) {
+TEST(UserServiceTest, 未读汇总成功) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     auto profile = makeUserProfile(42);
     EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
-    EXPECT_CALL(*repo, markNotificationRead(42, 101)).Times(1);
 
-    EXPECT_NO_THROW(service.markNotificationRead(42, 101));
+    NotificationUnreadSummary expected;
+    expected.unread_review = 3;
+    expected.unread_interaction = 0;
+    expected.has_new_announcement = true;
+    EXPECT_CALL(*repo, getUnreadSummary(42)).WillOnce(Return(expected));
+
+    auto result = service.getUnreadSummary(42);
+    EXPECT_EQ(result.unread_review, 3);
+    EXPECT_EQ(result.unread_interaction, 0);
+    EXPECT_TRUE(result.has_new_announcement);
+}
+
+TEST(UserServiceTest, 上报通知已读水位成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, updateReadWatermark(42, std::string("review"), 301)).Times(1);
+
+    EXPECT_NO_THROW(service.setNotificationsReadState(42, "review", 301));
+}
+
+TEST(UserServiceTest, 上报通知已读水位非法类型被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    // 非法类型在 findById 之前收口：不查用户、不进仓库
+    EXPECT_CALL(*repo, findById(_)).Times(0);
+    EXPECT_CALL(*repo, updateReadWatermark(_, _, _)).Times(0);
+
+    try {
+        service.setNotificationsReadState(42, "system", 301);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_EQ(std::string(e.what()), "不支持的通知类型");
+    }
+}
+
+TEST(UserServiceTest, 上报已读水位负数被拒) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    EXPECT_CALL(*repo, findById(_)).Times(0);
+    EXPECT_CALL(*repo, updateReadWatermark(_, _, _)).Times(0);
+
+    try {
+        service.setAnnouncementsReadState(42, -1);
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 400);
+        EXPECT_EQ(std::string(e.what()), "last_seen_id 不能为负");
+    }
+}
+
+TEST(UserServiceTest, 上报公告已读水位成功) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    auto profile = makeUserProfile(42);
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
+    EXPECT_CALL(*repo, updateReadWatermark(42, std::string("announcement"), 5)).Times(1);
+
+    EXPECT_NO_THROW(service.setAnnouncementsReadState(42, 5));
 }
 
 // ==================== 边界测试 ====================
@@ -1234,24 +1301,12 @@ TEST(UserServiceTest, 获取通知列表按类型过滤) {
 
     auto profile = makeUserProfile(42);
     EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
-    EXPECT_CALL(*repo, getNotifications(42, 1, 20, std::string("system"))).Times(1);
+    EXPECT_CALL(*repo, getNotifications(42, 1, 20, std::string("review"))).Times(1);
 
-    PagedNotifications result = service.getNotifications(42, 1, 20, "system");
+    PagedNotifications result = service.getNotifications(42, 1, 20, "review");
 }
 
 // ==================== 以下为原有测试 ====================
-
-TEST(UserServiceTest, 标记全部通知已读成功) {
-    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
-    auto* repo = mock.get();
-    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
-
-    auto profile = makeUserProfile(42);
-    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
-    EXPECT_CALL(*repo, markAllNotificationsRead(42)).Times(1);
-
-    EXPECT_NO_THROW(service.markAllNotificationsRead(42));
-}
 
 TEST(UserServiceTest, 删除通知成功) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
