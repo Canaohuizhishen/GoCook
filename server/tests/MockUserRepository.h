@@ -87,13 +87,13 @@ public:
     // 批量删除收藏
     MOCK_METHOD(void, batchDeleteFavorites,
                 (int, const gocook::models::BatchDeleteFavoritesRequest&), (override));
-    // 查询通知列表
+    // 查询通知列表（is_read 由"id > 水位"动态计算）
     MOCK_METHOD(gocook::models::PagedNotifications, getNotifications,
                 (int, int, int, const std::string&), (override));
-    // 标记单条通知已读
-    MOCK_METHOD(void, markNotificationRead, (int, int), (override));
-    // 全部通知标记已读
-    MOCK_METHOD(void, markAllNotificationsRead, (int), (override));
+    // 查询未读汇总（消息中心角标）
+    MOCK_METHOD(gocook::models::NotificationUnreadSummary, getUnreadSummary, (int), (override));
+    // 上报已读水位（幂等）
+    MOCK_METHOD(void, updateReadWatermark, (int, const std::string&, int), (override));
     // 删除通知
     MOCK_METHOD(void, deleteNotification, (int, int), (override));
 };

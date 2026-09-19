@@ -198,9 +198,11 @@ public:
     void getNotifications(int page, int size,
                           const std::string& type,
                           PagedNotificationsCallback callback) override;
-    void markNotificationRead(int notificationId,
-                              SuccessCallback callback) override;
-    void markAllNotificationsRead(SuccessCallback callback) override;
+    void getNotificationsUnreadSummary(UnreadSummaryCallback callback) override;
+    void setNotificationsReadState(const std::string& type, int lastSeenId,
+                                   SuccessCallback callback) override;
+    void setAnnouncementsReadState(int lastSeenId,
+                                   SuccessCallback callback) override;
     void deleteNotification(int notificationId,
                             SuccessCallback callback) override;
 

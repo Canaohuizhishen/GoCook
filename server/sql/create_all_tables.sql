@@ -2,7 +2,7 @@
 -- ⛔⛔⛔ 警告：本脚本开头会对全部业务表执行 DROP TABLE IF EXISTS ... CASCADE，
 -- ⛔⛔⛔ 是【清空重建】脚本！只允许在全新初始化（空数据卷）时由容器自动执行。
 -- ⛔⛔⛔ 千万不要对已有数据的库手动执行——会清空菜谱/用户/库存等全部数据！
--- ⛔⛔⛔ 旧库补表请用只增迁移脚本：./migrate_xxx.sql
+-- ⛔⛔⛔ 旧库只升级结构（保留数据）见 sql/README.md 的内联 SQL；开发库推荐 reset_db.sh 一键重置。
 -- 执行方式：docker exec -i gocook-postgres psql -U gocook -d gocookdb < ./create_all_tables.sql
 -- 开发库一键重置（推荐入口）：bash ../reset_db.sh —— 按序执行本文件 + 两个种子脚本，见 sql/README.md
 -- ⚠️ 遇错即停：任何一条语句失败都会中止并返回非零退出码（避免静默产出残缺 schema）
@@ -12,6 +12,7 @@
 DROP TABLE IF EXISTS activity_logs          CASCADE;
 DROP TABLE IF EXISTS admin_logs             CASCADE;
 DROP TABLE IF EXISTS notifications          CASCADE;
+DROP TABLE IF EXISTS read_watermarks        CASCADE;
 DROP TABLE IF EXISTS ratings                CASCADE;
 DROP TABLE IF EXISTS favorites              CASCADE;
 DROP TABLE IF EXISTS favorite_groups        CASCADE;
@@ -165,18 +166,27 @@ CREATE TABLE IF NOT EXISTS ratings (
     UNIQUE (user_id, recipe_id)
 );
 
--- 9. 通知表
+-- 9. 通知表（type 枚举收口 review/interaction；已读由 read_watermarks 水位表达，v2.23）
 CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title TEXT,
     content TEXT,
-    type TEXT DEFAULT 'system',
+    type TEXT NOT NULL CHECK (type IN ('review', 'interaction')),
     sub_type TEXT,
-    is_read BOOLEAN DEFAULT FALSE,
     related_id INT,
     trigger_user_name TEXT,
     created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 9b. 通知/公告已读水位表（v2.23：每用户每频道一行；channel：review / interaction / announcement）
+--     未读判定统一为 id > last_seen_id：列表响应 is_read 与未读汇总计数均由此动态计算
+CREATE TABLE IF NOT EXISTS read_watermarks (
+    user_id      INT  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel      TEXT NOT NULL CHECK (channel IN ('review', 'interaction', 'announcement')),
+    last_seen_id INT  NOT NULL DEFAULT 0,
+    updated_at   TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, channel)
 );
 
 -- 10. 膳食计划表

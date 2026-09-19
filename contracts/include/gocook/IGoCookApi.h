@@ -62,6 +62,10 @@ using PagedNotificationsCallback = std::function<void(bool success,
                                                       const gocook::models::PagedNotifications& data,
                                                       const std::string& error)>;
 
+using UnreadSummaryCallback = std::function<void(bool success,
+                                                 const gocook::models::NotificationUnreadSummary& data,
+                                                 const std::string& error)>;
+
 // 我的评论
 using PagedUserRatingsCallback = std::function<void(bool success,
                                                     const gocook::models::PagedUserRatings& data,
@@ -392,7 +396,7 @@ public:
      * @brief 获取通知列表（分页，可选按类型筛选）
      * @param page 页码
      * @param size 每页数量
-     * @param type 可选通知类型，传空字符串表示不过滤
+     * @param type 可选通知类型：`review`/`interaction`（v2.23 枚举收口），空串表示不过滤
      * @param callback 回调 (success, pagedResult, error)
      */
     virtual void getNotifications(int page, int size,
@@ -400,18 +404,27 @@ public:
                                   PagedNotificationsCallback callback) = 0;
 
     /**
-     * @brief 标记单条通知已读
-     * @param notificationId 通知ID
-     * @param callback 回调 (success, error)
+     * @brief 获取未读汇总（消息中心角标：各分类未读数 + 有无新公告）
+     * @param callback 回调 (success, summary, error)
      */
-    virtual void markNotificationRead(int notificationId,
-                                      SuccessCallback callback) = 0;
+    virtual void getNotificationsUnreadSummary(UnreadSummaryCallback callback) = 0;
 
     /**
-     * @brief 全部标记已读
+     * @brief 上报通知类已读水位（进入分类页即已读；服务端幂等合并）
+     * @param type 通知类型："review"/"interaction"
+     * @param lastSeenId 客户端看到的当前最大通知 id
      * @param callback 回调 (success, error)
      */
-    virtual void markAllNotificationsRead(SuccessCallback callback) = 0;
+    virtual void setNotificationsReadState(const std::string& type, int lastSeenId,
+                                           SuccessCallback callback) = 0;
+
+    /**
+     * @brief 上报公告已读水位（进入系统通知页即已读；服务端幂等合并）
+     * @param lastSeenId 客户端看到的当前最大公告 id
+     * @param callback 回调 (success, error)
+     */
+    virtual void setAnnouncementsReadState(int lastSeenId,
+                                           SuccessCallback callback) = 0;
 
     /**
      * @brief 删除通知

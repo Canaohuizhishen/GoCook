@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QHash>
+#include <QList>
 #include <QObject>
 #include <QSet>
 #include <QVariantList>
@@ -14,7 +16,8 @@
  * 三条贯穿全类的设计（具体契约见各方法注释）：
  *   1. isLoading 为在途请求计数派生（beginLoad/endLoad 包裹每个请求），并发请求安全。
  *   2. 删除清单：deleteShoppingListOptimistic 先本地移除、失败插回原位置（唯一的删除路径）。
- *   3. 条目勾选连点合并：在途时只记最后一次状态，当前请求返回后自动补发。
+ *   3. 条目勾选连点合并：点击立即乐观落本地；按条目合并末态（同条目覆盖、不同条目各自入队），
+ *      FIFO 串行逐条发送；服务端确认后落定，失败回滚到已确认态（契约详见 updateShoppingListItem）。
  */
 class ShoppingListViewModel : public QObject
 {
@@ -41,11 +44,15 @@ public:
     /// 批量添加条目（items: [{ingredient_name, quantity, unit}]）。
     /// 成功重载详情并发 batchAddComplete，失败发 batchAddFailed。
     Q_INVOKABLE void batchAddShoppingItems(int listId, const QVariantList& items);
-    /// 更新条目勾选（连点合并：在途时只记最后一次，返回后自动补发）。
-    /// 成功发 itemUpdated，失败发 errorOccurred。
+    /// 更新条目勾选（连点合并 + 串行队列）：
+    ///   - 点击立即乐观更新本地 checked（UI 即时响应，同条目连点也保留正确意图）；
+    ///   - 按条目合并末态：同一 item 连续点击只保留最后一个状态，不同 item 各自入队（FIFO）；
+    ///   - 单请求在途、逐条串行发送：当前请求返回后自动补发下一个；
+    ///   - 成功：该 item 无更新待发时本地落定并发 itemUpdated；失败：发 errorOccurred 并回滚该 item。
     Q_INVOKABLE void updateShoppingListItem(int listId, int itemId, bool checked);
     /// 删除条目（v2.18）：成功从详情本地移除该条目并发 itemUpdated，失败发 errorOccurred。
     /// 已勾选条目的库存回退由服务端在同一事务内完成（删除 = 取消勾选 + 删行）。
+    /// 删除时同步剔除该条目的待发勾选（防迟到 PATCH 打向已删行）。
     Q_INVOKABLE void deleteShoppingListItem(int listId, int itemId);
     /// 乐观删除：立即移除本地条目；失败按原位置插回并发 errorOccurred，成功发 shoppingListDeleted。
     Q_INVOKABLE void deleteShoppingListOptimistic(int listId, QVariantMap listData);
@@ -87,6 +94,15 @@ private:
     /// 请求计数 -1（isLoading 据此翻转）
     void endLoad();
 
+    /// 连点入口：乐观落本地 + 按条目合并入队 + 尝试串行发送
+    void enqueueItemUpdate(int listId, int itemId, bool checked);
+    /// 串行发送器：无在途且队列非空时取队首发出（回调链负责继续驱动）
+    void drainItemUpdates();
+    /// 把 currentList 中某条目的 checked 写为期望值（条目不存在/无变化则 no-op）
+    void applyLocalChecked(int itemId, bool checked);
+    /// 以 currentList 全量重建已确认基线，并把在途/待发乐观值回贴（防整表替换覆盖在途点击）
+    void rebuildConfirmedAndReapplyOptimistic();
+
     IGoCookApi *m_api;   ///< API 门面（构造注入）
     QVariantList m_shoppingLists;   ///< 清单列表数据
     QVariantMap m_currentList;   ///< 清单详情数据
@@ -94,9 +110,12 @@ private:
     bool m_creating = false;   ///< 建单请求在途
     QSet<int> m_pendingDeleteIds; ///< 乐观删除中但 API 尚未返回的 listId
 
-    /// 快速连续点击时：只记最后一次状态，避免静默丢弃或并发覆盖
-    int m_updatePendingItemId = -1;   ///< 等待中的 itemId（-1 = 无）
-    bool m_updatePendingChecked = false;   ///< 等待中的勾选状态
-    bool m_updateInFlight = false;    ///< 是否正在发送更新请求
+    /// 勾选连点合并 + 串行队列（契约详见 updateShoppingListItem 注释）
+    QHash<int, bool> m_pendingChecks;      ///< 待发送：itemId → 期望状态（同条目末态覆盖）
+    QHash<int, int> m_pendingItemListIds;  ///< 待发送：itemId → 所属 listId（发送时取用，防跨清单误发）
+    QList<int> m_pendingQueue;             ///< 待发送条目 FIFO 顺序（与 m_pendingChecks 同步增删）
+    int m_inFlightItemId = -1;             ///< 在途更新请求的条目 id（-1 = 无；串行至多一个）
+    bool m_inFlightChecked = false;        ///< 在途请求的期望状态（详情重载回贴显示用）
+    QHash<int, bool> m_confirmedChecks;    ///< itemId → 服务端已确认状态（失败回滚基线；整表替换时重建）
     QSet<int> m_deletingItemIds;      ///< 删除请求在途的条目 id（重复点击去重）
 };

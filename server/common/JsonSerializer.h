@@ -47,6 +47,7 @@ json toJson(const FavoriteGroup& group);
 // ======================== 通知 / 我的评论 ========================
 
 json toJson(const NotificationItem& item);
+json toJson(const NotificationUnreadSummary& summary);
 json toJson(const UserRatingItem& item);
 
 // ======================== 库存 / 购物清单 ========================

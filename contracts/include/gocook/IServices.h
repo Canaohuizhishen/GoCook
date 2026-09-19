@@ -415,24 +415,34 @@ namespace gocook::services {
          * @param userId 用户 ID
          * @param page 页码（从 1 开始）
          * @param size 每页数量
-         * @param type 可选通知类型："system", "review", "interaction"，空字符串表示所有
+         * @param type 可选通知类型："review"/"interaction"（v2.23 枚举收口），空字符串表示所有
          * @return 分页的通知列表
          */
         virtual models::PagedNotifications getNotifications(int userId, int page, int size,
                                                             const std::string& type = "") = 0;
 
         /**
-         * @brief 标记通知已读。
+         * @brief 获取未读汇总（消息中心角标：各分类未读数 + 有无新公告）。
          * @param userId 用户 ID
-         * @param notificationId 通知 ID
+         * @return 未读汇总（review/interaction 按"id > 水位"统计；system 为新公告布尔标记）
          */
-        virtual void markNotificationRead(int userId, int notificationId) = 0;
+        virtual models::NotificationUnreadSummary getUnreadSummary(int userId) = 0;
 
         /**
-         * @brief 全部标记已读。
+         * @brief 上报通知类已读水位（进入分类页 = 已读；幂等，GREATEST 防回退）。
          * @param userId 用户 ID
+         * @param type 通知类型："review"/"interaction"（其他值 400）
+         * @param lastSeenId 客户端看到的当前最大通知 id
          */
-        virtual void markAllNotificationsRead(int userId) = 0;
+        virtual void setNotificationsReadState(int userId, const std::string& type,
+                                               int lastSeenId) = 0;
+
+        /**
+         * @brief 上报公告已读水位（进入系统通知页 = 已读；幂等，GREATEST 防回退）。
+         * @param userId 用户 ID
+         * @param lastSeenId 客户端看到的当前最大公告 id
+         */
+        virtual void setAnnouncementsReadState(int userId, int lastSeenId) = 0;
 
         /**
          * @brief 删除通知。

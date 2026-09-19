@@ -14,22 +14,23 @@ Page {
     signal showNotificationRequest()
     signal showLoginRequest()
 
-    // 页面创建时和每次可见时都加载最新用户资料 + 通知未读数
+    // 页面创建时和每次可见时都加载最新用户资料 + 通知角标汇总
+    // （v2.23：只拉汇总，不触发任何"进入分类即已读"语义）
     Component.onCompleted: {
         authViewModel.loadProfile()
-        notifyVM.loadNotifications(1, 20)
+        notifyVM.refreshUnreadSummary()
     }
     onVisibleChanged: {
         if (visible) {
             authViewModel.loadProfile()
-            notifyVM.loadNotifications(1, 20)
+            notifyVM.refreshUnreadSummary()
         }
     }
     // StackView 中从子页面返回时 onVisibleChanged 未必触发，
     // 用 onActivated 保证每次回到本页都刷新
     StackView.onActivated: {
         authViewModel.loadProfile()
-        notifyVM.loadNotifications(1, 20)
+        notifyVM.refreshUnreadSummary()
     }
 
     // ========== 居中容器（全宽自适应） ==========
@@ -468,7 +469,7 @@ Page {
             onClicked: showNotificationRequest()
         }
 
-        // 未读红点
+        // 未读徽章（三态，v2.23）：有可计数未读 → 数字；仅系统通知有新内容 → 纯红点；都无 → 隐藏
         Rectangle {
             anchors.top: parent.top
             anchors.right: parent.right
@@ -477,15 +478,15 @@ Page {
             width: 12; height: 12
             radius: 6
             color: "#E74C3C"
-            visible: notifyVM.unreadCount > 0
+            visible: notifyVM.unreadTotal > 0 || notifyVM.systemHasNew
 
             Text {
                 anchors.centerIn: parent
-                text: notifyVM.unreadCount > 99 ? "99+" : notifyVM.unreadCount.toString()
+                text: notifyVM.unreadTotal > 99 ? "99+" : notifyVM.unreadTotal.toString()
                 color: "white"
                 font.pointSize: 8
                 font.weight: Font.Bold
-                visible: notifyVM.unreadCount > 0
+                visible: notifyVM.unreadTotal > 0
             }
         }
     }

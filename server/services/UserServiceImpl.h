@@ -83,10 +83,12 @@ public:
     // 获取通知列表（分页，可按类型筛选）
     gocook::models::PagedNotifications getNotifications(int userId, int page, int size,
                                                         const std::string& type = "") override;
-    // 标记单条通知已读
-    void markNotificationRead(int userId, int notificationId) override;
-    // 全部通知标记已读
-    void markAllNotificationsRead(int userId) override;
+    // 获取未读汇总（消息中心角标：各分类未读数 + 有无新公告）
+    gocook::models::NotificationUnreadSummary getUnreadSummary(int userId) override;
+    // 上报通知类已读水位（type ∈ review/interaction；幂等）
+    void setNotificationsReadState(int userId, const std::string& type, int lastSeenId) override;
+    // 上报公告已读水位（幂等）
+    void setAnnouncementsReadState(int userId, int lastSeenId) override;
     // 删除通知
     void deleteNotification(int userId, int notificationId) override;
 

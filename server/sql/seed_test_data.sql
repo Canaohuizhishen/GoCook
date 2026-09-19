@@ -317,12 +317,12 @@ ON CONFLICT (id) DO UPDATE SET
 -- ====================================================================
 -- 10. 通知示例
 -- ====================================================================
-INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name, is_read)
-SELECT u.id, d.title, d.content, d.type, d.sub_type, r.id, d.trigger_user, d.is_read
+INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name)
+SELECT u.id, d.title, d.content, d.type, d.sub_type, r.id, d.trigger_user
 FROM (VALUES
-    ('审核结果', '您的菜谱已通过审核，现在可以在首页看到啦！', 'review', NULL, '番茄炒蛋', NULL, FALSE),
-    ('新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', '番茄炒蛋', 'foodie_lily', FALSE)
-) AS d(title, content, type, sub_type, recipe_name, trigger_user, is_read)
+    ('审核结果', '您的菜谱已通过审核，现在可以在首页看到啦！', 'review', NULL, '番茄炒蛋', NULL),
+    ('新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', '番茄炒蛋', 'foodie_lily')
+) AS d(title, content, type, sub_type, recipe_name, trigger_user)
 CROSS JOIN (SELECT id FROM users WHERE username = 'testuser') u
 LEFT JOIN recipes r ON r.name = d.recipe_name AND r.author_id = (SELECT id FROM users WHERE username = 'testuser')
 WHERE NOT EXISTS (

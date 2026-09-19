@@ -799,6 +799,30 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
 
         PagedNotifications result;
 
+        // is_read 动态计算（v2.23 水位模型）：行 id <= 该分类已读水位 = 已读；无水位行 = 水位 0 = 全部未读
+        auto mapRow = [](const pqxx::row_ref& row) {   // pqxx::result 迭代产出 row_ref
+            NotificationItem item;
+            item.id = row["id"].as<int>();
+            item.title = row["title"].as<std::string>();
+            item.content = row["content"].as<std::string>();
+            item.type = row["type"].as<std::string>();
+            if (!row["sub_type"].is_null())
+                item.sub_type = row["sub_type"].as<std::string>();
+            item.is_read = row["is_read"].as<bool>();
+            if (!row["related_id"].is_null())
+                item.related_id = row["related_id"].as<int>();
+            if (!row["trigger_user_name"].is_null())
+                item.trigger_user_name = row["trigger_user_name"].as<std::string>();
+            item.created_at = row["created_at"].as<std::string>();
+            return item;
+        };
+        const std::string selectCols =
+            "SELECT n.id, n.title, n.content, n.type, n.sub_type, "
+            "       (n.id <= COALESCE(w.last_seen_id, 0)) AS is_read, "
+            "       n.related_id, n.trigger_user_name, n.created_at::text "
+            "FROM notifications n "
+            "LEFT JOIN read_watermarks w ON w.user_id = n.user_id AND w.channel = n.type ";
+
         if (filterByType) {
             // 类型筛选：$1=userId, $2=type, $3=limit, $4=offset
             LOG_DEBUG("[SQL] getNotifications(type filter) | $1=%d $2=%s", userId, type.c_str());
@@ -806,28 +830,13 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
                 "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND type = $2",
                 pqxx::params{userId, type});
             pqxx::result dataR = txn.exec(
-                "SELECT id, title, content, type, sub_type, is_read, "
-                "related_id, trigger_user_name, created_at::text "
-                "FROM notifications WHERE user_id = $1 AND type = $2 "
-                "ORDER BY created_at DESC LIMIT $3 OFFSET $4",
+                selectCols +
+                "WHERE n.user_id = $1 AND n.type = $2 "
+                "ORDER BY n.created_at DESC LIMIT $3 OFFSET $4",
                 pqxx::params{userId, type, size, offset});
             result.pagination.total = countR[0][0].as<int>();
-            for (const auto& row : dataR) {
-                NotificationItem item;
-                item.id = row["id"].as<int>();
-                item.title = row["title"].as<std::string>();
-                item.content = row["content"].as<std::string>();
-                item.type = row["type"].as<std::string>();
-                if (!row["sub_type"].is_null())
-                    item.sub_type = row["sub_type"].as<std::string>();
-                item.is_read = row["is_read"].as<bool>();
-                if (!row["related_id"].is_null())
-                    item.related_id = row["related_id"].as<int>();
-                if (!row["trigger_user_name"].is_null())
-                    item.trigger_user_name = row["trigger_user_name"].as<std::string>();
-                item.created_at = row["created_at"].as<std::string>();
-                result.data.push_back(item);
-            }
+            for (const auto& row : dataR)
+                result.data.push_back(mapRow(row));
         } else {
             // 无类型筛选：$1=userId, $2=limit, $3=offset
             LOG_DEBUG("[SQL] getNotifications(no filter) | $1=%d", userId);
@@ -835,28 +844,13 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
                 "SELECT COUNT(*) FROM notifications WHERE user_id = $1",
                 pqxx::params{userId});
             pqxx::result dataR = txn.exec(
-                "SELECT id, title, content, type, sub_type, is_read, "
-                "related_id, trigger_user_name, created_at::text "
-                "FROM notifications WHERE user_id = $1 "
-                "ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                selectCols +
+                "WHERE n.user_id = $1 "
+                "ORDER BY n.created_at DESC LIMIT $2 OFFSET $3",
                 pqxx::params{userId, size, offset});
             result.pagination.total = countR[0][0].as<int>();
-            for (const auto& row : dataR) {
-                NotificationItem item;
-                item.id = row["id"].as<int>();
-                item.title = row["title"].as<std::string>();
-                item.content = row["content"].as<std::string>();
-                item.type = row["type"].as<std::string>();
-                if (!row["sub_type"].is_null())
-                    item.sub_type = row["sub_type"].as<std::string>();
-                item.is_read = row["is_read"].as<bool>();
-                if (!row["related_id"].is_null())
-                    item.related_id = row["related_id"].as<int>();
-                if (!row["trigger_user_name"].is_null())
-                    item.trigger_user_name = row["trigger_user_name"].as<std::string>();
-                item.created_at = row["created_at"].as<std::string>();
-                result.data.push_back(item);
-            }
+            for (const auto& row : dataR)
+                result.data.push_back(mapRow(row));
         }
 
         result.pagination.page = page;
@@ -866,26 +860,69 @@ PagedNotifications PgUserRepository::getNotifications(int userId, int page, int 
     }, "获取通知列表失败");
 }
 
-void PgUserRepository::markNotificationRead(int userId, int notificationId) {
-    executeDb(db_, [&](pqxx::work& txn) {
-        LOG_DEBUG("[SQL] UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 | $1=%d", notificationId);
-        auto r = txn.exec(
-            "UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2",
-            pqxx::params{notificationId, userId});
-        if (r.affected_rows() == 0) {
-            throw ServiceException("通知不存在", 404);
-            // 原代码这里先 commit 再抛（0 行影响，commit/回滚等价），已简化掉
+NotificationUnreadSummary PgUserRepository::getUnreadSummary(int userId) {
+    return executeDb(db_, [&](pqxx::work& txn) {
+        LOG_DEBUG("[SQL] getUnreadSummary | $1=%d", userId);
+        NotificationUnreadSummary summary;
+
+        // 各分类未读数：行 id > 水位（无水位行 = 0 = 全部未读）；单次 GROUP BY 查询取齐
+        pqxx::result rows = txn.exec(
+            "SELECT n.type AS type, COUNT(*) AS cnt "
+            "FROM notifications n "
+            "LEFT JOIN read_watermarks w ON w.user_id = n.user_id AND w.channel = n.type "
+            "WHERE n.user_id = $1 AND (n.id > COALESCE(w.last_seen_id, 0)) "
+            "GROUP BY n.type",
+            pqxx::params{userId});
+        for (const auto& row : rows) {
+            const std::string t = row["type"].as<std::string>();
+            const int cnt = row["cnt"].as<int>();
+            if (t == "review")
+                summary.unread_review = cnt;
+            else if (t == "interaction")
+                summary.unread_interaction = cnt;
+            // 未知 type 防御性忽略（存储枚举已由 CHECK 约束收口）
         }
-    }, "标记已读失败");
+
+        // 新公告：公告 id > 公告水位（公告为全局数据：仅比对“本用户看过的最新公告 id”）
+        pqxx::result annR = txn.exec(
+            "SELECT EXISTS("
+            "  SELECT 1 FROM announcements a WHERE a.id > COALESCE("
+            "    (SELECT w.last_seen_id FROM read_watermarks w "
+            "     WHERE w.user_id = $1 AND w.channel = 'announcement'), 0)"
+            ") AS has_new",
+            pqxx::params{userId});
+        summary.has_new_announcement = annR[0]["has_new"].as<bool>();
+
+        return summary;
+    }, "获取未读汇总失败");
 }
 
-void PgUserRepository::markAllNotificationsRead(int userId) {
+void PgUserRepository::updateReadWatermark(int userId, const std::string& channel, int lastSeenId) {
     executeDb(db_, [&](pqxx::work& txn) {
-        LOG_DEBUG("[SQL] UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false | $1=%d", userId);
+        LOG_DEBUG("[SQL] updateReadWatermark | $1=%d $2=%s $3=%d", userId, channel.c_str(), lastSeenId);
+
+        // 上报值收敛到该频道当前最大 id（防越界值给未来数据“预盖章”；公告频道以公告表为准）
+        int maxId = 0;
+        if (channel == "announcement") {
+            pqxx::result r = txn.exec("SELECT COALESCE(MAX(id), 0) FROM announcements");
+            maxId = r[0][0].as<int>();
+        } else {
+            pqxx::result r = txn.exec(
+                "SELECT COALESCE(MAX(id), 0) FROM notifications WHERE user_id = $1 AND type = $2",
+                pqxx::params{userId, channel});
+            maxId = r[0][0].as<int>();
+        }
+        const int clamped = (lastSeenId < maxId) ? lastSeenId : maxId;
+
+        // GREATEST 合并：水位只前进不回退（乱序/重复上报安全，幂等）
         txn.exec(
-            "UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false",
-            pqxx::params{userId});
-    }, "全部标记已读失败");
+            "INSERT INTO read_watermarks (user_id, channel, last_seen_id, updated_at) "
+            "VALUES ($1, $2, $3, NOW()) "
+            "ON CONFLICT (user_id, channel) DO UPDATE SET "
+            "  last_seen_id = GREATEST(read_watermarks.last_seen_id, EXCLUDED.last_seen_id), "
+            "  updated_at = NOW()",
+            pqxx::params{userId, channel, clamped});
+    }, "更新已读水位失败");
 }
 
 void PgUserRepository::deleteNotification(int userId, int notificationId) {

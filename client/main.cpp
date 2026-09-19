@@ -8,6 +8,7 @@
 #include "viewmodels/RecipeViewModel.h"
 #include "viewmodels/InventoryViewModel.h"
 #include "viewmodels/NotificationViewModel.h"
+#include "viewmodels/AnnouncementViewModel.h"
 #include "viewmodels/ShoppingListViewModel.h"
 #include "dialogs/NativeFileDialog.h"
 
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
     RecipeViewModel recipeVM(httpApi, &app);
     InventoryViewModel inventoryVM(httpApi, &app);
     NotificationViewModel notifyVM(httpApi, &app);
+    AnnouncementViewModel announcementVM(httpApi, &app);
     ShoppingListViewModel shoppingListVM(httpApi, &app);
 
     // 网络恢复 → 库存自动同步（联网即同步；仅数据可能过期时重拉，见 VM）
@@ -63,6 +65,17 @@ int main(int argc, char *argv[])
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &recipeVM, &RecipeViewModel::clearFavorites);
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &shoppingListVM, &ShoppingListViewModel::clearAll);
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &notifyVM, &NotificationViewModel::clearAll);
+    QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &announcementVM, &AnnouncementViewModel::clearAll);
+
+    // 登录成功 / 会话恢复：拉一次未读汇总，保证冷启动后铃铛角标与消息页卡片准确（游客静默跳过）
+    QObject::connect(&authViewModel, &AuthViewModel::loggedInChanged, [&authViewModel, &notifyVM]() {
+        if (authViewModel.loggedIn())
+            notifyVM.refreshUnreadSummary();
+    });
+
+    // 系统通知页完成「看过」后：清除系统红点（消息页卡片与"我的"页铃铛共用该标记）
+    QObject::connect(&announcementVM, &AnnouncementViewModel::announcementsSeen,
+                     &notifyVM, &NotificationViewModel::clearSystemNewFlag);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("authViewModel", &authViewModel);
@@ -70,6 +83,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("recipeVM", &recipeVM);
     engine.rootContext()->setContextProperty("inventoryVM", &inventoryVM);
     engine.rootContext()->setContextProperty("notifyVM", &notifyVM);
+    engine.rootContext()->setContextProperty("announcementVM", &announcementVM);
     engine.rootContext()->setContextProperty("shoppingListVM", &shoppingListVM);
 
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));

@@ -532,12 +532,19 @@ namespace gocook::models {
         int id = 0;                                        ///< 通知 ID
         std::string title;                                 ///< 通知标题
         std::string content;                               ///< 通知内容
-        std::string type;                                  ///< "system", "review", "interaction"
+        std::string type;                                  ///< 类型枚举（v2.23 收口）："review" / "interaction"
         std::string sub_type;                              ///< 用于 interaction 的细分
-        bool is_read = false;                              ///< 是否已读
+        bool is_read = false;                              ///< 是否已读（由"行 id > 该分类已读水位"动态计算，非存储列）
         std::optional<int> related_id;                     ///< 关联资源 ID（如菜谱/评论），nullopt 表示无
         std::optional<std::string> trigger_user_name;      ///< 触发用户用户名（互动类通知）
         std::string created_at;                            ///< 创建时间（ISO 8601）
+    };
+
+    /// 未读汇总（v2.23）：消息中心各频道角标数据（一次请求返回，免逐分类统计）
+    struct NotificationUnreadSummary {
+        int unread_review = 0;              ///< 审核结果未读数（id > 水位 的行数）
+        int unread_interaction = 0;         ///< 互动提醒未读数
+        bool has_new_announcement = false;  ///< 是否有新公告（公告 id > 公告水位；不参与未读计数）
     };
 
     // ==============================================

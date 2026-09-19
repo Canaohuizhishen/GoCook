@@ -237,7 +237,7 @@ Page {
                                     MouseArea {
                                         id: statusMouseArea
                                         anchors.fill: parent
-                                        enabled: !shoppingListVM.isLoading
+                                        // 无全局禁点：连点由 VM 按条目合并 + 串行队列消化（乐观即时上屏）
                                         onClicked: shoppingListVM.updateShoppingListItem(root.listId, modelData.id, !modelData.checked)
                                     }
                                 }
@@ -256,7 +256,7 @@ Page {
                                     MouseArea {
                                         id: deleteItemMouseArea
                                         anchors.fill: parent
-                                        enabled: !shoppingListVM.isLoading
+                                        // 无全局禁点：重复删除由 VM 的 m_deletingItemIds 兜底去重
                                         onClicked: {
                                             deleteItemDialog.pendingItemId = modelData.id
                                             deleteItemDialog.pendingItemName = modelData.ingredientName || ""

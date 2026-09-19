@@ -237,7 +237,8 @@ public:
      * @param userId 用户 ID
      * @param page 页码（从 1 开始）
      * @param size 每页数量
-     * @param type 类型筛选："system"/"review"/"interaction"，空串表示全部
+     * @param type 类型筛选："review"/"interaction"（v2.23 枚举收口），空串表示全部；
+     *             响应 is_read 由「行 id > 该分类已读水位」动态计算（非存储列）
      * @return 分页的通知列表
      */
     virtual models::PagedNotifications getNotifications(int userId, int page,
@@ -245,17 +246,22 @@ public:
                                                         const std::string& type) = 0;
 
     /**
-     * @brief 标记单条通知已读。
+     * @brief 查询未读汇总（消息中心角标：各分类未读数 + 有无新公告）。
      * @param userId 用户 ID
-     * @param notificationId 通知 ID
+     * @return 未读汇总
      */
-    virtual void markNotificationRead(int userId, int notificationId) = 0;
+    virtual models::NotificationUnreadSummary getUnreadSummary(int userId) = 0;
 
     /**
-     * @brief 全部通知标记已读。
+     * @brief 上报已读水位（幂等）。
+     *   语义：把频道水位推进到 max(现值, 上报值)，未读判定 = 行 id > 水位；
+     *   上报值收敛到该频道当前最大 id（防越界值吞掉未来数据），不允许回退。
      * @param userId 用户 ID
+     * @param channel 频道："review" / "interaction" / "announcement"
+     * @param lastSeenId 客户端看到的当前最大 id
      */
-    virtual void markAllNotificationsRead(int userId) = 0;
+    virtual void updateReadWatermark(int userId, const std::string& channel,
+                                     int lastSeenId) = 0;
 
     /**
      * @brief 删除通知。

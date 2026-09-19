@@ -6,7 +6,7 @@
 
 | 文件 | 作用 | 可否重复执行 | 何时执行 |
 | --- | --- | --- | --- |
-| `create_all_tables.sql` | ⛔ DROP 全部表后重建（含 inventory 三维唯一约束 `(user_id, ingredient_name, unit)`） | 可重复，但每次都会**清空全部数据** | 全新库 / 一键重置（server/reset_db.sh 第 1 步） |
+| `create_all_tables.sql` | ⛔ DROP 全部表后重建（含 inventory 三维唯一约束 `(user_id, ingredient_name, unit)`、通知水位表 `read_watermarks`） | 可重复，但每次都会**清空全部数据** | 全新库 / 一键重置（server/reset_db.sh 第 1 步） |
 | `seed_ingredient_nutrition.sql` | 食材营养种子（200 行，每 100g 含量），幂等全量同步（DELETE + INSERT） | ✅ 可重复 | 建表之后（server/reset_db.sh 第 2 步）；营养库修正后也可单独重跑 |
 | `seed_test_data.sql` | 测试种子：testuser 账号、23 道菜谱、库存、购物清单、通知、评论等；ON CONFLICT/动态 id，幂等 | ✅ 可重复 | 建表之后（server/reset_db.sh 第 3 步） |
 
@@ -42,6 +42,35 @@
 >     expires_at TIMESTAMPTZ NOT NULL,
 >     created_at TIMESTAMP DEFAULT NOW()
 > );
+> ```
+
+> 通知已读水位模型（v2.23）——`notifications.is_read` 逐行已读改由 `read_watermarks` 水位表达
+> （每用户每频道一行：review / interaction / announcement），未读判定统一为 `行 id > last_seen_id`；
+> 新建库由 `create_all_tables.sql` 直接包含，**保留数据的存量库**手工执行：
+> ```sql
+> CREATE TABLE IF NOT EXISTS read_watermarks (
+>     user_id      INT  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+>     channel      TEXT NOT NULL CHECK (channel IN ('review', 'interaction', 'announcement')),
+>     last_seen_id INT  NOT NULL DEFAULT 0,
+>     updated_at   TIMESTAMP DEFAULT NOW(),
+>     PRIMARY KEY (user_id, channel)
+> );
+> -- 回填水位（近似边界：取每用户每类型已读行的最大 id；已读集合非连续时不可精确表达，
+> -- 边界以下的未读行将视为已读——开发数据可接受）；未回填用户水位为 0 = 全部未读
+> INSERT INTO read_watermarks (user_id, channel, last_seen_id)
+> SELECT user_id, type, MAX(id) FROM notifications
+> WHERE is_read = TRUE AND type IN ('review', 'interaction')
+> GROUP BY user_id, type
+> ON CONFLICT (user_id, channel) DO UPDATE
+>     SET last_seen_id = GREATEST(read_watermarks.last_seen_id, EXCLUDED.last_seen_id), updated_at = NOW();
+> -- 清理弃用类型（历史 dev 重置端点写入的 system 行）并收口枚举
+> DELETE FROM notifications WHERE type NOT IN ('review', 'interaction') OR type IS NULL;
+> ALTER TABLE notifications ALTER COLUMN type SET NOT NULL;
+> ALTER TABLE notifications ALTER COLUMN type DROP DEFAULT;
+> ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
+>     CHECK (type IN ('review', 'interaction'));
+> -- 删除 is_read 列
+> ALTER TABLE notifications DROP COLUMN IF EXISTS is_read;
 > ```
 
 ## 一键重置（推荐入口）
