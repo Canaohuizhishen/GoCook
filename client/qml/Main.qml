@@ -23,7 +23,12 @@ ApplicationWindow {
     //   kind="action" → 执行被拦下的动作回调（pop 回原页面后执行）
     // 未登录连点多个需登录操作时，最新意图覆盖旧意图（防重入见 loginPageOpen）
     property var pendingNav: null
-    // 应用内登录页是否已在栈顶（guardedPush/guardAction/onAuthRequired 共用防重入：登录页只压一层）
+
+    // loginPageOpen：登录页是否已在栈顶。作用有两个：
+    //   1) 防重入——用户连点 3 个需登录按钮，只弹一层登录页，不会叠 3 层
+    //   2) 登录成功后由它判断"该不该 pop 回原页"（见段 5 onLoggedInChanged）
+    // 之所以不用 stackView.depth 判断，是因为 push/replace 过程中 depth 有短暂
+    // 不一致窗口期，用一个显式 bool 更可控
     property bool loginPageOpen: false
 
     // 统一导航守卫：所有页面 push 的唯一入口。
@@ -62,7 +67,7 @@ ApplicationWindow {
 
     Settings {
         id: settings
-        property int themeMode: 0
+        property int themeMode: 0 // 0=浅 1=深 2=跟随系统
     }
 
     Component.onCompleted: Theme.themeMode = settings.themeMode
@@ -458,7 +463,8 @@ ApplicationWindow {
                         if (p.callback) p.callback()
                     }
                 } else if (loginPageOpen) {
-                    // 请求守卫登录成功：pop 回原页面（挂起请求已由 tokenChanged 自动重放）
+                    // 挂起的请求已经由 HttpGoCookApi 的 tokenChanged → replayPendingAuthRequests 自动重放，
+                    // 这里只需要把登录页 pop 掉，回到原页面即可（用户无感）
                     loginPageOpen = false
                     stackView.pop()
                 } else {

@@ -91,10 +91,17 @@ void HttpGoCookApi::clearPendingAuthRequests()
 {
     if (m_pendingAuthRequests.empty())
         return;
+
+    // 先搬走再遍历：handler 内部可能重入操作成员队列，直接遍历成员会迭代器失效
     auto pending = std::move(m_pendingAuthRequests);
     m_pendingAuthRequests.clear();
     for (auto &p : pending) {
         if (p.handler)
+            // p.handler 是 sendRequest() 传给 sendRaw() 的“统一收尾 lambda”
+            // （不是 PendingAuthRequest 现场构造的），它捕获了 ViewModel 传进来的 callback。
+            // 挂起时由 sendRaw() 在“未登录 + Interactive”分支 move 进队列；
+            // 此处固定以 -2 调用它 → handler 内走 -2 分支 → errorMessageFor(-2)
+            // 返回 kAuthRequiredError("请先登录") → 经 callback 一路传回 ViewModel。
             p.handler(-2, QByteArray());
     }
 }
