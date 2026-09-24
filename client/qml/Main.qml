@@ -197,7 +197,11 @@ ApplicationWindow {
                 guardedPush(recipeDetailPage, {recipeId: recipeId}, PagePolicy.recipeDetailPage)
             }
             onShowSubmitRequest: () => {
-                coverImageDialog.openWithFilter(qsTr("选择封面图片"), "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.svg)")
+                // 写操作入口（游客点击 = 先登录后选图）：动作守卫接住，登录成功后继续弹选图框；
+                // 选图完成后再 push 投稿页（内层 guardedPush 保留作纵深防御）
+                guardAction(() => {
+                    coverImageDialog.openWithFilter(qsTr("选择封面图片"), "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.svg)")
+                })
             }
             onShowMyRecipesRequest: () => {
                 guardedPush(myRecipesPage, undefined, PagePolicy.myRecipesPage)
@@ -257,6 +261,7 @@ ApplicationWindow {
         id: myRecipesPage
         MyRecipesPage {
             property var _stackView: stackView
+            onLoginRequested: guardAction(function() {})
             onEditRecipeRequested: (recipeId, status) => {
                 guardedPush(submitRecipePage, {recipeId: recipeId, recipeStatus: status, _stackView: stackView}, PagePolicy.submitRecipePage)
             }
@@ -267,6 +272,7 @@ ApplicationWindow {
         id: myRatingsPage
         MyRatingsPage {
             property var _stackView: stackView
+            onLoginRequested: guardAction(function() {})
             onRecipeClicked: (recipeId) => {
                 guardedPush(recipeDetailPage, {recipeId: recipeId}, PagePolicy.recipeDetailPage)
             }
@@ -369,6 +375,7 @@ ApplicationWindow {
         id: notificationPage
         NotificationPage {
             property var _stackView: stackView
+            onLoginRequested: guardAction(function() {})
             onShowDetailRequest: (data) => {
                 guardedPush(notificationDetailPage, {notificationData: data}, PagePolicy.notificationDetailPage)
             }

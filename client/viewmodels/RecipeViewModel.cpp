@@ -625,10 +625,14 @@ void RecipeViewModel::deleteRecipe(int recipeId)
     }
 
     // 发 API 请求
+    // 快照当前会话：登出/换号后到达的响应作废——失败回滚不得复活已清空的旧列表
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->deleteRecipe(recipeId,
-        [self = QPointer<RecipeViewModel>(this), oldList, found, recipeId](bool success, const std::string& error) {
+        [self = QPointer<RecipeViewModel>(this), oldList, found, recipeId, session](bool success, const std::string& error) {
             if (!self) return;
             self->m_pendingDeleteIds.remove(recipeId); // 无论成功失败都清理
+            // 会话已切换：过期响应作废（clearMyContent 已接管，不回滚、不重拉、不发信号）
+            if (!session.isCurrent(self->m_api)) return;
             if (success) {
                 // DELETE 成功后从服务端同步
                 self->loadMyRecipes(1, self->m_myRecipesStatus);
@@ -656,10 +660,22 @@ void RecipeViewModel::loadMyRecipes(int page, const QString& status, int size)
     }
     emit myRecipesLoadingChanged();
 
+    // 快照当前会话（token，SessionSnapshot）：登出/换号后到达的过期响应作废——
+    // 我的投稿是个人数据且页面对游客可见，迟到响应不得落入已清空的列表
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->getMySubmittedRecipes(page, size, status.toStdString(),
-        [self = QPointer<RecipeViewModel>(this), page]
+        [self = QPointer<RecipeViewModel>(this), page, session]
         (bool success, const gocook::models::PagedMyRecipes& data, const std::string& error) {
             if (!self) return;
+            // 会话已切换：过期响应作废（不清状态，clearMyContent/新加载已接管）；
+            // 仅复位加载标记防页面卡死（极端时序下 clearMyContent 尚未执行）
+            if (!session.isCurrent(self->m_api)) {
+                if (self->m_myRecipesLoading) {
+                    self->m_myRecipesLoading = false;
+                    emit self->myRecipesLoadingChanged();
+                }
+                return;
+            }
             if (!success) {
                 emit self->errorOccurred(QString::fromStdString(error));
                 self->m_myRecipesLoading = false;
@@ -712,10 +728,22 @@ void RecipeViewModel::loadMyRatings(int page, int size)
     }
     emit myRatingsLoadingChanged();
 
+    // 快照当前会话（token，SessionSnapshot）：登出/换号后到达的过期响应作废——
+    // 我的评论是个人数据且页面对游客可见，迟到响应不得落入已清空的列表
+    const auto session = SessionSnapshot::capture(m_api);
     m_api->getMyRatings(page, size,
-        [self = QPointer<RecipeViewModel>(this), page]
+        [self = QPointer<RecipeViewModel>(this), page, session]
         (bool success, const gocook::models::PagedUserRatings& data, const std::string& error) {
             if (!self) return;
+            // 会话已切换：过期响应作废（不清状态，clearMyContent/新加载已接管）；
+            // 仅复位加载标记防页面卡死（极端时序下 clearMyContent 尚未执行）
+            if (!session.isCurrent(self->m_api)) {
+                if (self->m_myRatingsLoading) {
+                    self->m_myRatingsLoading = false;
+                    emit self->myRatingsLoadingChanged();
+                }
+                return;
+            }
             if (!success) {
                 emit self->errorOccurred(QString::fromStdString(error));
                 self->m_myRatingsLoading = false;
@@ -835,6 +863,32 @@ void RecipeViewModel::clearFavorites()
     emit favoritesHasMoreChanged();
     emit favoritesLoadingChanged();
     emit favoritesLoadFailedChanged();
+}
+
+void RecipeViewModel::clearMyContent()
+{
+    // 我的投稿 / 我的评论属于个人数据，且两页对游客可见（未登录呈现登录空态）：
+    // 登出后必须清空，否则残留会让上一账号的投稿/评论直接可见；
+    // 分页与在途状态同步复位——loading 复位保证游客重进时入口清空不被重入守卫跳过，
+    // 在途请求的迟到响应由会话快照判废（见 loadMyRecipes / loadMyRatings 回调）
+    m_myRecipes.clear();
+    m_myRecipesPage = 1;
+    m_myRecipesTotalPages = 0;
+    m_myRecipesHasMore = false;
+    m_myRecipesStatus.clear();
+    m_myRecipesLoading = false;
+    m_pendingDeleteIds.clear();
+    m_myRatings.clear();
+    m_myRatingsPage = 1;
+    m_myRatingsTotalPages = 0;
+    m_myRatingsHasMore = false;
+    m_myRatingsLoading = false;
+    emit myRecipesChanged();
+    emit myRecipesHasMoreChanged();
+    emit myRecipesLoadingChanged();
+    emit myRatingsChanged();
+    emit myRatingsHasMoreChanged();
+    emit myRatingsLoadingChanged();
 }
 
 void RecipeViewModel::toggleFavorite(int recipeId, int groupId)

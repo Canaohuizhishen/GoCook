@@ -23,6 +23,12 @@
 // 搜索轮次守卫回归用例（搜索补 RequestEpoch 轮次作废；对齐库存“最新意图必达”语义）：
 //   S1  在途期间换词：旧词迟到响应被静默丢弃，结果保留新词（不加守卫时旧词会覆盖新词）
 //   S2  resetSearch 作废在途：清空后旧响应不得再落数据，加载标记复位
+//
+// 登出残留与串台回归用例（「登出 → 游客进页」自动化编码；两页对游客可见后补会话快照）：
+//   M1  clearMyContent 清空我的投稿/我的评论列表与分页状态（登出清理——残留会让上一账号数据直接可见）
+//   M2  登出后游客载入被守卫拦截：不发请求、列表保持空、error="请先登录"
+//   M3/M4  会话切换后在途响应被丢弃：迟到响应不得落入已清空的我的投稿/我的评论列表
+//   M5  deleteRecipe 失败回滚不得在会话切换后复活旧列表
 
 #include <gtest/gtest.h>
 
@@ -61,7 +67,21 @@ bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
     return true;
 }
 
-// 收藏域桩服务：收藏列表 / 收藏分组 / 收藏写操作
+// 轮询等待计数器到达目标值（“请求已到达桩”判据；配合桩内延迟构造“在途”窗口）
+bool waitForCount(const std::atomic<int>& count, int target, int timeoutMs = 5000)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (count.load() < target) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        if (timer.elapsed() > timeoutMs)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return true;
+}
+
+// 桩服务：收藏列表 / 收藏分组 / 收藏写操作 / 搜索 / 我的投稿与我的评论（含删除菜谱）
 class FavoriteStubServer {
 public:
     // 请求流水一条记录（收藏列表请求用 page/size/group；搜索请求用 page/size/keyword）
@@ -76,6 +96,15 @@ public:
     std::atomic<int> groupsReqCount{0};
     std::atomic<int> favoriteWriteReqCount{0};
     std::atomic<int> favoriteWriteStatus{200}; // 可切换：200 成功 / 500 失败
+
+    // M 系列（我的投稿/我的评论）：请求计数 + 可切换延迟（模拟“在途”窗口）与删除状态
+    std::atomic<int> myRecipesReqCount{0};
+    std::atomic<int> myRatingsReqCount{0};
+    std::atomic<int> deleteRecipeReqCount{0};
+    std::atomic<int> myRecipesDelayMs{0};
+    std::atomic<int> myRatingsDelayMs{0};
+    std::atomic<int> deleteRecipeDelayMs{0};
+    std::atomic<int> deleteRecipeStatus{200}; // 可切换：200 成功 / 500 失败
 
     // 最近一次收藏写请求体（PATCH /favorites/batch；单条/批量移动共用，用于断言 N=1 与全量 id）
     std::string lastFavoriteWriteBody()
@@ -179,6 +208,47 @@ public:
                 ",\"total\":10,\"total_pages\":2},"
                 "\"data\":[{\"id\":1,\"name\":\"" + keyword + "\"}]}",
                 "application/json");
+        });
+
+        // ---- M 系列：我的投稿 / 我的评论 / 删除菜谱 ----
+        svr.Get("/api/recipes/my", [this](const httplib::Request& req, httplib::Response& res) {
+            myRecipesReqCount++;
+            if (myRecipesDelayMs.load() > 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(myRecipesDelayMs.load()));
+            const int page = std::stoi(req.get_param_value("page"));
+            const int size = std::stoi(req.get_param_value("size"));
+            // total_pages 固定 2：保证首屏 hasMore=true，M1 据此断言 clearMyContent 将其复位
+            res.status = 200;
+            res.set_content(
+                "{\"pagination\":{\"page\":" + std::to_string(page) +
+                ",\"size\":" + std::to_string(size) +
+                ",\"total\":2,\"total_pages\":2},"
+                "\"data\":[{\"id\":7,\"name\":\"红烧排骨\",\"status\":\"approved\","
+                "\"submitted_at\":\"2026-09-01 10:00:00\",\"updated_at\":\"2026-09-02 10:00:00\"}]}",
+                "application/json");
+        });
+        svr.Get("/api/users/me/ratings", [this](const httplib::Request& req, httplib::Response& res) {
+            myRatingsReqCount++;
+            if (myRatingsDelayMs.load() > 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(myRatingsDelayMs.load()));
+            const int page = std::stoi(req.get_param_value("page"));
+            const int size = std::stoi(req.get_param_value("size"));
+            res.status = 200;
+            res.set_content(
+                "{\"pagination\":{\"page\":" + std::to_string(page) +
+                ",\"size\":" + std::to_string(size) +
+                ",\"total\":2,\"total_pages\":2},"
+                "\"data\":[{\"rating_id\":1,\"recipe_id\":2,\"recipe_name\":\"番茄炒蛋\","
+                "\"rating\":5,\"comment\":\"好吃\","
+                "\"created_at\":\"2026-09-01 10:00:00\",\"updated_at\":\"2026-09-01 10:00:00\"}]}",
+                "application/json");
+        });
+        svr.Delete(R"(/api/recipes/(\d+))", [this](const httplib::Request&, httplib::Response& res) {
+            deleteRecipeReqCount++;
+            if (deleteRecipeDelayMs.load() > 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(deleteRecipeDelayMs.load()));
+            res.status = deleteRecipeStatus.load();
+            res.set_content(R"({"message":"ok"})", "application/json");
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
@@ -657,5 +727,238 @@ TEST_F(RecipeVmTest, resetSearch作废在途旧响应不再落数据)
     EXPECT_TRUE(vm.searchResults().isEmpty()) << "resetSearch 后旧响应不得回填结果";
     EXPECT_FALSE(vm.searchPerformed()) << "空态标记不得被旧响应置真";
     EXPECT_FALSE(vm.searchLoading()) << "resetSearch 应复位加载标记（在途请求已作废）";
+}
+
+// ==================== M1：clearMyContent 清空我的投稿/我的评论列表与分页状态 ====================
+TEST_F(RecipeVmTest, clearMyContent清空两列表与分页状态)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    // 注：入口清空（page==1）同样会发 Changed 信号，用"非空"条件区分加载完成（对齐 S1 写法）
+    std::atomic<bool> recipesLoaded{false};
+    std::atomic<bool> ratingsLoaded{false};
+    QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() {
+        if (!vm.myRecipes().isEmpty())
+            recipesLoaded = true;
+    });
+    QObject::connect(&vm, &RecipeViewModel::myRatingsChanged, [&]() {
+        if (!vm.myRatings().isEmpty())
+            ratingsLoaded = true;
+    });
+
+    vm.loadMyRecipes(1, "");
+    ASSERT_TRUE(waitUntil(recipesLoaded)) << "加载我的投稿超时";
+    ASSERT_EQ(vm.myRecipes().size(), 1);
+    ASSERT_TRUE(vm.myRecipesHasMore()) << "桩 total_pages=2，首屏应有下一页";
+
+    vm.loadMyRatings();
+    ASSERT_TRUE(waitUntil(ratingsLoaded)) << "加载我的评论超时";
+    ASSERT_EQ(vm.myRatings().size(), 1);
+    ASSERT_TRUE(vm.myRatingsHasMore()) << "桩 total_pages=2，首屏应有下一页";
+
+    std::atomic<bool> recipesHasMoreChanged{false};
+    std::atomic<bool> ratingsHasMoreChanged{false};
+    std::atomic<bool> recipesLoadingChanged{false};
+    std::atomic<bool> ratingsLoadingChanged{false};
+    QObject::connect(&vm, &RecipeViewModel::myRecipesHasMoreChanged, [&]() { recipesHasMoreChanged = true; });
+    QObject::connect(&vm, &RecipeViewModel::myRatingsHasMoreChanged, [&]() { ratingsHasMoreChanged = true; });
+    QObject::connect(&vm, &RecipeViewModel::myRecipesLoadingChanged, [&]() { recipesLoadingChanged = true; });
+    QObject::connect(&vm, &RecipeViewModel::myRatingsLoadingChanged, [&]() { ratingsLoadingChanged = true; });
+
+    std::atomic<bool> recipesCleared{false};
+    std::atomic<bool> ratingsCleared{false};
+    QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() { recipesCleared = true; });
+    QObject::connect(&vm, &RecipeViewModel::myRatingsChanged, [&]() { ratingsCleared = true; });
+
+    vm.clearMyContent();
+
+    EXPECT_TRUE(vm.myRecipes().isEmpty()) << "我的投稿必须清空（登出残留防护）";
+    EXPECT_TRUE(vm.myRatings().isEmpty()) << "我的评论必须清空（登出残留防护）";
+    EXPECT_FALSE(vm.myRecipesHasMore()) << "分页状态必须复位";
+    EXPECT_FALSE(vm.myRatingsHasMore()) << "分页状态必须复位";
+    EXPECT_TRUE(recipesCleared.load()) << "清空必须发 myRecipesChanged";
+    EXPECT_TRUE(ratingsCleared.load()) << "清空必须发 myRatingsChanged";
+    EXPECT_TRUE(recipesHasMoreChanged.load());
+    EXPECT_TRUE(ratingsHasMoreChanged.load());
+    EXPECT_TRUE(recipesLoadingChanged.load());
+    EXPECT_TRUE(ratingsLoadingChanged.load());
+
+    QObject::disconnect(&vm, &RecipeViewModel::myRecipesChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::myRatingsChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::myRecipesHasMoreChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::myRatingsHasMoreChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::myRecipesLoadingChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::myRatingsLoadingChanged, nullptr, nullptr);
+}
+
+// ==================== M2：登出 → 游客进页——守卫拦截不发请求、无残留 ====================
+TEST_F(RecipeVmTest, 登出后游客载入被守卫拦截且无残留)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    // 注：入口清空（page==1）同样会发 Changed 信号，用"非空"条件区分加载完成（对齐 S1 写法）
+    std::atomic<bool> recipesLoaded{false};
+    std::atomic<bool> ratingsLoaded{false};
+    QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() {
+        if (!vm.myRecipes().isEmpty())
+            recipesLoaded = true;
+    });
+    QObject::connect(&vm, &RecipeViewModel::myRatingsChanged, [&]() {
+        if (!vm.myRatings().isEmpty())
+            ratingsLoaded = true;
+    });
+
+    // 登录态：先加载出数据
+    vm.loadMyRecipes(1, "");
+    ASSERT_TRUE(waitUntil(recipesLoaded)) << "加载我的投稿超时";
+    ASSERT_EQ(vm.myRecipes().size(), 1);
+    vm.loadMyRatings();
+    ASSERT_TRUE(waitUntil(ratingsLoaded)) << "加载我的评论超时";
+    ASSERT_EQ(vm.myRatings().size(), 1);
+
+    // 登出：token 清空（AuthViewModel::logout）+ 会话结束清理（main.cpp sessionEnded 接线等价调用）
+    api.setToken(QString());
+    vm.clearMyContent();
+    EXPECT_TRUE(vm.myRecipes().isEmpty()) << "登出不得留下上一账号的我的投稿";
+    EXPECT_TRUE(vm.myRatings().isEmpty()) << "登出不得留下上一账号的我的评论";
+
+    // 游客进页（等价页面 Component.onCompleted 的 loadMyRecipes/loadMyRatings）：
+    // Silent 守卫拦下请求（不发）、回调"请先登录"、列表保持空
+    std::atomic<bool> errorFlag{false};
+    std::string lastError;
+    QObject::connect(&vm, &RecipeViewModel::errorOccurred, [&](const QString& e) {
+        lastError = e.toStdString();
+        errorFlag = true;
+    });
+    const int recipesReqsBefore = stub.myRecipesReqCount.load();
+    const int ratingsReqsBefore = stub.myRatingsReqCount.load();
+
+    errorFlag = false;
+    vm.loadMyRecipes(1, "");
+    ASSERT_TRUE(waitUntil(errorFlag)) << "守卫拦截回调超时";
+    EXPECT_EQ(lastError, "请先登录");
+    EXPECT_EQ(stub.myRecipesReqCount.load(), recipesReqsBefore) << "游客载入不得发出请求";
+    EXPECT_TRUE(vm.myRecipes().isEmpty()) << "游客载入不得落数据";
+    EXPECT_FALSE(vm.myRecipesLoading()) << "加载标记必须复位";
+
+    errorFlag = false;
+    vm.loadMyRatings();
+    ASSERT_TRUE(waitUntil(errorFlag)) << "守卫拦截回调超时";
+    EXPECT_EQ(lastError, "请先登录");
+    EXPECT_EQ(stub.myRatingsReqCount.load(), ratingsReqsBefore) << "游客载入不得发出请求";
+    EXPECT_TRUE(vm.myRatings().isEmpty()) << "游客载入不得落数据";
+    EXPECT_FALSE(vm.myRatingsLoading()) << "加载标记必须复位";
+
+    QObject::disconnect(&vm, &RecipeViewModel::myRecipesChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::myRatingsChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::errorOccurred, nullptr, nullptr);
+}
+
+// ==================== M3：会话切换后 loadMyRecipes 过期响应被丢弃 ====================
+TEST_F(RecipeVmTest, loadMyRecipes会话切换后过期响应被丢弃)
+{
+    FavoriteStubServer stub;
+    stub.myRecipesDelayMs = 400;   // 请求到达桩后延迟响应，制造"在途"窗口
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> loadingReset{false};
+    QObject::connect(&vm, &RecipeViewModel::myRecipesLoadingChanged, [&]() {
+        if (!vm.myRecipesLoading())
+            loadingReset = true;
+    });
+
+    vm.loadMyRecipes(1, "");
+    ASSERT_TRUE(waitForCount(stub.myRecipesReqCount, 1)) << "请求未到达桩";
+
+    // 登出：会话切换发生在响应落地之前
+    api.setToken(QString());
+
+    // 迟到响应到达 → 会话快照判废；兜底复位加载标记可观测，据此等待响应已被处理
+    ASSERT_TRUE(waitUntil(loadingReset)) << "过期响应未按预期丢弃（加载标记未复位）";
+    EXPECT_TRUE(vm.myRecipes().isEmpty()) << "过期响应不得落入已登出会话的列表";
+
+    QObject::disconnect(&vm, &RecipeViewModel::myRecipesLoadingChanged, nullptr, nullptr);
+}
+
+// ==================== M4：会话切换后 loadMyRatings 过期响应被丢弃 ====================
+TEST_F(RecipeVmTest, loadMyRatings会话切换后过期响应被丢弃)
+{
+    FavoriteStubServer stub;
+    stub.myRatingsDelayMs = 400;   // 请求到达桩后延迟响应，制造"在途"窗口
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> loadingReset{false};
+    QObject::connect(&vm, &RecipeViewModel::myRatingsLoadingChanged, [&]() {
+        if (!vm.myRatingsLoading())
+            loadingReset = true;
+    });
+
+    vm.loadMyRatings();
+    ASSERT_TRUE(waitForCount(stub.myRatingsReqCount, 1)) << "请求未到达桩";
+
+    // 登出：会话切换发生在响应落地之前
+    api.setToken(QString());
+
+    ASSERT_TRUE(waitUntil(loadingReset)) << "过期响应未按预期丢弃（加载标记未复位）";
+    EXPECT_TRUE(vm.myRatings().isEmpty()) << "过期响应不得落入已登出会话的列表";
+
+    QObject::disconnect(&vm, &RecipeViewModel::myRatingsLoadingChanged, nullptr, nullptr);
+}
+
+// ==================== M5：deleteRecipe 失败回滚不得在会话切换后复活旧列表 ====================
+TEST_F(RecipeVmTest, deleteRecipe会话切换后失败不回滚复活旧列表)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> recipesLoaded{false};
+    std::atomic<bool> deleteFailed{false};
+    QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() {
+        if (!vm.myRecipes().isEmpty())
+            recipesLoaded = true;   // 入口清空也会发 Changed，用"非空"区分加载完成（对齐 S1 写法）
+    });
+    QObject::connect(&vm, &RecipeViewModel::deleteFailed, [&](const QString&) { deleteFailed = true; });
+
+    vm.loadMyRecipes(1, "");
+    ASSERT_TRUE(waitUntil(recipesLoaded)) << "加载我的投稿超时";
+    ASSERT_EQ(vm.myRecipes().size(), 1);
+
+    // 删除请求：乐观移除 + 延迟失败响应（模拟在途）
+    stub.deleteRecipeStatus = 500;
+    stub.deleteRecipeDelayMs = 400;
+    vm.deleteRecipe(7);
+    EXPECT_TRUE(vm.myRecipes().isEmpty()) << "乐观删除应立即移除条目";
+    ASSERT_TRUE(waitForCount(stub.deleteRecipeReqCount, 1)) << "删除请求未到达桩";
+
+    // 会话切换（登出）+ 会话结束清理，均发生在失败响应落地之前
+    api.setToken(QString());
+    vm.clearMyContent();
+
+    // 等失败响应落地（延迟 + 余量，期间泵事件循环）
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 400 + 400) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(vm.myRecipes().isEmpty()) << "过期失败响应不得回滚复活上一账号的列表";
+    EXPECT_FALSE(deleteFailed.load()) << "过期响应不得发失败信号";
+    EXPECT_FALSE(vm.myRecipesLoading()) << "过期响应不得触发重拉";
+
+    QObject::disconnect(&vm, &RecipeViewModel::myRecipesChanged, nullptr, nullptr);
+    QObject::disconnect(&vm, &RecipeViewModel::deleteFailed, nullptr, nullptr);
 }
 } // namespace

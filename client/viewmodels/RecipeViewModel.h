@@ -169,6 +169,9 @@ public:
     Q_INVOKABLE void loadMoreFavorites();
     /// 清空收藏列表与分组、加载状态（登出/账号切换时调用，杜绝上一账号残留数据串台）
     Q_INVOKABLE void clearFavorites();
+    /// 清空我的投稿与我的评论列表、分页与在途状态（登出/账号切换时调用；main.cpp sessionEnded 单点接线消费）——
+    /// 这两页对游客可见，残留会让上一账号的投稿/评论直接呈现
+    Q_INVOKABLE void clearMyContent();
     /// 收藏/取消收藏（groupId>0 收藏到该分组，0=默认夹）。成功发 favoriteToggleSuccess，
     /// 失败发 favoriteOperationFailed——页面自行维护乐观状态并回滚。
     Q_INVOKABLE void toggleFavorite(int recipeId, int groupId = 0);

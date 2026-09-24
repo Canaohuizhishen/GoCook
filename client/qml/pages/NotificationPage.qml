@@ -18,6 +18,8 @@ Page {
     signal showDetailRequest(var data)
     signal showSystemNoticeRequest()
     signal showPlaceholderRequest(string pageTitle)
+    // 未登录空态「去登录」→ 请求弹应用内登录页（Main.qml 动作守卫接住；登录成功后原地刷新）
+    signal loginRequested()
 
     property string errorMessage: ""
 
@@ -480,6 +482,8 @@ Page {
                                   ? qsTr("审核结果") + " (" + notifyVM.reviewUnread + ")"
                                   : qsTr("审核结果")
                             flat: true
+                            // 游客态禁用：未登录无个人通知可看（对齐投稿页筛选/库存过滤框先例）
+                            enabled: authViewModel.loggedIn
                             Layout.preferredHeight: 30
                             highlighted: notifyVM.currentType === "review"
                             Layout.fillWidth: true
@@ -504,6 +508,7 @@ Page {
                                   ? qsTr("互动提醒") + " (" + notifyVM.interactionUnread + ")"
                                   : qsTr("互动提醒")
                             flat: true
+                            enabled: authViewModel.loggedIn
                             Layout.preferredHeight: 30
                             highlighted: notifyVM.currentType === "interaction"
                             Layout.fillWidth: true
@@ -544,7 +549,21 @@ Page {
             // 空态提示：放进内容流（footer），随列表一起滚动——不再用浮层（避免滚动时遮盖头部）
             footer: Item {
                 width: notificationListView.width
-                height: emptyHint.visible ? emptyHint.height + 48 : 0
+                height: emptyHint.visible ? emptyHint.height + 48
+                      : guestHint.visible ? guestHint.height + 48 : 0
+
+                // 游客空态（页面入口对游客可见；「去登录」原地刷新，不 pop 回上层）
+                GuestEmptyState {
+                    id: guestHint
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top
+                    anchors.topMargin: 24
+                    visible: !authViewModel.loggedIn
+                    iconText: "\uD83D\uDCEC"
+                    title: qsTr("登录后查看消息")
+                    subtitle: qsTr("系统公告无需登录即可浏览")
+                    onActionRequested: notificationPage.loginRequested()
+                }
 
                 Column {
                     id: emptyHint
@@ -553,7 +572,7 @@ Page {
                     anchors.topMargin: 24
                     width: Math.min(320, notificationListView.width * 0.85)
                     spacing: Theme.spacingMedium
-                    visible: notifyVM.notifications.length === 0 && !notifyVM.isLoading
+                    visible: authViewModel.loggedIn && notifyVM.notifications.length === 0 && !notifyVM.isLoading
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -591,6 +610,9 @@ Page {
     Connections {
         target: notifyVM
         function onErrorOccurred(error) {
+            // 守卫拦截（未登录 → error="请先登录"）：游客已见登录空态（含「去登录」按钮），
+            // 不重复弹 toast（对齐库存页先例）；其余错误照常提示
+            if (error === "请先登录") return
             errorMessage = ""
             errorMessage = error
         }
