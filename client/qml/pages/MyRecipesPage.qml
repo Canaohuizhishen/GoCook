@@ -5,7 +5,11 @@ import client
 import "../components"
 
 Page {
+    id: myRecipesPage
     title: qsTr("我的投稿")
+
+    // 点击编辑 → 请求打开投稿编辑页（导航统一收口：Main.qml 守卫接住后 guardedPush）
+    signal editRecipeRequested(int recipeId, string status)
 
     property int currentFilterIndex: 0
 
@@ -58,7 +62,7 @@ Page {
     }
 
     Component.onCompleted: {
-        recipeVM.loadMyRecipes(1, 20, "")
+        recipeVM.loadMyRecipes(1, "")
     }
 
     /// 状态标签颜色
@@ -125,7 +129,7 @@ Page {
                     }
                     onClicked: {
                         currentFilterIndex = index
-                        recipeVM.loadMyRecipes(1, 20, modelData.value)
+                        recipeVM.loadMyRecipes(1, modelData.value)
                     }
                 }
             }
@@ -243,10 +247,7 @@ Page {
                             id: mouseEdit
                             anchors.fill: parent
                             hoverEnabled: true
-                            onClicked: _stackView.push("../pages/SubmitRecipePage.qml",
-                                                        { recipeId: modelData.id,
-                                                          recipeStatus: modelData.status,
-                                                          _stackView: _stackView })
+                            onClicked: myRecipesPage.editRecipeRequested(modelData.id, modelData.status)
                         }
                     }
 

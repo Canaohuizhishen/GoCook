@@ -252,6 +252,7 @@ cd <仓库根目录>
 - 客户端关闭后服务端**继续在容器里运行**（正常现象，`docker compose stop` 才停）
 - 镜像重建需要能访问 Docker Hub；断网时若检测到源码有更新，脚本会用旧镜像启动并明确提示"改动未生效"，**不会静默跑旧版**
 - 想跳过客户端构建、只重启服务端：`docker compose up -d`
+- SMTP 邮件：配置在 `.env`，由 compose `env_file` 注入容器（改完 `.env` 后 `docker compose up -d` 生效）；未配置时注册验证码/重置令牌会打印到 `docker logs gocook-server`（开发模式）。`.env` 可缺失（`required: false`）：容器照常启动，此时 `GOCOOK_JWT_SECRET` 需通过环境变量提供
 
 ---
 

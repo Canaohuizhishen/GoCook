@@ -37,8 +37,10 @@ public:
     QString previewCreatedAt() const;
 
     // 列表操作
+    /// 每页数量（默认参数 / refresh / loadNextPage 共用单一来源；调用点勿再传字面量）
+    static constexpr int kPageSize = 20;
     /// 加载第一页（page=1 为「进入系统通知页」：成功发 announcementsSeen 并上报水位）；失败发 errorOccurred。
-    Q_INVOKABLE void loadAnnouncements(int page = 1, int size = 20);
+    Q_INVOKABLE void loadAnnouncements(int page = 1, int size = kPageSize);
     /// 加载下一页（加载中或 !hasMore 时忽略；续页不重报）。
     Q_INVOKABLE void loadNextPage();
     /// 消息页预览拉取：仅取最新一条公告（page1/size1）的标题与时间。

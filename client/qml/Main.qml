@@ -27,10 +27,13 @@ ApplicationWindow {
     property bool loginPageOpen: false
 
     // 统一导航守卫：所有页面 push 的唯一入口。
-    // requiresLogin=true 且未登录时，先弹应用内登录页（inAppMode），登录成功后继续原导航；
-    // 登录页被关闭则取消原导航。需登录页面在调用点显式传 true（页面根对象上的 requiresLogin 声明
-    // 不会被 Component 对象暴露，无法作为判定依据）。
+    // 第三个参数从 PagePolicy 单例取（属性名=页面 Component id，见 qml/PagePolicy.qml ——
+    // 页面登录策略的单一来源）；requiresLogin 且未登录时，先弹应用内登录页（inAppMode），
+    // 登录成功后继续原导航；登录页被关闭则取消原导航。页面根对象/Component 对象上无法声明
+    // 标记（QML 限制），故策略统一收口到策略表。
     function guardedPush(component, props, requiresLogin) {
+        if (typeof requiresLogin !== "boolean")
+            console.warn("guardedPush: requiresLogin 应传 PagePolicy.<pageId>（布尔值），实际:", requiresLogin)
         if (requiresLogin && !authViewModel.loggedIn) {
             pendingNav = {kind: "push", component: component, props: props === undefined ? {} : props}
             openInAppLogin()
@@ -171,7 +174,7 @@ ApplicationWindow {
         id: loginPage
         LoginPage {
             // welcomeMode/inAppMode 属性由 LoginPage 自身声明，push 时传入
-            // 欢迎页跳过 → 进入游客模式
+            // 欢迎页「先逛逛」→ 进入游客模式
             onSkipRequested: {
                 pendingNav = null
                 loginPageOpen = false
@@ -191,31 +194,31 @@ ApplicationWindow {
         id: homePage
         HomePage {
             onShowDetailRequest: (recipeId) => {
-                guardedPush(recipeDetailPage, {recipeId: recipeId})
+                guardedPush(recipeDetailPage, {recipeId: recipeId}, PagePolicy.recipeDetailPage)
             }
             onShowSubmitRequest: () => {
                 coverImageDialog.openWithFilter(qsTr("选择封面图片"), "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.svg)")
             }
             onShowMyRecipesRequest: () => {
-                guardedPush(myRecipesPage, undefined, true)
+                guardedPush(myRecipesPage, undefined, PagePolicy.myRecipesPage)
             }
             onShowMyRatingsRequest: () => {
-                guardedPush(myRatingsPage, undefined, true)
+                guardedPush(myRatingsPage, undefined, PagePolicy.myRatingsPage)
             }
             onShowSearchRequest: () => {
-                guardedPush(searchPage)
+                guardedPush(searchPage, undefined, PagePolicy.searchPage)
             }
             onShowRecommendFromInventory: () => {
-                guardedPush(recommendResultsPage, undefined, true)
+                guardedPush(recommendResultsPage, undefined, PagePolicy.recommendResultsPage)
             }
             onShowSettingsRequest: () => {
-                guardedPush(settingsPage, undefined, true)
+                guardedPush(settingsPage, undefined, PagePolicy.settingsPage)
             }
             onShowNotificationRequest: () => {
-                guardedPush(notificationPage, undefined, true)
+                guardedPush(notificationPage, undefined, PagePolicy.notificationPage)
             }
             onShowShoppingListRequest: () => {
-                guardedPush(shoppingListPage, undefined, true)
+                guardedPush(shoppingListPage, undefined, PagePolicy.shoppingListPage)
             }
             onShowLoginRequest: () => {
                 // 游客在"我的"页点登录：弹应用内登录页，成功后在原页面继续
@@ -228,19 +231,25 @@ ApplicationWindow {
         id: recipeDetailPage
         RecipeDetailPage {
             property var _stackView: stackView
+            onNutritionReportRequested: (recipeId) => {
+                guardedPush(nutritionReportPage, {recipeId: recipeId, _stackView: stackView}, PagePolicy.nutritionReportPage)
+            }
         }
     }
 
     NativeFileDialog {
         id: coverImageDialog
         onFileSelected: function(path) {
-            guardedPush(submitRecipePage, { coverImagePath: path, _stackView: stackView }, true)
+            guardedPush(submitRecipePage, { coverImagePath: path, _stackView: stackView }, PagePolicy.submitRecipePage)
         }
     }
 
     Component {
         id: submitRecipePage
         SubmitRecipePage {
+            onNutritionReportRequested: (recipeId) => {
+                guardedPush(nutritionReportPage, {recipeId: recipeId, _stackView: stackView}, PagePolicy.nutritionReportPage)
+            }
         }
     }
 
@@ -248,6 +257,9 @@ ApplicationWindow {
         id: myRecipesPage
         MyRecipesPage {
             property var _stackView: stackView
+            onEditRecipeRequested: (recipeId, status) => {
+                guardedPush(submitRecipePage, {recipeId: recipeId, recipeStatus: status, _stackView: stackView}, PagePolicy.submitRecipePage)
+            }
         }
     }
 
@@ -255,6 +267,9 @@ ApplicationWindow {
         id: myRatingsPage
         MyRatingsPage {
             property var _stackView: stackView
+            onRecipeClicked: (recipeId) => {
+                guardedPush(recipeDetailPage, {recipeId: recipeId}, PagePolicy.recipeDetailPage)
+            }
         }
     }
 
@@ -263,7 +278,7 @@ ApplicationWindow {
         SearchPage {
             property var _stackView: stackView
             onRecipeClicked: (recipeId) => {
-                guardedPush(recipeDetailPage, {recipeId: recipeId})
+                guardedPush(recipeDetailPage, {recipeId: recipeId}, PagePolicy.recipeDetailPage)
             }
         }
     }
@@ -273,7 +288,7 @@ ApplicationWindow {
         RecommendResultsPage {
             property var _stackView: stackView
             onRecipeClicked: (recipeId, healthNotice) => {
-                guardedPush(recipeDetailPage, {recipeId: recipeId, healthNotice: healthNotice || ""})
+                guardedPush(recipeDetailPage, {recipeId: recipeId, healthNotice: healthNotice || ""}, PagePolicy.recipeDetailPage)
             }
         }
     }
@@ -285,7 +300,7 @@ ApplicationWindow {
                 stackView.pop()
             }
             onShowDetailRequest: (listId) => {
-                guardedPush(shoppingListDetailPage, {listId: listId}, true)
+                guardedPush(shoppingListDetailPage, {listId: listId}, PagePolicy.shoppingListDetailPage)
             }
         }
     }
@@ -300,16 +315,16 @@ ApplicationWindow {
         id: settingsPage
         SettingsPage {
             onEditProfileRequest: () => {
-                guardedPush(profileEditPage, undefined, true)
+                guardedPush(profileEditPage, undefined, PagePolicy.profileEditPage)
             }
             onAccountSecurityRequest: () => {
-                guardedPush(accountSecurityPage, undefined, true)
+                guardedPush(accountSecurityPage, undefined, PagePolicy.accountSecurityPage)
             }
             onDietaryPreferencesRequest: () => {
-                guardedPush(preferencesPage, undefined, true)
+                guardedPush(preferencesPage, undefined, PagePolicy.preferencesPage)
             }
             onHealthProfileRequest: () => {
-                guardedPush(healthProfilePage, undefined, true)
+                guardedPush(healthProfilePage, undefined, PagePolicy.healthProfilePage)
             }
         }
     }
@@ -345,7 +360,7 @@ ApplicationWindow {
         id: accountSecurityPage
         AccountSecurityPage {
             onShowChangePasswordRequest: () => {
-                guardedPush(changePasswordPage, undefined, true)
+                guardedPush(changePasswordPage, undefined, PagePolicy.changePasswordPage)
             }
         }
     }
@@ -355,13 +370,13 @@ ApplicationWindow {
         NotificationPage {
             property var _stackView: stackView
             onShowDetailRequest: (data) => {
-                guardedPush(notificationDetailPage, {notificationData: data}, true)
+                guardedPush(notificationDetailPage, {notificationData: data}, PagePolicy.notificationDetailPage)
             }
             onShowSystemNoticeRequest: () => {
-                guardedPush(systemNoticePage, undefined, false)
+                guardedPush(systemNoticePage, undefined, PagePolicy.systemNoticePage)
             }
             onShowPlaceholderRequest: (pageTitle) => {
-                guardedPush(featurePlaceholderPage, {pageTitle: pageTitle}, false)
+                guardedPush(featurePlaceholderPage, {pageTitle: pageTitle}, PagePolicy.featurePlaceholderPage)
             }
         }
     }
@@ -371,7 +386,7 @@ ApplicationWindow {
         SystemNoticePage {
             property var _stackView: stackView
             onShowDetailRequest: (data) => {
-                guardedPush(notificationDetailPage, {notificationData: data}, true)
+                guardedPush(notificationDetailPage, {notificationData: data}, PagePolicy.notificationDetailPage)
             }
         }
     }
@@ -387,6 +402,12 @@ ApplicationWindow {
         id: notificationDetailPage
         NotificationDetailPage {
             property var _stackView: stackView
+        }
+    }
+
+    Component {
+        id: nutritionReportPage
+        NutritionReportPage {
         }
     }
 
@@ -408,7 +429,7 @@ ApplicationWindow {
             if (authViewModel.loggedIn) {
                 stackView.replace(homePage)
             } else {
-                // 未登录启动：弹欢迎登录页（可跳过进入游客模式）。
+                // 未登录启动：弹欢迎登录页（右上角「先逛逛」进入游客模式）。
                 // 每次启动时只要未登录都会弹——退出时处于未登录状态，下次打开必然见到欢迎页
                 stackView.replace(loginPage, {welcomeMode: true})
             }

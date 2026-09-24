@@ -24,6 +24,13 @@ services:
       dockerfile: Dockerfile
     container_name: gocook-server
     restart: unless-stopped
+    # 注入 .env（SMTP 邮件配置等随容器生效）。required: false = .env 可缺失：缺失时容器
+    # 照常启动，SMTP 未配置走开发模式（验证码打容器日志）；此时 GOCOOK_JWT_SECRET 仍必须
+    # 由宿主环境变量提供（否则下方 environment 的 :? 校验报错）。注意：environment: 优先级
+    # 高于 env_file，下方显式项（DB 连接串/JWT/HOST/PORT）仍以 environment 为准，不会被 .env 覆盖
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "8080:8080"
     environment:

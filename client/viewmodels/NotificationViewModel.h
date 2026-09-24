@@ -49,8 +49,10 @@ public:
     void setCurrentType(const QString& type);
 
     // 列表操作
+    /// 每页数量（默认参数与 m_pageSize 初始化共用单一来源）
+    static constexpr int kPageSize = 20;
     /// 加载指定分类第一页（进入分类 = 已读：成功上报水位并清零该分类计数）；失败发 errorOccurred。
-    Q_INVOKABLE void loadNotifications(int page = 1, int size = 20);
+    Q_INVOKABLE void loadNotifications(int page = 1, int size = kPageSize);
     /// 加载当前分类下一页（加载中或 !hasMore 时忽略；续页上报幂等，不重算计数）。
     Q_INVOKABLE void loadNextPage();
     /// 进入页面 / 下拉刷新：两类均标记过期，重载当前分类第一页（刷新成功同样视为已读）。
@@ -112,7 +114,7 @@ private:
     CategoryState m_review;          ///< 审核结果分类状态
     CategoryState m_interaction;     ///< 互动提醒分类状态
     int m_pendingLoads = 0;          ///< 在途加载计数（isLoading 据此翻转）
-    int m_pageSize = 20;             ///< 每页数量（loadNotifications 传入值）
+    int m_pageSize = kPageSize;      ///< 每页数量（loadNotifications 传入值）
     bool m_isRefreshing = false;     ///< 刷新态（refresh 置真；完成回调置假）
 
     // 汇总（服务端权威值；本地仅在删除未读条目时即时 -1）

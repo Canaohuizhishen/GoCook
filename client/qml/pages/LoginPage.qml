@@ -8,9 +8,9 @@ Page {
     id: loginPage
     title: qsTr("登录")
 
-    // 欢迎模式（冷启动首次）：显示「跳过，先逛逛」，跳过即进入游客模式
+    // 欢迎模式（冷启动首次）：标题显示欢迎语、右上角「先逛逛」，点击即进入游客模式
     property bool welcomeMode: false
-    // 应用内模式（需要登录的功能触发）：显示关闭按钮，可返回原页面（取消操作）
+    // 应用内模式（需要登录的功能触发）：右上角「取消」，点击返回原页面（取消操作）
     property bool inAppMode: false
     signal skipRequested()
     signal closeRequested()
@@ -18,32 +18,34 @@ Page {
     property bool showResetFlow: false
     property bool showResetForm: false
     property bool showRegisterVerify: false   // 两段式注册：验证码步骤
+    // 登录/注册显式模式：注册态 = 多一行邮箱 + 主按钮改为注册；两态用页内链接互切
+    // （照“忘记密码”链接范式）——不再用 emailField.visible 暗传模式（曾致“点注册后回不了登录”）
+    property bool registerMode: false
 
     function resetToLogin() {
         showResetFlow = false
         showResetForm = false
         showRegisterVerify = false
+        registerMode = false   // 任何路径都回到登录态（注册成功 / 验证码返回 / 重置密码完成）
         resetUsernameField.text = ""
         resetEmailField.text = ""
         resetTokenField.text = ""
         resetNewPasswordField.text = ""
         verifyCodeField.text = ""
+        emailField.text = ""   // email 属注册域字段：随注册域退场（username/password 保留供直接登录）
         errorLabel.text = ""
     }
 
-    // 键盘提交入口（Enter）：密码框 Enter 直接登录，邮箱 Enter 直接注册
+    // 键盘提交入口（Enter）：密码框 Enter 直接登录（注册态先跳邮箱），邮箱 Enter 直接注册
     function submitLogin() {
         authViewModel.login(usernameField.text, passwordField.text)
     }
-    function registerAction() {
-        if (emailField.visible === false) emailField.visible = true
-        else {
-            authViewModel.registerUser(
-                usernameField.text,
-                passwordField.text,
-                emailField.text
-            )
-        }
+    function submitRegister() {
+        authViewModel.registerUser(
+            usernameField.text,
+            passwordField.text,
+            emailField.text
+        )
     }
 
     // 两段式注册第二步：提交验证码
@@ -55,7 +57,27 @@ Page {
         authViewModel.verifyRegistration(emailField.text.trim(), verifyCodeField.text.trim())
     }
 
-    // 顶部工具行：跳过按钮固定页面右上角（欢迎模式=进入游客模式，应用内模式=取消操作）
+    // 顶部品牌渐变带（欢迎/应用内两态共用——避免两态观感割裂；低饱和品牌色 → 透明，纯装饰不拦事件）
+    Rectangle {
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 300
+        visible: loginPage.welcomeMode || loginPage.inAppMode
+        gradient: Gradient {
+            GradientStop {
+                position: 0.0
+                color: Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b,
+                               Theme.isDarkMode ? 0.10 : 0.16)
+            }
+            GradientStop {
+                position: 1.0
+                color: Qt.rgba(Theme.primaryColor.r, Theme.primaryColor.g, Theme.primaryColor.b, 0.0)
+            }
+        }
+    }
+
+    // 顶部工具行：按钮固定页面右上角，文案随模式（欢迎=先逛逛 / 应用内=取消）
     RowLayout {
         anchors.top: parent.top
         anchors.right: parent.right
@@ -64,7 +86,7 @@ Page {
         visible: loginPage.welcomeMode || loginPage.inAppMode
         Button {
             flat: true
-            text: qsTr("跳过")
+            text: loginPage.welcomeMode ? qsTr("先逛逛") : qsTr("取消")
             font.pointSize: Theme.fontSizeBody
             onClicked: {
                 if (loginPage.welcomeMode)
@@ -81,14 +103,49 @@ Page {
         width: parent.width * 0.8
         spacing: 20
 
-        Text {
-            text: "GoCook"
-            font.pointSize: 24
-            font.bold: true
-            Layout.alignment: Qt.AlignHCenter
+        // ============ 品牌 Hero 区（两态共用：欢迎态 = 欢迎语 + 价值主张；应用内态 = 橙色字标 + 来意说明） ============
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.bottomMargin: 12
+            spacing: 8
+
+            // 标题（字标）：品牌词 GoCook 用主色；欢迎态带欢迎语并放大到 30pt，应用内态为橙色字标 26pt
+            // （无图形徽章——方案 D 定稿；颜色随主题，修暗色模式黑字不可读）
+            // 居中写法：嵌套 ColumnLayout 下仅靠 Layout.alignment 不会撑满父列（实测列宽收缩→标题左偏），
+            // 必须由子项 fillWidth 把列撑满 + horizontalAlignment 文本自居中（2026-09-24 实测结论）
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                textFormat: Text.StyledText
+                text: loginPage.welcomeMode
+                      ? qsTr("欢迎使用 <font color=\"%1\">GoCook</font>").arg(Theme.primaryColor.toString())
+                      : "GoCook"
+                color: loginPage.welcomeMode ? Theme.textPrimary : Theme.primaryColor
+                font.family: Theme.fontFamily
+                font.pointSize: loginPage.welcomeMode ? 30 : 26
+                font.bold: true
+            }
+
+            // 副标题（登录/注册 × 欢迎/应用内 四态）：登录态=同步资产/交代来意；
+            // 注册态=邀请加入/继续来意（不能沿用"同步"：未注册用户尚无数据可同步）
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                // 折行防护：注册态文案较长，窄窗下折行而不是横向溢出（原 NoWrap 会溢出）
+                wrapMode: Text.Wrap
+                visible: loginPage.welcomeMode || loginPage.inAppMode
+                text: loginPage.registerMode
+                      ? (loginPage.welcomeMode ? qsTr("加入 GoCook，开始整理你的菜谱、收藏与库存")
+                                               : qsTr("注册后继续你刚才的操作"))
+                      : (loginPage.welcomeMode ? qsTr("登录后同步你的菜谱、收藏与库存")
+                                               : qsTr("登录后继续你刚才的操作"))
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSizeBody
+            }
         }
 
-        // ============ 登录/注册模式 ============
+        // ============ 登录/注册模式（registerMode 显式二态；链接互切） ============
         ColumnLayout {
             visible: !showResetFlow && !showRegisterVerify
             spacing: 20
@@ -108,13 +165,13 @@ Page {
                 echoMode: TextInput.Password
                 Layout.fillWidth: true
                 Keys.onReturnPressed: {
-                    if (emailField.visible)
+                    if (loginPage.registerMode)
                         emailField.forceActiveFocus()
                     else
                         submitLogin()
                 }
                 Keys.onEnterPressed: {
-                    if (emailField.visible)
+                    if (loginPage.registerMode)
                         emailField.forceActiveFocus()
                     else
                         submitLogin()
@@ -123,39 +180,56 @@ Page {
 
             TextField {
                 id: emailField
-                visible: false
+                visible: loginPage.registerMode   // 可见性仅由显式模式驱动（无手动写入点）
                 placeholderText: qsTr("邮箱")
                 Layout.fillWidth: true
-                Keys.onReturnPressed: registerAction()
-                Keys.onEnterPressed: registerAction()
+                Keys.onReturnPressed: submitRegister()
+                Keys.onEnterPressed: submitRegister()
             }
 
             CustomButton {
-                buttonText: qsTr("登录")
+                buttonText: loginPage.registerMode ? qsTr("注册") : qsTr("登录")
                 buttonType: CustomButton.ButtonType.Primary
                 Layout.fillWidth: true
-                onClicked: submitLogin()
+                onClicked: loginPage.registerMode ? submitRegister() : submitLogin()
             }
 
-            CustomButton {
-                buttonText: qsTr("注册")
-                buttonType: CustomButton.ButtonType.Secondary
-                Layout.fillWidth: true
-                onClicked: registerAction()
-            }
-
-            // 忘记密码链接
-            Text {
-                text: qsTr("忘记密码？")
-                color: Theme.accentColor
-                font.underline: true
+            // 登录/注册互切 + 忘记密码（链接组，间距收紧）
+            ColumnLayout {
+                spacing: 12
                 Layout.alignment: Qt.AlignHCenter
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        showResetFlow = true
-                        errorLabel.text = ""
+
+                Text {
+                    text: loginPage.registerMode ? qsTr("已有账号？去登录") : qsTr("没有账号？去注册")
+                    color: Theme.accentColor
+                    font.underline: true
+                    Layout.alignment: Qt.AlignHCenter
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            loginPage.registerMode = !loginPage.registerMode
+                            if (!loginPage.registerMode)
+                                emailField.text = ""   // 离开注册域：注册专属字段随之清空
+                            errorLabel.text = ""
+                        }
+                    }
+                }
+
+                // 忘记密码链接（仅登录态显示）
+                Text {
+                    visible: !loginPage.registerMode
+                    text: qsTr("忘记密码？")
+                    color: Theme.accentColor
+                    font.underline: true
+                    Layout.alignment: Qt.AlignHCenter
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            showResetFlow = true
+                            errorLabel.text = ""
+                        }
                     }
                 }
             }
@@ -369,9 +443,10 @@ Page {
                 errorLabel.text = error
             }
             function onPasswordResetSuccess() {
+                // 先复位再设文案：resetToLogin 会清空 errorLabel，顺序倒置将吞掉成功提示
+                resetToLogin()
                 errorLabel.color = Theme.accentColor
                 errorLabel.text = "密码重置成功，请登录"
-                resetToLogin()
             }
             function onPasswordResetFailed(error) {
                 errorLabel.color = Theme.errorColor

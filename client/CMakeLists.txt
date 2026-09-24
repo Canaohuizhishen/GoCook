@@ -9,10 +9,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick Sql Qml Core5Compat Widgets)
 
+# 显式固定两个 QML 策略为 OLD（与当前默认行为一致；固定后 configure 会出现"OLD 将在未来
+# Qt 大版本移除"的预期提示——升级时 configure 显式爆掉，优于运行期静默换行为）：
+#   QTP0001（资源前缀，Qt 6.5+）：OLD = 模块资源挂在 /<URI>（:/client/...），main.cpp 的
+#     qrc:/client/... 加载路径与 QML 模块 dir map 均依赖该行为；迁移 NEW（/qt/qml 前缀）
+#     另立专项，届时同步改 main.cpp 路径。
+#   QTP0004（额外目录 qmldir 生成，Qt 6.8+）：OLD = 不为模块内各含 QML 的子目录额外生成
+#     qmldir 文件（维持现状）。与资源前缀无关，两者勿混为一谈。
+qt_policy(SET QTP0001 OLD)
+qt_policy(SET QTP0004 OLD)
+
 # 自动设置所有推荐的策略
 qt_standard_project_setup()
 
 qt_add_executable(appclient)
+
+# 模块内 QML 单例声明（Theme / PagePolicy）：写入生成 qmldir 的 singleton 条目，
+# qmllint / qmlcachegen 才能静态解析单例成员（否则所有 Theme.* 访问会误报 missing-property）
+set_source_files_properties(qml/styles/Theme.qml qml/PagePolicy.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(appclient
     URI client
@@ -29,6 +43,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/pages/NutritionReportPage.qml
     QML_FILES qml/pages/SubmitRecipePage.qml
     QML_FILES qml/Main.qml
+    QML_FILES qml/PagePolicy.qml
     QML_FILES qml/styles/Theme.qml
     QML_FILES qml/components/CustomButton.qml
     QML_FILES qml/components/RecipeCard.qml
@@ -50,7 +65,6 @@ qt_add_qml_module(appclient
     SOURCES viewmodels/RequestGuards.h
     SOURCES dialogs/NativeFileDialog.h dialogs/NativeFileDialog.cpp
     SOURCES adapters/DataMapper.h adapters/DataMapper.cpp
-    QML_FILES qml/pages/RecipeDetailPage.qml qml/pages/SubmitRecipePage.qml
     QML_FILES qml/pages/SearchPage.qml
     QML_FILES qml/pages/RecommendResultsPage.qml
     QML_FILES qml/pages/MyRecipesPage.qml
@@ -84,9 +98,15 @@ qt_add_qml_module(appclient
 )
 
 # 增加头文件查找路径
+# adapters：ViewModel 以裸名 #include <DataMapper.h> 引用适配层；
+# viewmodels / dialogs：qmltyperegistrar 生成的注册代码同样以裸名 include QML_ELEMENT
+# 头文件（<InventoryViewModel.h> / <NativeFileDialog.h>）——目录不在查找路径时，生成的
+# 注册代码会因找不到类而编译失败（生成的 __has_include 守卫会静默跳过该 include）
 target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../contracts/include)
 target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/adapters)
+target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/viewmodels)
+target_include_directories(appclient PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/dialogs)
 
 target_sources(appclient
     PRIVATE

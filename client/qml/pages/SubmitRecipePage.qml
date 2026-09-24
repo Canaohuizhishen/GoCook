@@ -23,6 +23,8 @@ Page {
     property string recipeStatus: ""      // 编辑模式：pending / approved
     property int uploadQueueIndex: -1   // -1=空闲, -2=上传封面, >=0=上传步骤图
     property int _submittedRecipeId: 0  // 新建菜谱返回的 id，供后续上传使用
+    // 营养报告入口（卡片信号转发 → Main.qml 守卫接住后 guardedPush）
+    signal nutritionReportRequested(int recipeId)
 
     Component.onCompleted: {
         if (recipeId > 0) {
@@ -297,8 +299,8 @@ Page {
 
                 NutritionSummaryCard {
                     detailRecipeId: page.recipeId
-                    stackView: page._stackView
                     showHeader: false   // 外层已有"营养合计"标题
+                    onReportRequested: (recipeId) => page.nutritionReportRequested(recipeId)
                 }
 
                 // 无数据补位提示（卡片在有数据时才可见；判定与服务端 has_data 一致，

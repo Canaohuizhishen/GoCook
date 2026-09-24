@@ -14,9 +14,11 @@ Column {
     visible: _hasNutrition
 
     property int detailRecipeId: 0
-    property var stackView: null
     // 是否显示自带标题（编辑页外层已有标题时传 false，避免重复）
     property bool showHeader: true
+
+    // 点击「查看详细营养报告」→ 发射信号由宿主页面转发（导航统一收口到 Main.qml 守卫）
+    signal reportRequested(int recipeId)
     readonly property var _nutrition: recipeVM.recipeDetail.nutrition || ({})
 
     SectionHeader {
@@ -46,9 +48,6 @@ Column {
         width: parent.width
         buttonText: "\u2139 " + qsTr("查看详细营养报告")
         buttonType: CustomButton.ButtonType.Secondary
-        onClicked: {
-            if (stackView)
-                stackView.push("../pages/NutritionReportPage.qml", {recipeId: detailRecipeId, _stackView: stackView})
-        }
+        onClicked: root.reportRequested(root.detailRecipeId)
     }
 }

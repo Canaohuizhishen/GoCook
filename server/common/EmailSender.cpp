@@ -361,8 +361,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
 
     SSL_CTX_free(ctx);
 
-    if (ok) {
-        LOG_INFO("密码重置邮件已发送至 %s", to.c_str());
-    }
+    // 成功日志由调用方（业务层）打印——本函数是共用底层发送器，不区分邮件业务类型，
+    // 曾在此硬编码"密码重置邮件已发送至"，导致注册验证码邮件也被错误标注
     return ok;
 }

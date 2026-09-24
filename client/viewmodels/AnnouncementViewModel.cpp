@@ -21,13 +21,13 @@ void AnnouncementViewModel::refresh()
         m_isRefreshing = true;
         emit isRefreshingChanged();
     }
-    loadAnnouncements(1, 20);
+    loadAnnouncements(1, kPageSize);
 }
 
 void AnnouncementViewModel::loadNextPage()
 {
     if (m_isLoading || !m_hasMore) return;
-    loadAnnouncements(m_currentPage + 1, 20);
+    loadAnnouncements(m_currentPage + 1, kPageSize);
 }
 
 void AnnouncementViewModel::loadPreview()

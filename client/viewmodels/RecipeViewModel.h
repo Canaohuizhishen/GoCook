@@ -96,11 +96,16 @@ public:
     bool favoritesLoading() const { return m_favoritesLoading; }
     QVariantList favoriteGroups() const { return m_favoriteGroups; }
 
+    // ===== 分页大小常量（单一来源：默认参数 / 内部续页 / 成员初始化共用；调用点勿再传字面量） =====
+    static constexpr int kPageSize = 20;         ///< 搜索 / 收藏 / 我的投稿 / 我的评论
+    static constexpr int kPublicPageSize = 30;   ///< 公开列表 / 推荐列表（续页固定按此值，首屏勿传其他值）
+    static constexpr int kRatingPageSize = 10;   ///< 详情页评分列表
+
     // ===== 菜谱列表与详情 =====
-    /// 加载公开列表（page=1 替换，否则追加；size 仅本次生效，续页固定按 30）。失败发 errorOccurred。
-    Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = 30);
+    /// 加载公开列表（page=1 替换，否则追加；size 仅本次生效，续页固定按 kPublicPageSize）。失败发 errorOccurred。
+    Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = kPublicPageSize);
     /// 加载推荐列表（整体替换，无续页）。失败发 errorOccurred。
-    Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = 30);
+    Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = kPublicPageSize);
     Q_INVOKABLE void loadNextPage();   ///< 加载公开列表下一页（推荐模式调用为空操作）
     Q_INVOKABLE void refresh();   ///< 重新加载当前模式的第一页
     /// 进入即清空并重载（切菜谱不短暂显示旧数据）；失败：有快照静默显示、无快照置
@@ -125,7 +130,7 @@ public:
     Q_INVOKABLE void loadRecipeForEdit(int recipeId);
     // ===== 搜索 =====
     /// 搜索（keyword 空白则忽略；page=1 重置空态并替换结果）。失败发 searchErrorOccurred。
-    Q_INVOKABLE void searchRecipes(const QString& keyword, int page = 1, int size = 20);
+    Q_INVOKABLE void searchRecipes(const QString& keyword, int page = 1, int size = kPageSize);
     /// 搜索续页（沿用首屏 keyword 与 size）。
     Q_INVOKABLE void searchNextPage();
     Q_INVOKABLE void resetSearch();   ///< 清空搜索结果与空态标记（返回/清空输入时调用）
@@ -135,8 +140,8 @@ public:
     /// 加载视频（失败静默；期间切走则响应作废）。
     Q_INVOKABLE void loadRecipeVideos(int recipeId);
     /// 加载评分列表（page=1 先清空；失败静默）。续页用 loadMoreRatings。
-    Q_INVOKABLE void loadRecipeRatings(int recipeId, int page = 1, int size = 10);
-    /// 评分续页（固定按 size=10）。
+    Q_INVOKABLE void loadRecipeRatings(int recipeId, int page = 1, int size = kRatingPageSize);
+    /// 评分续页（固定按 kRatingPageSize）。
     Q_INVOKABLE void loadMoreRatings();
     /// 查询我的评分（未评分/失败静默清空，不发错误信号）。
     Q_INVOKABLE void loadMyRecipeRating(int recipeId);
@@ -148,18 +153,18 @@ public:
     Q_INVOKABLE void deleteRating(int recipeId, int ratingId);
     Q_INVOKABLE void deleteRecipe(int recipeId);   ///< 删除我的投稿（发起即乐观移除；成功后重拉，失败回滚并发 deleteFailed）
     // ===== 我的投稿与评论 =====
-    Q_INVOKABLE void loadMyRecipes(int page = 1, int size = 20, const QString& status = "");   ///< 加载中重入忽略；status: "pending"/"approved"/"rejected"，空串=全部
-    /// 投稿续页（固定 size=20，沿用当前 status）。
+    Q_INVOKABLE void loadMyRecipes(int page = 1, const QString& status = "", int size = kPageSize);   ///< 加载中重入忽略；status: "pending"/"approved"/"rejected"，空串=全部
+    /// 投稿续页（固定按 kPageSize，沿用当前 status）。
     Q_INVOKABLE void loadMyRecipesNextPage();
     /// 我的评论（加载中重入忽略）。
-    Q_INVOKABLE void loadMyRatings(int page = 1, int size = 20);
-    /// 评论续页（固定 size=20）。
+    Q_INVOKABLE void loadMyRatings(int page = 1, int size = kPageSize);
+    /// 评论续页（固定按 kPageSize）。
     Q_INVOKABLE void loadMyRatingsNextPage();
 
     // ===== 收藏 =====
     /// 加载收藏列表（group 空=全部；page=1 替换，否则追加；加载中重入忽略）。
     /// 发送时快照会话：响应回来若已登出/换号静默丢弃；失败置 favoritesLoadFailed（未登录先清空旧数据）。
-    Q_INVOKABLE void loadFavorites(int page = 1, int size = 20, const QString &group = "");
+    Q_INVOKABLE void loadFavorites(int page = 1, const QString &group = "", int size = kPageSize);
     /// 收藏续页（沿用首屏分组与 size）。
     Q_INVOKABLE void loadMoreFavorites();
     /// 清空收藏列表与分组、加载状态（登出/账号切换时调用，杜绝上一账号残留数据串台）
@@ -278,7 +283,7 @@ private:
     int m_detailRequestedId = -1;      ///< 详情族共用：非当前菜谱的迟到响应被丢弃（A→B 竞态防护）——
                                        ///< “目标键”语义（同菜谱兄弟请求互不作废），不同于轮次代次，不做统一
     int m_currentPage = 1;   ///< 公开列表当前页
-    int m_pageSize = 30;     ///< 公开列表固定页大小（不随 loadPublicRecipes 的 size 参数更新）
+    int m_pageSize = kPublicPageSize;   ///< 公开列表固定页大小（不随 loadPublicRecipes 的 size 参数更新）
     int m_totalPages = 0;    ///< 公开列表总页数
 
     // 搜索状态
@@ -287,7 +292,7 @@ private:
     bool m_searchHasMore = false;   ///< 搜索还有下一页
     bool m_searchPerformed = false;   ///< 已执行过搜索（区分空态与无结果）
     int m_searchPage = 1;   ///< 搜索当前页
-    int m_searchPageSize = 20;   ///< 首屏请求的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
+    int m_searchPageSize = kPageSize;   ///< 首屏请求的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
     int m_searchTotalPages = 0;   ///< 搜索总页数
     QString m_lastKeyword;   ///< 上一次搜索词（searchNextPage 据此续页）
     /// 搜索轮次（RequestGuards.h::RequestEpoch）：首屏 begin 取票据、续页沿用当前票据；
@@ -331,7 +336,7 @@ private:
     QVariantList m_favorites;   ///< 收藏列表（当前分组筛选）
     QVariantList m_favoriteGroups;   ///< 收藏分组（含合成默认组）
     int m_favoritesPage = 1;   ///< 收藏列表当前页
-    int m_favoritesPageSize = 20;      ///< 首屏加载的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
+    int m_favoritesPageSize = kPageSize;   ///< 首屏加载的每页数量：续页须沿用同一 size（服务端 offset=(page-1)*size）
     QString m_favoritesGroupFilter;    ///< 当前筛选分组（""=全部）：续页须沿用，否则加载到未筛选数据
     int m_favoritesTotalPages = 0;   ///< 收藏列表总页数
     bool m_favoritesHasMore = false;   ///< 收藏还有下一页

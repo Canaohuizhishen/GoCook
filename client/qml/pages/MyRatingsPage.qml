@@ -5,7 +5,11 @@ import client
 import "../components"
 
 Page {
+    id: myRatingsPage
     title: qsTr("我的评论")
+
+    // 点击评论条目 → 请求打开菜谱详情（导航统一收口：Main.qml 守卫接住后 guardedPush）
+    signal recipeClicked(int recipeId)
 
     header: ToolBar {
         RowLayout {
@@ -171,12 +175,7 @@ Page {
 
             MouseArea {
                 anchors.fill: parent
-                onClicked: {
-                    var page = Qt.createComponent("RecipeDetailPage.qml")
-                    if (page.status === Component.Ready) {
-                        _stackView.push(page, {recipeId: modelData.recipeId})
-                    }
-                }
+                onClicked: myRatingsPage.recipeClicked(modelData.recipeId)
             }
         }
 
