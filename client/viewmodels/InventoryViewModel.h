@@ -4,6 +4,7 @@
 #include <QVariantList>
 #include <QList>
 #include <QTimer>
+#include <QtQml/qqmlregistration.h>
 #include <gocook/IGoCookApi.h>
 #include "RequestGuards.h"
 
@@ -35,6 +36,9 @@ class LocalDatabase;
 class InventoryViewModel : public QObject
 {
     Q_OBJECT
+    // 声明式注册（不可实例化）：供 QML 访问 ViewState 枚举（如 InventoryViewModel.Offline）
+    QML_ELEMENT
+    QML_UNCREATABLE("仅用于枚举访问（视图状态），不可实例化")
 
 public:
     /// 派生视图状态（对外收敛 QML 组合判断；内部旗标保留）——判定顺序与页面原组合表达式一一对应：
@@ -72,9 +76,12 @@ public:
     /// 不会生成 QML 可调用的 setFilterText 函数——曾致 InventoryPage 运行时 TypeError）
     Q_INVOKABLE void setFilterText(const QString& text);
 
+    // 分页大小（默认参数与 m_pageSize 初始化共用单一来源）
+    static constexpr int kPageSize = 50;
+
     // 库存操作
     /// 加载第一页库存（开启新一轮请求：作废全部在途请求并立即发送，见 m_epoch）
-    Q_INVOKABLE void loadInventory(int page = 1, int size = 50);
+    Q_INVOKABLE void loadInventory(int page = 1, int size = kPageSize);
     /// 加载下一页（加载中或 !hasMore 时忽略）
     Q_INVOKABLE void loadNextPage();
     /// 添加库存项（expiryDate 为空=无保质期；成功后重载列表）
@@ -134,7 +141,7 @@ private:
     bool m_lastLoadFailed = false; ///< 最近一次首页尝试失败过（可能仍显示旧数据/快照，供自动重拉判定）
     bool m_itemsFromSnapshotFallback = false; ///< 当前列表来自快照兜底（过滤词变化/清空时需从快照重新派生）
     int m_currentPage = 1;     ///< 当前页码
-    int m_pageSize = 50;       ///< 每页数量
+    int m_pageSize = kPageSize;    ///< 每页数量
     int m_totalPages = 0;      ///< 总页数
     QTimer m_retryTimer;       ///< 退避重试定时器（仅失败态运行）
     QList<int> m_retryDelays = {5000, 10000, 20000, 30000}; ///< 退避序列（到末尾后按末尾间隔继续）

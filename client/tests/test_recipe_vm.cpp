@@ -244,7 +244,7 @@ TEST_F(RecipeVmTest, clearFavorites清空列表与分组)
     ASSERT_TRUE(waitUntil(groupsChanged)) << "加载分组超时";
     ASSERT_EQ(vm.favoriteGroups().size(), 2);
 
-    vm.loadFavorites(1, 20, "");
+    vm.loadFavorites(1, "");
     ASSERT_TRUE(waitUntil(favoritesChanged)) << "加载收藏列表超时";
     ASSERT_EQ(vm.favorites().size(), 1);
 
@@ -318,13 +318,13 @@ TEST_F(RecipeVmTest, favoritesAllCount等于分组之和且不随筛选变化)
     ASSERT_TRUE(waitUntil(groupsChanged)) << "加载分组超时";
     EXPECT_EQ(vm.favoritesAllCount(), 3) << "「全部」= 默认收藏夹(2) + 家常菜(1)";
 
-    vm.loadFavorites(1, 20, "");
+    vm.loadFavorites(1, "");
     ASSERT_TRUE(waitUntil(favoritesChanged)) << "加载全部收藏超时";
     EXPECT_EQ(vm.favoritesAllCount(), 3);
 
     // 切到“家常菜”分组（服务端该分组 total=1）：旧实现会把「全部」计数覆写为筛选总数
     favoritesChanged = false;
-    vm.loadFavorites(1, 20, "家常菜");
+    vm.loadFavorites(1, "家常菜");
     ASSERT_TRUE(waitUntil(favoritesChanged)) << "加载分组收藏超时";
     EXPECT_EQ(vm.favoritesAllCount(), 3) << "「全部」总数不得被筛选结果覆盖";
 
@@ -377,7 +377,7 @@ TEST_F(RecipeVmTest, loadMoreFavorites续页沿用分组与页大小)
     QObject::connect(&vm, &RecipeViewModel::favoritesChanged, [&]() { favoritesChanged = true; });
 
     // size=1 + 默认收藏夹 total=2 → 两页，hasMore=true
-    vm.loadFavorites(1, 1, "默认收藏夹");
+    vm.loadFavorites(1, "默认收藏夹", 1);
     ASSERT_TRUE(waitUntil(favoritesChanged)) << "首屏加载超时";
     ASSERT_TRUE(vm.favoritesHasMore()) << "应还有下一页";
 

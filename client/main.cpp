@@ -10,7 +10,6 @@
 #include "viewmodels/NotificationViewModel.h"
 #include "viewmodels/AnnouncementViewModel.h"
 #include "viewmodels/ShoppingListViewModel.h"
-#include "dialogs/NativeFileDialog.h"
 
 int main(int argc, char *argv[])
 {
@@ -30,21 +29,11 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName("GoCook");
     QCoreApplication::setOrganizationDomain("gocook.app");
 
-    // 注册 C++ 类型供 QML 使用
-    qmlRegisterType<NativeFileDialog>("client", 1, 0, "NativeFileDialog");
-    // 注册库存 VM 类型（不可实例化）：供 QML 访问 ViewState 枚举（如 InventoryViewModel.Offline）
-    qmlRegisterUncreatableType<InventoryViewModel>("client", 1, 0, "InventoryViewModel",
-                                                   "仅用于枚举访问（视图状态），不可实例化");
-
-    // 将 Theme.qml 注册为 "client" 模块下的单例
-    // Theme.qml 已在 qt_add_qml_module 的 QML_FILES 中列出；此处手动注册
-    // 使其在非 module 文件中也可通过 "import client" 访问
-    qmlRegisterSingletonType(
-        QUrl("qrc:/client/qml/styles/Theme.qml"),
-        "client",
-        1, 0,
-        "Theme"
-        );
+    // QML 类型注册全部声明式化（单一来源，qmltypes/qmllint 可静态解析），本文件不再命令式注册：
+    //   - NativeFileDialog / InventoryViewModel：类内 QML_ELEMENT（后者配 QML_UNCREATABLE），
+    //     由 qt_add_qml_module 生成的 qml_register_types_client() 在启动时自动注册；
+    //   - Theme / PagePolicy 单例：client/CMakeLists.txt 的 QT_QML_SINGLETON_TYPE 声明，
+    //     生成 qmldir 的 singleton 条目（资源内 :/client/qmldir），"import client" 即解析。
 
     HttpGoCookApi *httpApi = new HttpGoCookApi(&app);
 

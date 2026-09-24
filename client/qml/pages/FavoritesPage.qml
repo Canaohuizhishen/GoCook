@@ -41,7 +41,7 @@ Page {
     onVisibleChanged: {
         if (visible) {
             errorMessage = ""
-            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavorites(1, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
             __dataLoaded = true
         } else {
@@ -54,7 +54,7 @@ Page {
     // onVisibleChanged 并不会触发，需要手动加载数据
     Component.onCompleted: {
         if (visible) {
-            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavorites(1, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
             __dataLoaded = true
         }
@@ -171,7 +171,7 @@ Page {
                                 }
                                 onClicked: {
                                     currentGroupFilter = ""
-                                    recipeVM.loadFavorites(1, 20, "")
+                                    recipeVM.loadFavorites(1, "")
                                 }
                             }
 
@@ -206,7 +206,7 @@ Page {
                                     // 左键点击 → 筛选该分组
                                     onClicked: {
                                         currentGroupFilter = modelData.name
-                                        recipeVM.loadFavorites(1, 20, modelData.name)
+                                        recipeVM.loadFavorites(1, modelData.name)
                                     }
 
                                     // 右键点击 → 分组菜单（重命名/删除）
@@ -263,7 +263,7 @@ Page {
                     message: authViewModel.loggedIn ? qsTr("服务器有点问题，请稍候再试") : qsTr("登录后可用")
                     showRetry: authViewModel.loggedIn
                     onRetryRequested: {
-                        recipeVM.loadFavorites(1, 20, currentGroupFilter)
+                        recipeVM.loadFavorites(1, currentGroupFilter)
                         recipeVM.loadFavoriteGroups()
                     }
                 }
@@ -760,7 +760,7 @@ Page {
                 recipeVM.deleteFavoriteGroup(groupContextMenu.groupId)
                 currentGroupFilter = "默认收藏夹"
                 // 模拟点击默认收藏夹标签：加载该分组数据（只查 group_id IS NULL，安全无竞态）
-                recipeVM.loadFavorites(1, 20, "默认收藏夹")
+                recipeVM.loadFavorites(1, "默认收藏夹")
             }
         }
     }
@@ -781,7 +781,7 @@ Page {
         target: authViewModel
         function onLoggedInChanged() {
             if (authViewModel.loggedIn) {
-                recipeVM.loadFavorites(1, 20, currentGroupFilter)
+                recipeVM.loadFavorites(1, currentGroupFilter)
                 recipeVM.loadFavoriteGroups()
             }
         }
@@ -793,15 +793,15 @@ Page {
             updateDisplayFavorites()
         }
         function onFavoriteMoved() {
-            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavorites(1, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
         }
         function onFavoriteRemoved() {
-            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavorites(1, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
         }
         function onFavoriteGroupDeleted() {
-            recipeVM.loadFavorites(1, 20, currentGroupFilter)
+            recipeVM.loadFavorites(1, currentGroupFilter)
             recipeVM.loadFavoriteGroups()
         }
         function onFavoriteOperationFailed(error) {

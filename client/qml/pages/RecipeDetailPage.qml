@@ -5,7 +5,11 @@ import client
 import "../components"
 
 Page {
+    id: recipeDetailPage
     title: qsTr("菜谱详情")
+
+    // 营养报告入口（卡片信号转发 → Main.qml 守卫接住后 guardedPush）
+    signal nutritionReportRequested(int recipeId)
 
     property int recipeId: 0
     property bool isFavorited: false
@@ -311,7 +315,7 @@ Page {
 
             NutritionSummaryCard {
                 detailRecipeId: recipeId
-                stackView: _stackView
+                onReportRequested: (recipeId) => recipeDetailPage.nutritionReportRequested(recipeId)
             }
 
             // ---- 关联视频区域 ----

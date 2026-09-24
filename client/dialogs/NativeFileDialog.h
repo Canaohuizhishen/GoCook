@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 
 /**
  * @brief 原生系统文件对话框桥接
@@ -15,6 +16,8 @@
 class NativeFileDialog : public QObject
 {
     Q_OBJECT
+    // 声明式注册（qt_add_qml_module 模块内 → qmltypes/qmldir 单一来源，qmllint 可静态解析）
+    QML_ELEMENT
 public:
     explicit NativeFileDialog(QObject *parent = nullptr);
 

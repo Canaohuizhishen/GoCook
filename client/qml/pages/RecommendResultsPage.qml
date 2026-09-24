@@ -15,7 +15,7 @@ Page {
     property var _pendingCard: null
 
     Component.onCompleted: {
-        recipeVM.loadRecommendedRecipes(1, 20)
+        recipeVM.loadRecommendedRecipes(1)
     }
 
     ColumnLayout {
@@ -50,7 +50,7 @@ Page {
                         }
                     }
                     onClicked: {
-                        recipeVM.loadPublicRecipes(1, 20)
+                        recipeVM.loadPublicRecipes(1)
                         if (_stackView) _stackView.pop()
                     }
                 }

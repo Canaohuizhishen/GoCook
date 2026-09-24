@@ -489,7 +489,7 @@ void RecipeViewModel::loadRecipeRatings(int recipeId, int page, int size)
 void RecipeViewModel::loadMoreRatings()
 {
     if (m_ratingsLoading || !m_ratingsHasMore || m_ratingsRecipeId == 0) return;
-    loadRecipeRatings(m_ratingsRecipeId, m_ratingsPage + 1, 10);
+    loadRecipeRatings(m_ratingsRecipeId, m_ratingsPage + 1, kRatingPageSize);
 }
 
 void RecipeViewModel::loadMyRecipeRating(int recipeId)
@@ -631,7 +631,7 @@ void RecipeViewModel::deleteRecipe(int recipeId)
             self->m_pendingDeleteIds.remove(recipeId); // 无论成功失败都清理
             if (success) {
                 // DELETE 成功后从服务端同步
-                self->loadMyRecipes(1, 20, self->m_myRecipesStatus);
+                self->loadMyRecipes(1, self->m_myRecipesStatus);
             } else if (found) {
                 // 失败 → 回滚
                 self->m_myRecipes = oldList;
@@ -643,7 +643,7 @@ void RecipeViewModel::deleteRecipe(int recipeId)
         });
 }
 
-void RecipeViewModel::loadMyRecipes(int page, int size, const QString& status)
+void RecipeViewModel::loadMyRecipes(int page, const QString& status, int size)
 {
     if (m_myRecipesLoading) return;
 
@@ -693,7 +693,7 @@ void RecipeViewModel::loadMyRecipes(int page, int size, const QString& status)
 void RecipeViewModel::loadMyRecipesNextPage()
 {
     if (m_myRecipesLoading || !m_myRecipesHasMore) return;
-    loadMyRecipes(m_myRecipesPage + 1, 20, m_myRecipesStatus);
+    loadMyRecipes(m_myRecipesPage + 1, m_myRecipesStatus);
 }
 
 QVariantList RecipeViewModel::myRatings() const { return m_myRatings; }
@@ -746,10 +746,10 @@ void RecipeViewModel::loadMyRatings(int page, int size)
 void RecipeViewModel::loadMyRatingsNextPage()
 {
     if (m_myRatingsLoading || !m_myRatingsHasMore) return;
-    loadMyRatings(m_myRatingsPage + 1, 20);
+    loadMyRatings(m_myRatingsPage + 1);
 }
 
-void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
+void RecipeViewModel::loadFavorites(int page, const QString &group, int size)
 {
     if (m_favoritesLoading) return;
     m_favoritesGroupFilter = group;   // 记录筛选与页大小：loadMoreFavorites 续页必须沿用一致参数
@@ -816,7 +816,7 @@ void RecipeViewModel::loadFavorites(int page, int size, const QString &group)
 void RecipeViewModel::loadMoreFavorites()
 {
     if (m_favoritesLoading || !m_favoritesHasMore) return;
-    loadFavorites(m_favoritesPage + 1, m_favoritesPageSize, m_favoritesGroupFilter);
+    loadFavorites(m_favoritesPage + 1, m_favoritesGroupFilter, m_favoritesPageSize);
 }
 
 void RecipeViewModel::clearFavorites()
