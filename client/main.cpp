@@ -52,6 +52,7 @@ int main(int argc, char *argv[])
     // 新增个人域只在此加一行（替代 QML 手工逐个调用）
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &inventoryVM, &InventoryViewModel::clearAll);
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &recipeVM, &RecipeViewModel::clearFavorites);
+    QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &recipeVM, &RecipeViewModel::clearMyContent);
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &shoppingListVM, &ShoppingListViewModel::clearAll);
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &notifyVM, &NotificationViewModel::clearAll);
     QObject::connect(&authViewModel, &AuthViewModel::sessionEnded, &announcementVM, &AnnouncementViewModel::clearAll);

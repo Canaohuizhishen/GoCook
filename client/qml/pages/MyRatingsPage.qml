@@ -10,6 +10,8 @@ Page {
 
     // 点击评论条目 → 请求打开菜谱详情（导航统一收口：Main.qml 守卫接住后 guardedPush）
     signal recipeClicked(int recipeId)
+    // 未登录空态「去登录」→ 请求弹应用内登录页（Main.qml 动作守卫接住；登录成功后原地刷新）
+    signal loginRequested()
 
     header: ToolBar {
         RowLayout {
@@ -186,11 +188,21 @@ Page {
         }
     }
 
-    // ---- 空状态 ----
+    // ---- 未登录空态（页面入口对游客可见；点「去登录」原地刷新，不 pop 回上层） ----
+    GuestEmptyState {
+        anchors.centerIn: parent
+        visible: !authViewModel.loggedIn && recipeVM.myRatings.length === 0 && !recipeVM.myRatingsLoading
+        iconText: "\u2606"
+        title: qsTr("登录后查看你的评论")
+        subtitle: qsTr("在菜谱详情页评分即可留下评论")
+        onActionRequested: myRatingsPage.loginRequested()
+    }
+
+    // ---- 空状态（已登录：确实没有评论） ----
     Column {
         anchors.centerIn: parent
         spacing: Theme.spacingMedium
-        visible: recipeVM.myRatings.length === 0 && !recipeVM.myRatingsLoading
+        visible: authViewModel.loggedIn && recipeVM.myRatings.length === 0 && !recipeVM.myRatingsLoading
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -219,7 +231,18 @@ Page {
     Connections {
         target: recipeVM
         function onErrorOccurred(error) {
+            // 守卫拦截（未登录 → "请先登录"）：游客已见登录空态（含「去登录」按钮），不刷日志（对齐消息页/库存页先例）
+            if (error === "请先登录") return
             console.log("我的评分页错误：", error)
+        }
+    }
+
+    // 登录成功（本页「去登录」或任何路径）：原地刷新评论列表
+    Connections {
+        target: authViewModel
+        function onLoggedInChanged() {
+            if (authViewModel.loggedIn)
+                recipeVM.loadMyRatings()
         }
     }
 }

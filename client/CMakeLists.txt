@@ -88,6 +88,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeStepItem.qml
     QML_FILES qml/components/ErrorBanner.qml
     QML_FILES qml/components/NetworkOfflineView.qml
+    QML_FILES qml/components/GuestEmptyState.qml
     QML_FILES qml/components/NutritionSummaryCard.qml
     QML_FILES qml/components/VideoCardDelegate.qml
     QML_FILES qml/components/GroupSelectionDialog.qml

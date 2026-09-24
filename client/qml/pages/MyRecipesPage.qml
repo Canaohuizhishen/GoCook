@@ -10,6 +10,8 @@ Page {
 
     // 点击编辑 → 请求打开投稿编辑页（导航统一收口：Main.qml 守卫接住后 guardedPush）
     signal editRecipeRequested(int recipeId, string status)
+    // 未登录空态「去登录」→ 请求弹应用内登录页（Main.qml 动作守卫接住；登录成功后原地刷新）
+    signal loginRequested()
 
     property int currentFilterIndex: 0
 
@@ -109,6 +111,8 @@ Page {
                     id: filterBtn
                     text: modelData.label
                     flat: true
+                    // 游客态禁用：未登录无投稿可筛（对齐库存页过滤框先例）
+                    enabled: authViewModel.loggedIn
                     Layout.preferredHeight: 30
                     highlighted: currentFilterIndex === index
                     Layout.fillWidth: true
@@ -289,11 +293,21 @@ Page {
         }
     }
 
-    // ---- 空状态 ----
+    // ---- 未登录空态（页面入口对游客可见；点「去登录」原地刷新，不 pop 回上层） ----
+    GuestEmptyState {
+        anchors.centerIn: parent
+        visible: !authViewModel.loggedIn && recipeVM.myRecipes.length === 0 && !recipeVM.myRecipesLoading
+        iconText: "\uD83D\uDCDD"
+        title: qsTr("登录后查看你的投稿")
+        subtitle: qsTr("发布和管理你的菜谱投稿")
+        onActionRequested: myRecipesPage.loginRequested()
+    }
+
+    // ---- 空状态（已登录：确实没有投稿） ----
     Column {
         anchors.centerIn: parent
         spacing: Theme.spacingMedium
-        visible: recipeVM.myRecipes.length === 0 && !recipeVM.myRecipesLoading
+        visible: authViewModel.loggedIn && recipeVM.myRecipes.length === 0 && !recipeVM.myRecipesLoading
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -321,7 +335,19 @@ Page {
     Connections {
         target: recipeVM
         function onErrorOccurred(error) {
+            // 守卫拦截（未登录 → "请先登录"）：游客已见登录空态（含「去登录」按钮），不刷日志（对齐消息页/库存页先例）
+            if (error === "请先登录") return
             console.log("我的菜谱页错误：", error)
+        }
+    }
+
+    // 登录成功（本页「去登录」或任何路径）：原地刷新当前筛选的列表——登录页 pop 回来后
+    // 列表已是登录态数据，用户无感
+    Connections {
+        target: authViewModel
+        function onLoggedInChanged() {
+            if (authViewModel.loggedIn)
+                recipeVM.loadMyRecipes(1, filterOptions[currentFilterIndex].value)
         }
     }
 }

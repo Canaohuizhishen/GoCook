@@ -116,7 +116,6 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 44
-            visible: authViewModel.loggedIn
             radius: Theme.radiusMedium
             color: settingsBtn.containsMouse ? Qt.rgba(0,0,0,0.05) : "transparent"
             border.color: Theme.primaryColor
@@ -189,7 +188,6 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 44
-            visible: authViewModel.loggedIn
             radius: Theme.radiusMedium
             color: publishBtn.containsMouse ? Qt.rgba(0,0,0,0.05) : "transparent"
             border.color: Theme.primaryColor
@@ -263,7 +261,6 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 44
-            visible: authViewModel.loggedIn
             radius: Theme.radiusMedium
             color: myRecipesBtn.containsMouse ? Qt.rgba(0,0,0,0.05) : "transparent"
             border.color: Theme.primaryColor
@@ -350,7 +347,6 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 44
-            visible: authViewModel.loggedIn
             radius: Theme.radiusMedium
             color: myRatingsBtn.containsMouse ? Qt.rgba(0,0,0,0.05) : "transparent"
             border.color: Theme.primaryColor
@@ -434,7 +430,6 @@ Page {
         anchors.topMargin: -Theme.spacingSmall
         anchors.rightMargin: -Theme.spacingSmall
         width: 44; height: 44
-        visible: authViewModel.loggedIn
 
         Button {
             anchors.fill: parent
