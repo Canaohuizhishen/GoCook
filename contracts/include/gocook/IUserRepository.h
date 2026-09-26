@@ -7,8 +7,8 @@
 
 namespace gocook::repository {
 
-/// 密码重置令牌过期时间（分钟）
-inline constexpr int TOKEN_EXPIRY_MINUTES = 15;
+/// 邮箱验证码（注册/重置）有效期（分钟）——数据库过期时间与邮件文案的单一事实源
+inline constexpr int EMAIL_CODE_EXPIRY_MINUTES = 15;
 
 /// 用户认证信息（用于登录验证与鉴权）
 struct UserAuthInfo {
@@ -53,7 +53,7 @@ public:
                             const std::string& email) = 0;
 
     /**
-     * @brief 创建/覆盖待验证注册记录（两段式注册第一步；邮箱唯一，过期时间由 SQL 层统一设置为 NOW() + 15 分钟）。
+     * @brief 创建/覆盖待验证注册记录（两段式注册第一步；邮箱唯一，过期时间由 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 统一计算）。
      * @param username 用户名
      * @param passwordHash 密码哈希
      * @param email 邮箱地址
@@ -87,7 +87,7 @@ public:
     virtual std::optional<int> findIdByUsernameAndEmail(const std::string& username,
                                                         const std::string& email) = 0;
 
-    /// 创建密码重置令牌（过期时间由 SQL 层统一设置为 NOW() + INTERVAL '15 minutes'）
+    /// 创建密码重置令牌（过期时间由 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 统一计算）
     virtual void createPasswordResetToken(int userId, const std::string& token) = 0;
 
     /// 根据令牌查找对应用户ID（仅返回未使用且未过期的令牌）
