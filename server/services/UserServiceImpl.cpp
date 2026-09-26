@@ -78,8 +78,14 @@ namespace {
         return std::to_string((val % 900000) + 100000);
     }
 
-    /// 发送邮件：SMTP 已配置 → 真发（失败抛 500，注册的两个分支一致，响应层无可区分差异）；
-    /// 未配置（开发模式）→ 邮件内容打印到服务端日志，接口响应保持统一。
+    /// 开发模式（SMTP 未配置）：邮件内容（含验证码）打印到服务端日志（[DEV MAIL]，docker logs 可见），不发信
+    void logDevMail(const std::string& to, const std::string& subject, const std::string& body) {
+        LOG_WARN("[DEV MAIL] SMTP 未配置，邮件未真实发送\n收件人：%s\n主题：%s\n正文：\n%s",
+                 to.c_str(), subject.c_str(), body.c_str());
+    }
+
+    /// 发送邮件：SMTP 已配置 → 真发（失败抛 500——注册/重置各链路一致，响应层无可区分差异）；
+    /// 未配置（开发模式）→ 邮件正文打印到服务端日志，接口响应保持统一。
     void sendMailOrLog(const std::string& to, const std::string& subject, const std::string& body) {
         if (EmailSender::isConfigured()) {
             if (!EmailSender::sendEmail(to, subject, body)) {
@@ -88,8 +94,7 @@ namespace {
             }
             LOG_INFO("邮件已发送至 %s：%s", to.c_str(), subject.c_str());
         } else {
-            LOG_WARN("[DEV MAIL] SMTP 未配置，邮件未真实发送\n收件人：%s\n主题：%s\n正文：\n%s",
-                     to.c_str(), subject.c_str(), body.c_str());
+            logDevMail(to, subject, body);
         }
     }
 }
@@ -225,8 +230,8 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
 
 // ==================== 密码重置 ====================
 
-std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::string& username,
-                                                                   const std::string& email) {
+void UserServiceImpl::requestPasswordReset(const std::string& username,
+                                           const std::string& email) {
     // 1. 校验用户名与邮箱是否匹配（双重验证）
     auto userIdOpt = userRepo_->findIdByUsernameAndEmail(username, email);
     if (!userIdOpt.has_value()) {
@@ -235,7 +240,6 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
         throw ServiceException("用户名或邮箱不正确", 400);
     }
 
-    // 开发模式下返回 dev_token 仅发生在「用户名+邮箱双双匹配」时（配 SMTP 的生产模式不返回令牌）；
     // 双字段匹配即发信门槛——不知道完整用户名+邮箱组合的请求不会触发任何邮件（防轰炸）。
     // 2. 生成 6 位数字验证码（CSPRNG，与注册验证共用 generateNumericCode）
     std::string token = generateNumericCode();
@@ -243,23 +247,12 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
     // 3. 将令牌存入数据库 — 过期时间在 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 计算（make_interval）
     userRepo_->createPasswordResetToken(userIdOpt.value(), token);
 
-    // 5. 发送邮件
-    //    - SMTP 已配置且发送成功 → 返回 nullopt（令牌已通过邮件发送）
-    //    - SMTP 未配置 → 返回令牌用于开发模式响应
-    //      （比打印到 stderr 更安全 — 令牌直接返回给 API 调用方，而非写入日志）
-    //    - SMTP 已配置但发送失败 → 抛出异常（真实错误）
-    if (EmailSender::isConfigured()) {
-        bool sent = EmailSender::sendPasswordResetEmail(email, token, gocook::repository::EMAIL_CODE_EXPIRY_MINUTES);
-        if (!sent) {
-            LOG_ERROR("向 %s 发送邮件失败（SMTP 错误）", email.c_str());
-            throw ServiceException("密码重置邮件发送失败，请稍后再试或联系管理员", 500);
-        }
-        LOG_INFO("密码重置邮件已发送至 %s", email.c_str());
-        return std::nullopt;
-    } else {
-        LOG_WARN("SMTP 未配置——密码重置令牌将随响应返回（开发模式）");
-        return token;
-    }
+    // 4. 发送邮件 / 开发模式打日志（与注册链路同一 sendMailOrLog 口径）：
+    //    - SMTP 已配置 → 真发；发送失败抛 500（真实错误，不静默降级回开发模式）
+    //    - SMTP 未配置（开发模式）→ 邮件正文（含验证码）经 [DEV MAIL] 打印到服务端日志，响应与生产同形
+    //    正文经 buildPasswordResetEmailBody 单源构建——真发与日志打印同一字符串
+    sendMailOrLog(email, "GoCook - 密码重置",
+                  EmailSender::buildPasswordResetEmailBody(token, gocook::repository::EMAIL_CODE_EXPIRY_MINUTES));
 }
 
 void UserServiceImpl::resetPassword(const std::string& token, const std::string& newPassword) {

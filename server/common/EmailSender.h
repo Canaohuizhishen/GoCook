@@ -22,10 +22,10 @@
  */
 class EmailSender {
 public:
-    /// 发送密码重置邮件（expiryMinutes 用于正文有效期展示，由调用方传入常量）
-    static bool sendPasswordResetEmail(const std::string& toEmail,
-                                       const std::string& token,
-                                       int expiryMinutes);
+    /// 构建密码重置邮件正文（HTML；token 与 expiryMinutes 由调用方传入）
+    /// 唯一正文来源——真发与开发模式 [DEV MAIL] 日志打印同一字符串，文案单点维护
+    static std::string buildPasswordResetEmailBody(const std::string& token,
+                                                   int expiryMinutes);
     /// 发送通用邮件
     static bool sendEmail(const std::string& to,
                           const std::string& subject,

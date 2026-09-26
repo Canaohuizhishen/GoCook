@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <jwt-cpp/jwt.h>
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -43,6 +44,7 @@ namespace {
             else unsetenv(name_.c_str());
         }
         void set(const char* value) { setenv(name_.c_str(), value, 1); }
+        void unset() { unsetenv(name_.c_str()); }
     private:
         std::string name_;
         std::optional<std::string> saved_;
@@ -66,11 +68,11 @@ namespace {
 // ==================== 注册 ====================
 
 TEST(UserServiceTest, 注册成功进入待验证并发送验证码) {
-    // 保存并清除 SMTP 环境变量，模拟开发模式（邮件落日志，不真实发送）
-    auto oldUser = std::getenv("GOCOOK_SMTP_USER");
-    auto oldPass = std::getenv("GOCOOK_SMTP_PASS");
-    if (oldUser) unsetenv("GOCOOK_SMTP_USER");
-    if (oldPass) unsetenv("GOCOOK_SMTP_PASS");
+    // 清除 SMTP 环境变量，模拟开发模式（邮件落日志，不真实发送）；EnvGuard 作用域结束自动恢复
+    EnvGuard guardUser("GOCOOK_SMTP_USER");
+    EnvGuard guardPass("GOCOOK_SMTP_PASS");
+    guardUser.unset();
+    guardPass.unset();
 
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
@@ -88,17 +90,14 @@ TEST(UserServiceTest, 注册成功进入待验证并发送验证码) {
         });
 
     EXPECT_NO_THROW(service.registerUser(req));
-
-    if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
-    if (oldPass) setenv("GOCOOK_SMTP_PASS", oldPass, 1);
 }
 
 TEST(UserServiceTest, 注册邮箱已注册静默成功不建号) {
-    // 保存并清除 SMTP 环境变量，模拟开发模式
-    auto oldUser = std::getenv("GOCOOK_SMTP_USER");
-    auto oldPass = std::getenv("GOCOOK_SMTP_PASS");
-    if (oldUser) unsetenv("GOCOOK_SMTP_USER");
-    if (oldPass) unsetenv("GOCOOK_SMTP_PASS");
+    // 清除 SMTP 环境变量，模拟开发模式；EnvGuard 作用域结束自动恢复
+    EnvGuard guardUser("GOCOOK_SMTP_USER");
+    EnvGuard guardPass("GOCOOK_SMTP_PASS");
+    guardUser.unset();
+    guardPass.unset();
 
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
@@ -110,9 +109,6 @@ TEST(UserServiceTest, 注册邮箱已注册静默成功不建号) {
     EXPECT_CALL(*repo, upsertPendingRegistration(_, _, _, _)).Times(0);
 
     EXPECT_NO_THROW(service.registerUser(makeRegisterReq()));
-
-    if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
-    if (oldPass) setenv("GOCOOK_SMTP_PASS", oldPass, 1);
 }
 
 TEST(UserServiceTest, 注册用户名冲突) {
@@ -421,28 +417,27 @@ TEST(UserServiceTest, 请求重置密码用户名邮箱不匹配报错不发信)
 }
 
 TEST(UserServiceTest, 请求重置密码邮箱已注册生成令牌) {
-    // 保存并清除 SMTP 环境变量，模拟开发模式
-    auto oldUser = std::getenv("GOCOOK_SMTP_USER");
-    auto oldPass = std::getenv("GOCOOK_SMTP_PASS");
-    if (oldUser) unsetenv("GOCOOK_SMTP_USER");
-    if (oldPass) unsetenv("GOCOOK_SMTP_PASS");
+    // 清除 SMTP 环境变量，模拟开发模式；EnvGuard 作用域结束自动恢复
+    EnvGuard guardUser("GOCOOK_SMTP_USER");
+    EnvGuard guardPass("GOCOOK_SMTP_PASS");
+    guardUser.unset();
+    guardPass.unset();
 
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
+    std::string issuedToken;
     EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "user@test.com"))
         .WillOnce(Return(std::optional<int>(42)));
-    EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
+    EXPECT_CALL(*repo, createPasswordResetToken(42, _))
+        .WillOnce(SaveArg<1>(&issuedToken));
 
-    // SMTP 未配置时应返回令牌（开发模式），而非抛异常
-    auto result = service.requestPasswordReset("testuser", "user@test.com");
-    EXPECT_TRUE(result.has_value());
-    EXPECT_EQ(result.value().size(), 6);   // 6 位数字验证码
-
-    // 恢复 SMTP 环境变量
-    if (oldUser) setenv("GOCOOK_SMTP_USER", oldUser, 1);
-    if (oldPass) setenv("GOCOOK_SMTP_PASS", oldPass, 1);
+    // SMTP 未配置（开发模式）：不抛异常、不返回令牌；验证码经 [DEV MAIL] 打到服务端日志；令牌 6 位数字并在仓库边界入库
+    service.requestPasswordReset("testuser", "user@test.com");
+    EXPECT_EQ(issuedToken.size(), 6);   // 6 位数字验证码
+    EXPECT_TRUE(std::all_of(issuedToken.begin(), issuedToken.end(),
+                            [](char c) { return c >= '0' && c <= '9'; }));
 }
 
 TEST(UserServiceTest, 重置密码令牌无效) {
@@ -1342,40 +1337,21 @@ TEST(UserServiceTest, 删除通知用户不存在) {
 class SmtpEnvironmentTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // 保存原环境变量
-        oldSmtpHost_ = std::getenv("GOCOOK_SMTP_HOST");
-        oldSmtpPort_ = std::getenv("GOCOOK_SMTP_PORT");
-        oldSmtpUser_ = std::getenv("GOCOOK_SMTP_USER");
-        oldSmtpPass_ = std::getenv("GOCOOK_SMTP_PASS");
-        oldSmtpFrom_ = std::getenv("GOCOOK_SMTP_FROM");
-        // 设置 SMTP 环境变量（端口设为一个不可能的值，确保连接快速失败）
-        setenv("GOCOOK_SMTP_HOST", "127.0.0.1", 1);
-        setenv("GOCOOK_SMTP_PORT", "1", 1);
-        setenv("GOCOOK_SMTP_USER", "test@gocook.dev", 1);
-        setenv("GOCOOK_SMTP_PASS", "test-password", 1);
-        unsetenv("GOCOOK_SMTP_FROM");
-    }
-
-    void TearDown() override {
-        // 恢复原环境变量
-        if (oldSmtpHost_) setenv("GOCOOK_SMTP_HOST", oldSmtpHost_, 1);
-        else unsetenv("GOCOOK_SMTP_HOST");
-        if (oldSmtpPort_) setenv("GOCOOK_SMTP_PORT", oldSmtpPort_, 1);
-        else unsetenv("GOCOOK_SMTP_PORT");
-        if (oldSmtpUser_) setenv("GOCOOK_SMTP_USER", oldSmtpUser_, 1);
-        else unsetenv("GOCOOK_SMTP_USER");
-        if (oldSmtpPass_) setenv("GOCOOK_SMTP_PASS", oldSmtpPass_, 1);
-        else unsetenv("GOCOOK_SMTP_PASS");
-        if (oldSmtpFrom_) setenv("GOCOOK_SMTP_FROM", oldSmtpFrom_, 1);
-        else unsetenv("GOCOOK_SMTP_FROM");
+        // 覆盖 SMTP 环境变量（端口设为一个不可能的值，确保连接快速失败）
+        // EnvGuard 成员构造时已存档原值、析构时恢复（无需 TearDown）
+        smtpHost_.set("127.0.0.1");
+        smtpPort_.set("1");
+        smtpUser_.set("test@gocook.dev");
+        smtpPass_.set("test-password");
+        smtpFrom_.unset();
     }
 
 private:
-    const char* oldSmtpHost_ = nullptr;
-    const char* oldSmtpPort_ = nullptr;
-    const char* oldSmtpUser_ = nullptr;
-    const char* oldSmtpPass_ = nullptr;
-    const char* oldSmtpFrom_ = nullptr;
+    EnvGuard smtpHost_{"GOCOOK_SMTP_HOST"};
+    EnvGuard smtpPort_{"GOCOOK_SMTP_PORT"};
+    EnvGuard smtpUser_{"GOCOOK_SMTP_USER"};
+    EnvGuard smtpPass_{"GOCOOK_SMTP_PASS"};
+    EnvGuard smtpFrom_{"GOCOOK_SMTP_FROM"};
 };
 
 TEST_F(SmtpEnvironmentTest, SMTP已配置时isConfigured返回true) {
@@ -1400,7 +1376,7 @@ TEST_F(SmtpEnvironmentTest, SMTP已配置但不可达时requestPasswordReset抛�
     }
 }
 
-TEST_F(SmtpEnvironmentTest, SMTP已配置时requestPasswordReset不返回token) {
+TEST_F(SmtpEnvironmentTest, SMTP已配置但发送失败时不回退开发模式) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
@@ -1409,6 +1385,13 @@ TEST_F(SmtpEnvironmentTest, SMTP已配置时requestPasswordReset不返回token) 
         .WillOnce(Return(42));
     EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
 
-    // SMTP 不可达，方法会抛出异常而非返回 token
-    EXPECT_THROW(service.requestPasswordReset("testuser", "test@example.com"), ServiceException);
+    // SMTP 已配置但发送失败：抛 500 且文案与注册链路统一（而非静默降级为 [DEV MAIL] 开发模式日志）；
+    // 与上一条「不可达…抛出异常」互补：该条钉住状态码语义，本条钉住失败文案契约
+    try {
+        service.requestPasswordReset("testuser", "test@example.com");
+        FAIL() << "Expected ServiceException";
+    } catch (const ServiceException& e) {
+        EXPECT_EQ(e.statusCode(), 500);
+        EXPECT_STREQ(e.what(), "邮件发送失败，请稍后再试或联系管理员");
+    }
 }
