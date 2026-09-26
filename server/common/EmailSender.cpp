@@ -100,7 +100,8 @@ EmailSender::SmtpConfig EmailSender::loadConfig() {
 }
 
 bool EmailSender::sendPasswordResetEmail(const std::string& toEmail,
-                                          const std::string& token) {
+                                          const std::string& token,
+                                          int expiryMinutes) {
     auto cfg = loadConfig();
     if (!cfg.valid) {
         LOG_WARN("SMTP 未配置：密码重置令牌改为输出到 stderr，邮件不发送");
@@ -117,7 +118,7 @@ bool EmailSender::sendPasswordResetEmail(const std::string& toEmail,
          << "     border-radius: 8px; font-family: monospace; font-size: 56px; font-weight: bold; "
          << "     text-align: center; letter-spacing: 8px;'>"
          << token << "</div>"
-         << "<p>此验证码将在 <strong>15 分钟</strong> 后过期。</p>"
+         << "<p>此验证码将在 <strong>" << expiryMinutes << " 分钟</strong> 后过期。</p>"
          << "<p>如果您没有请求重置密码，请忽略此邮件。</p>"
          << "<hr><p style='color: #888; font-size: 12px;'>GoCook 团队</p>"
          << "</body></html>";
