@@ -25,6 +25,7 @@ set(TEST_SOURCES
     test_nutrition_integration.cpp
     test_favorites_integration.cpp
     test_notification_watermark_integration.cpp
+    test_user_token_integration.cpp
 )
 
 add_executable(test_services ${TEST_SOURCES})

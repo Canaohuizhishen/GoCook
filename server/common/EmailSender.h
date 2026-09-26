@@ -22,9 +22,10 @@
  */
 class EmailSender {
 public:
-    /// 发送密码重置邮件
+    /// 发送密码重置邮件（expiryMinutes 用于正文有效期展示，由调用方传入常量）
     static bool sendPasswordResetEmail(const std::string& toEmail,
-                                       const std::string& token);
+                                       const std::string& token,
+                                       int expiryMinutes);
     /// 发送通用邮件
     static bool sendEmail(const std::string& to,
                           const std::string& subject,

@@ -37,7 +37,7 @@ public:
     // 通过用户名+邮箱联合查找用户 ID（忘记密码时双重验证身份）
     std::optional<int> findIdByUsernameAndEmail(const std::string& username,
                                                  const std::string& email) override;
-    // 创建密码重置令牌（SQL 层统一设置 15 分钟过期）
+    // 创建密码重置令牌（过期时间由 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 统一计算）
     void createPasswordResetToken(int userId, const std::string& token) override;
     // 按令牌查找对应用户 ID（仅返回未使用且未过期的令牌）
     std::optional<int> findUserIdByResetToken(const std::string& token) override;

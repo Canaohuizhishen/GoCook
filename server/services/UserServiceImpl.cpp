@@ -179,7 +179,7 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     std::string hashed = hashPassword(request.password);
     userRepo_->upsertPendingRegistration(request.username, hashed, request.email, token);
     sendMailOrLog(request.email, "GoCook 注册验证码",
-        "您正在注册 GoCook 账户，验证码为：" + token + "（15 分钟内有效）。\n"
+        "您正在注册 GoCook 账户，验证码为：" + token + "（" + std::to_string(gocook::repository::EMAIL_CODE_EXPIRY_MINUTES) + " 分钟内有效）。\n"
         "请在注册页面输入该验证码完成注册。如非本人操作，请忽略此邮件。");
 }
 
@@ -240,7 +240,7 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
     // 2. 生成 6 位数字验证码（CSPRNG，与注册验证共用 generateNumericCode）
     std::string token = generateNumericCode();
 
-    // 3. 将令牌存入数据库 — 过期时间在 SQL 中计算为 NOW() + INTERVAL '15 minutes'
+    // 3. 将令牌存入数据库 — 过期时间在 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 计算（make_interval）
     userRepo_->createPasswordResetToken(userIdOpt.value(), token);
 
     // 5. 发送邮件
@@ -249,7 +249,7 @@ std::optional<std::string> UserServiceImpl::requestPasswordReset(const std::stri
     //      （比打印到 stderr 更安全 — 令牌直接返回给 API 调用方，而非写入日志）
     //    - SMTP 已配置但发送失败 → 抛出异常（真实错误）
     if (EmailSender::isConfigured()) {
-        bool sent = EmailSender::sendPasswordResetEmail(email, token);
+        bool sent = EmailSender::sendPasswordResetEmail(email, token, gocook::repository::EMAIL_CODE_EXPIRY_MINUTES);
         if (!sent) {
             LOG_ERROR("向 %s 发送邮件失败（SMTP 错误）", email.c_str());
             throw ServiceException("密码重置邮件发送失败，请稍后再试或联系管理员", 500);

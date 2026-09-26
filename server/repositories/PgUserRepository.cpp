@@ -67,11 +67,11 @@ void PgUserRepository::upsertPendingRegistration(const std::string& username,
         LOG_DEBUG("[SQL] UPSERT pending_registrations | email=%s", email.c_str());
         txn.exec(
             "INSERT INTO pending_registrations (username, password_hash, email, token, expires_at) "
-            "VALUES ($1, $2, $3, $4, NOW() + INTERVAL '" "15 minutes')"
+            "VALUES ($1, $2, $3, $4, NOW() + make_interval(mins => $5))"
             "ON CONFLICT (email) DO UPDATE SET "
             "    username = EXCLUDED.username, password_hash = EXCLUDED.password_hash, "
             "    token = EXCLUDED.token, expires_at = EXCLUDED.expires_at, created_at = NOW()",
-            pqxx::params{username, passwordHash, email, token});
+            pqxx::params{username, passwordHash, email, token, EMAIL_CODE_EXPIRY_MINUTES});
     }, "数据库操作失败");
 }
 
@@ -155,8 +155,8 @@ void PgUserRepository::createPasswordResetToken(
         LOG_DEBUG("[SQL] INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, ...) | $1=%d", userId);
         txn.exec(
             "INSERT INTO password_reset_tokens (user_id, token, expires_at) "
-            "VALUES ($1, $2, NOW() + INTERVAL '" + std::to_string(TOKEN_EXPIRY_MINUTES) + " minutes')",
-            pqxx::params{userId, token});
+            "VALUES ($1, $2, NOW() + make_interval(mins => $3))",
+            pqxx::params{userId, token, EMAIL_CODE_EXPIRY_MINUTES});
     }, "创建重置令牌失败");
 }
 
