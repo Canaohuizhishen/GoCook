@@ -29,9 +29,9 @@ public:
     // 用户登录，验证密码并签发 JWT Token
     gocook::models::LoginResponse login(const gocook::models::LoginRequest& request) override;
 
-    // 请求密码重置：发送重置邮件；SMTP 未配置时返回重置令牌（开发模式）
-    std::optional<std::string> requestPasswordReset(const std::string& username,
-                                                     const std::string& email) override;
+    // 请求密码重置：发送重置邮件；SMTP 未配置（开发模式）时经 [DEV MAIL] 打印到服务端日志
+    void requestPasswordReset(const std::string& username,
+                              const std::string& email) override;
     // 使用重置令牌设置新密码
     void resetPassword(const std::string& token,
                        const std::string& newPassword) override;

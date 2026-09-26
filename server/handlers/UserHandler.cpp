@@ -84,14 +84,10 @@ void UserHandler::forgotPassword(const httplib::Request& req, httplib::Response&
 
         std::string username = reqJson["username"];
         std::string email = reqJson["email"];
-        auto devToken = service_.requestPasswordReset(username, email);
+        service_.requestPasswordReset(username, email);
 
+        // 响应与 SMTP 配置状态无关、两种模式同形（防枚举）；开发模式验证码见服务端日志（[DEV MAIL]）
         json rsp{{"message", "重置密码邮件已发送，请检查收件箱和垃圾邮件。"}};
-        // 开发模式：SMTP 未配置时返回令牌以便调试
-        if (devToken.has_value()) {
-            rsp["message"] = "【开发模式】SMTP 未配置，重置令牌如下（仅本次有效）：";
-            rsp["dev_token"] = devToken.value();
-        }
         res.status = 200;
         res.body = rsp.dump();
     } catch (const gocook::services::ServiceException& e) {

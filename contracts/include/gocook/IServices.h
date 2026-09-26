@@ -257,12 +257,12 @@ namespace gocook::services {
         virtual models::LoginResponse login(const models::LoginRequest& request) = 0;
 
         /**
-         * @brief 发送密码重置邮件（无需认证，对应 API 3.11.2）。
+         * @brief 请求密码重置（无需认证，对应 API 3.11.2）。
          * @param username 用户名（用于双重验证）
          * @param email 注册邮箱
-         * @return SMTP 未配置时返回重置令牌（开发模式），邮件成功发送时返回 std::nullopt
+         * @note SMTP 未配置（开发模式）时邮件内容（含验证码）经 [DEV MAIL] 打印到服务端日志，不发信、不返回令牌
          */
-        virtual std::optional<std::string> requestPasswordReset(
+        virtual void requestPasswordReset(
             const std::string& username, const std::string& email) = 0;
 
         /**

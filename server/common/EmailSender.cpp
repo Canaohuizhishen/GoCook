@@ -99,16 +99,8 @@ EmailSender::SmtpConfig EmailSender::loadConfig() {
     return cfg;
 }
 
-bool EmailSender::sendPasswordResetEmail(const std::string& toEmail,
-                                          const std::string& token,
-                                          int expiryMinutes) {
-    auto cfg = loadConfig();
-    if (!cfg.valid) {
-        LOG_WARN("SMTP 未配置：密码重置邮件未发送");
-        return false;
-    }
-
-    std::string subject = "GoCook - 密码重置";
+std::string EmailSender::buildPasswordResetEmailBody(const std::string& token,
+                                                      int expiryMinutes) {
     std::ostringstream body;
     body << "<!DOCTYPE html><html><body style='font-family: sans-serif; padding: 20px;'>"
          << "<h2>GoCook 密码重置</h2>"
@@ -122,8 +114,7 @@ bool EmailSender::sendPasswordResetEmail(const std::string& toEmail,
          << "<p>如果您没有请求重置密码，请忽略此邮件。</p>"
          << "<hr><p style='color: #888; font-size: 12px;'>GoCook 团队</p>"
          << "</body></html>";
-
-    return sendRaw(cfg, toEmail, subject, body.str());
+    return body.str();
 }
 
 bool EmailSender::sendEmail(const std::string& to,
