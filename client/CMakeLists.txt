@@ -32,7 +32,7 @@ qt_add_qml_module(appclient
     URI client
     VERSION 1.0
     SOURCES main.cpp
-    SOURCES api/HttpGoCookApi.h api/HttpGoCookApi.cpp
+    SOURCES api/HttpGoCookApi.h api/HttpGoCookApi.cpp api/JsonDeserializer.h api/JsonDeserializer.cpp
     SOURCES database/LocalDatabase.h database/LocalDatabase.cpp
     QML_FILES qml/pages/LoginPage.qml
     QML_FILES qml/pages/HomePage.qml

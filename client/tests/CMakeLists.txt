@@ -13,11 +13,13 @@ set(TEST_SOURCES
     test_announcement_vm.cpp
     test_shopping_list_vm.cpp
     test_request_guards.cpp
+    test_json_deserializer.cpp
 )
 
 add_executable(test_client ${TEST_SOURCES}
     ../database/LocalDatabase.h ../database/LocalDatabase.cpp
     ../api/HttpGoCookApi.h ../api/HttpGoCookApi.cpp
+    ../api/JsonDeserializer.h ../api/JsonDeserializer.cpp
     ../adapters/DataMapper.h ../adapters/DataMapper.cpp
     ../viewmodels/InventoryViewModel.h ../viewmodels/InventoryViewModel.cpp
     ../viewmodels/RecipeViewModel.h ../viewmodels/RecipeViewModel.cpp
