@@ -73,6 +73,18 @@ namespace {
         return r;
     }
 
+    // 「换一批」测试辅助：构造 count 个复合分严格递减、风味/技法两两不同的候选
+    // （避开多样化约束对批次断言的干扰；id 从 1 连续编号，分数 0.90 起每档 -0.05）
+    void appendDistinctCandidates(PagedRecommendedRecipes& paged, int count) {
+        static const char* kFlavors[] = {"清淡", "麻辣", "酸甜", "蒜香", "酸辣", "酱香", "葱香", "鲜香"};
+        static const char* kMethods[] = {"蒸", "炒", "炖", "煮", "拌", "烧", "煸", "炸"};
+        for (int i = 0; i < count; ++i) {
+            paged.data.push_back(makeRec(i + 1, "换批菜" + std::to_string(i + 1),
+                                         kFlavors[i % 8], kMethods[i % 8],
+                                         0.90 - i * 0.05, 4.0));
+        }
+    }
+
     PagedInventory makePagedInventory(int total) {
         PagedInventory r;
         r.pagination = {1, 1, total, total > 0 ? 1 : 0};
@@ -1107,4 +1119,199 @@ TEST(RecipeServiceTest, 推荐软档多食材命中仍只降权一次) {
     EXPECT_EQ(threeIt->health_notice, "含盐、酱油、豆瓣酱，高血压人群建议少盐清淡");
     // 命中 1 样与 3 样软档食材降权相同 → 同基础分下最终得分相等
     EXPECT_EQ(oneIt->match_score, threeIt->match_score);
+}
+
+// ==================== 换一批（种子化重排） ====================
+
+TEST(RecipeServiceTest, 推荐换一批同种子批次可复现) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1)).WillRepeatedly(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1)).WillRepeatedly(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1)).WillRepeatedly(Return(std::vector<std::string>{}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(8, 1, 18);
+    appendDistinctCandidates(candidates, 8);
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 18))
+        .WillRepeatedly(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto r1 = service.getRecommendedRecipes(1, 1, 6, 42u);
+    auto r2 = service.getRecommendedRecipes(1, 1, 6, 42u);
+
+    ASSERT_EQ(r1.data.size(), 6u);
+    ASSERT_EQ(r2.data.size(), 6u);
+    for (size_t i = 0; i < r1.data.size(); ++i) {
+        EXPECT_EQ(r1.data[i].id, r2.data[i].id) << "同 seed 第 " << i << " 位不一致";
+        EXPECT_DOUBLE_EQ(r1.data[i].match_score, r2.data[i].match_score);
+    }
+}
+
+TEST(RecipeServiceTest, 推荐换一批不同种子批次变化且头部不再固定) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1)).WillRepeatedly(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1)).WillRepeatedly(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1)).WillRepeatedly(Return(std::vector<std::string>{}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(8, 1, 18);
+    appendDistinctCandidates(candidates, 8);
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 18))
+        .WillRepeatedly(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto r1 = service.getRecommendedRecipes(1, 1, 6, 11u);
+    auto r2 = service.getRecommendedRecipes(1, 1, 6, 22u);
+
+    ASSERT_EQ(r1.data.size(), 6u);
+    ASSERT_EQ(r2.data.size(), 6u);
+
+    // 批次组成随种子变化：固定种子区间内至少出现两种不同批次
+    // （不要求"任意两 seed 必不同"——8 选 6 的丢弃对撞车是 RNG 正常行为，概率约 1/28）
+    std::vector<std::vector<int>> batches;
+    for (unsigned int seed = 1; seed <= 16; ++seed) {
+        auto r = service.getRecommendedRecipes(1, 1, 6, seed);
+        std::vector<int> ids;
+        for (const auto& rec : r.data) ids.push_back(rec.id);
+        batches.push_back(std::move(ids));
+    }
+    const bool allSeedBatchesSame = std::all_of(batches.begin(), batches.end(),
+        [&](const std::vector<int>& ids) { return ids == batches.front(); });
+    EXPECT_FALSE(allSeedBatchesSame) << "换一批未改变批次组成";
+
+    // 锚点已取消（SHUFFLE_ANCHOR_COUNT=0）：存在种子使最高分菜（id=1）整批缺席；
+    // 若恢复头部锚点语义，本断言必然失败（id=1 恒在批内）——改锚点常量时请看这里
+    bool anySeedExcludesTop = false;
+    for (const auto& ids : batches) {
+        if (std::find(ids.begin(), ids.end(), 1) == ids.end()) {
+            anySeedExcludesTop = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(anySeedExcludesTop);
+
+    // 输出恒为复合分降序
+    for (size_t i = 1; i < r1.data.size(); ++i)
+        EXPECT_GE(r1.data[i - 1].match_score, r1.data[i].match_score);
+    for (size_t i = 1; i < r2.data.size(); ++i)
+        EXPECT_GE(r2.data[i - 1].match_score, r2.data[i].match_score);
+}
+
+TEST(RecipeServiceTest, 推荐换一批种子为零保持确定性排序) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1)).WillRepeatedly(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1)).WillRepeatedly(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1)).WillRepeatedly(Return(std::vector<std::string>{}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(8, 1, 24);
+    appendDistinctCandidates(candidates, 8);
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 24))
+        .WillRepeatedly(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto rDefault = service.getRecommendedRecipes(1, 1, 8);   // 默认 seed = 0（首屏路径）
+    auto rZero = service.getRecommendedRecipes(1, 1, 8, 0u);
+
+    ASSERT_EQ(rDefault.data.size(), 8u);
+    ASSERT_EQ(rZero.data.size(), 8u);
+    for (size_t i = 0; i < rDefault.data.size(); ++i) {
+        EXPECT_EQ(rDefault.data[i].id, static_cast<int>(i) + 1) << "第 " << i << " 位";
+        EXPECT_EQ(rZero.data[i].id, rDefault.data[i].id);
+    }
+}
+
+TEST(RecipeServiceTest, 推荐换一批输出恒为分数降序含兜底补位) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{}));
+
+    // 3 道同口味触发口味帽：「清淡丙」首轮被跳过、靠补位进榜——旧实现会落在列表尾部
+    PagedRecommendedRecipes candidates = makePagedRecommended(5, 1, 15);
+    candidates.data.push_back(makeRec(1, "清淡甲", "清淡", "炒", 0.90, 4.0));
+    candidates.data.push_back(makeRec(2, "清淡乙", "清淡", "蒸", 0.80, 4.0));
+    candidates.data.push_back(makeRec(3, "清淡丙", "清淡", "炖", 0.70, 4.0));
+    candidates.data.push_back(makeRec(4, "蒜香丁", "蒜香", "煮", 0.60, 4.0));
+    candidates.data.push_back(makeRec(5, "麻辣戊", "麻辣", "拌", 0.50, 4.0));
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 15))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 5);
+
+    ASSERT_EQ(result.data.size(), 5u);
+    const char* expected[] = {"清淡甲", "清淡乙", "清淡丙", "蒜香丁", "麻辣戊"};
+    for (size_t i = 0; i < result.data.size(); ++i)
+        EXPECT_EQ(result.data[i].name, expected[i]) << "第 " << i << " 位";
+    for (size_t i = 1; i < result.data.size(); ++i)
+        EXPECT_GE(result.data[i - 1].match_score, result.data[i].match_score);
+}
+
+TEST(RecipeServiceTest, 推荐换一批候选不足不崩溃) {
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1))
+        .WillOnce(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1))
+        .WillOnce(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillOnce(Return(std::vector<std::string>{}));
+
+    PagedRecommendedRecipes candidates = makePagedRecommended(3, 1, 30);
+    appendDistinctCandidates(candidates, 3);
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 30))
+        .WillOnce(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    auto result = service.getRecommendedRecipes(1, 1, 10, 7u);
+
+    ASSERT_EQ(result.data.size(), 3u);
+    EXPECT_EQ(result.data[0].id, 1);
+    EXPECT_EQ(result.data[1].id, 2);
+    EXPECT_EQ(result.data[2].id, 3);
 }

@@ -210,7 +210,7 @@ public:
     void getPublicRecipes(int page, int size,
                           const nlohmann::json& filters,
                           PagedRecipesCallback callback) override;
-    void getRecommendedRecipes(int page, int size,
+    void getRecommendedRecipes(int page, int size, unsigned int seed,
                                PagedRecommendedRecipesCallback callback) override;
     void searchRecipes(const std::string& keyword,
                        int page, int size,

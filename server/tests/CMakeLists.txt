@@ -15,6 +15,7 @@ set(TEST_SOURCES
     test_db_executor.cpp
     test_error_helper.cpp
     test_validation.cpp
+    test_pagination_helper.cpp
     test_upload_paths.cpp
     test_upload_file_server.cpp
     test_image_upload_rules.cpp
@@ -22,6 +23,7 @@ set(TEST_SOURCES
     test_orphan_gc.cpp
     test_avatar_lifecycle_integration.cpp
     test_recipe_image_upload_handler.cpp
+    test_recipe_recommend_handler.cpp
     test_recipe_image_lifecycle_integration.cpp
     test_nutrition_integration.cpp
     test_favorites_integration.cpp

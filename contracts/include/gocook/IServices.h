@@ -73,10 +73,15 @@ namespace gocook::services {
          * @param userId 用户 ID
          * @param page 页码（从 1 开始）
          * @param size 每页数量
+         * @param seed 「换一批」种子：非 0 时在评分排序后对全部候选做种子洗牌
+         *             （当前无固定锚点，锚点数由 SHUFFLE_ANCHOR_COUNT 常量控制，
+         *             常量调大才会保留头部；同 seed 同数据结果可复现）；
+         *             0 = 确定性默认排序（首屏）
          * @return 分页的推荐菜谱（含匹配度与库存匹配详情）
          */
         virtual models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
-                                                                      int page, int size) = 0;
+                                                                      int page, int size,
+                                                                      unsigned int seed = 0) = 0;
 
         /**
          * @brief 获取菜谱详情（可传 userId 查询当前用户收藏状态）。

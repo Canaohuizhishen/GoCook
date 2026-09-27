@@ -11,6 +11,8 @@ Page {
     signal recipeClicked(int recipeId, string healthNotice)
 
     property string recError: ""
+    // 换一批 / 下拉刷新失败的 toast 文案（列表非空时由底部 ErrorBanner 呈现，自动消失）
+    property string toastMessage: ""
     property bool _dataLoaded: false
     property var _pendingCard: null
 
@@ -90,17 +92,19 @@ Page {
         }
 
         // ── 内容区 ──
+        // clip：下拉圆环回缩越过内容区顶边时在边界被裁切（从健康横幅下层滑出）
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            clip: true
 
-            // 加载中
+            // 加载中（下拉刷新期间由圆环指示，不重复显示居中 spinner）
             LoadingIndicator {
                 anchors.centerIn: parent
                 fullscreen: false
                 message: qsTr("正在智能推荐...")
-                isLoading: recipeVM.isLoading
-                visible: recipeVM.isLoading
+                isLoading: recipeVM.isLoading && !pullRefresh.refreshing
+                visible: recipeVM.isLoading && !pullRefresh.refreshing
             }
 
             // 推荐列表
@@ -111,11 +115,26 @@ Page {
                 anchors.rightMargin: Theme.spacingMedium
                 spacing: Theme.spacingSmall
                 clip: true
+                boundsBehavior: Flickable.DragOverBounds
                 visible: recResultsList.length > 0
 
                 property var recResultsList: []
 
                 model: recResultsList
+
+                // 列表底部「换一批」：看完整批后的显式出口（与下拉刷新同一动作）；空列表时隐藏
+                footer: Item {
+                    width: recListView.width
+                    height: recListView.recResultsList.length > 0 ? 64 : 0
+
+                    CustomButton {
+                        anchors.centerIn: parent
+                        buttonText: qsTr("换一批")
+                        buttonType: CustomButton.ButtonType.Secondary
+                        enabled: !recipeVM.isLoading
+                        onClicked: recipeVM.shuffleRecommended()
+                    }
+                }
 
                 delegate: RecipeCard {
                     width: recListView.width - recListView.leftMargin - recListView.rightMargin
@@ -147,6 +166,15 @@ Page {
                 }
             }
 
+            // 下拉刷新 → 换一批（与列表底部按钮同一动作；手势逻辑见公共组件）
+            PullToRefresh {
+                id: pullRefresh
+                anchors.fill: parent
+                target: recListView
+                requestInFlight: recipeVM.isLoading
+                onRefreshRequested: recipeVM.shuffleRecommended()
+            }
+
             // 空 / 错误状态
             Column {
                 anchors.centerIn: parent
@@ -155,13 +183,21 @@ Page {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: recError.text || qsTr("暂无推荐结果，请确认库存不为空")
-                    color: recError.text ? Theme.errorColor : Theme.textHint
+                    text: recError !== "" ? recError : qsTr("暂无推荐结果，请确认库存不为空")
+                    color: recError !== "" ? Theme.errorColor : Theme.textHint
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSizeBody
                 }
             }
         }
+    }
+
+    // 「换一批」/ 下拉刷新失败提示（底部 toast；首载失败由居中错误位呈现，此处不重复提示）
+    ErrorBanner {
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 100
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: recResultsPage.toastMessage
     }
 
     // ── 状态监听 ──
@@ -171,6 +207,8 @@ Page {
             var list = recipeVM.recipes
             if (list.length > 0 && typeof list[0].matchScore !== 'undefined') {
                 recListView.recResultsList = list
+                // 批次整体替换后回到列表顶部（底部「换一批」点击时用户正处在列表尾）
+                recListView.positionViewAtBeginning()
                 recResultsPage.recError = ""
                 recResultsPage._dataLoaded = true
             } else if (!recipeVM.isLoading && !_dataLoaded) {
@@ -178,7 +216,15 @@ Page {
             }
         }
         function onErrorOccurred(error) {
-            recResultsPage.recError = error
+            if (recListView.recResultsList.length > 0) {
+                // 已有批次（换一批 / 下拉刷新失败）：保留旧批次，底部 toast 提示
+                //（ErrorBanner 约定：同文案连续错误先清空再赋值，重启自动消失计时）
+                recResultsPage.toastMessage = ""
+                recResultsPage.toastMessage = error
+            } else {
+                // 空列表（首载失败）：由居中错误位呈现具体原因
+                recResultsPage.recError = error
+            }
         }
         function onIsLoadingChanged() {
             if (!recipeVM.isLoading && !_dataLoaded && recResultsPage.recError === "") {

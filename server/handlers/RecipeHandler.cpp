@@ -84,7 +84,11 @@ void RecipeHandler::getRecommendedRecipes(const httplib::Request& req, httplib::
     if (!info.valid) return;
     try {
         auto pp = parsePagination(req, 20);
-        auto result = service_.getRecommendedRecipes(info.userId, pp.page, pp.size);
+        // 「换一批」种子：可选，纯数字且 ≤4294967295 有效；非数字/负值/超范围静默归 0
+        //（0 = 确定性默认排序的首屏）。不得用 int 中转——客户端种子为全 32 位无符号，
+        // >2^31-1 的值经 std::stoi 会被判溢出而误归 0（约半数换批退回首屏批次，故直用无符号解析）
+        const unsigned int seed = parseUIntParam(req, "seed", 0);
+        auto result = service_.getRecommendedRecipes(info.userId, pp.page, pp.size, seed);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
         res.body = JsonSerializer::toJson(result).dump();

@@ -98,16 +98,20 @@ public:
 
     // ===== 分页大小常量（单一来源：默认参数 / 内部续页 / 成员初始化共用；调用点勿再传字面量） =====
     static constexpr int kPageSize = 20;         ///< 搜索 / 收藏 / 我的投稿 / 我的评论
-    static constexpr int kPublicPageSize = 30;   ///< 公开列表 / 推荐列表（续页固定按此值，首屏勿传其他值）
+    static constexpr int kPublicPageSize = 30;   ///< 公开列表（续页固定按此值，首屏勿传其他值）
+    static constexpr int kRecPageSize = 12;      ///< 推荐批次（整批替换、无续页；「换一批」粒度）
     static constexpr int kRatingPageSize = 10;   ///< 详情页评分列表
 
     // ===== 菜谱列表与详情 =====
     /// 加载公开列表（page=1 替换，否则追加；size 仅本次生效，续页固定按 kPublicPageSize）。失败发 errorOccurred。
     Q_INVOKABLE void loadPublicRecipes(int page = 1, int size = kPublicPageSize);
-    /// 加载推荐列表（整体替换，无续页）。失败发 errorOccurred。
-    Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = kPublicPageSize);
+    /// 加载推荐批次（整体替换，无续页；seed≠0 时服务端返回种子化批次，同 seed 可复现；0=确定性首屏）。
+    /// 失败发 errorOccurred。
+    Q_INVOKABLE void loadRecommendedRecipes(int page = 1, int size = kRecPageSize, unsigned int seed = 0);
+    /// 「换一批」：生成新 seed 重取推荐批次（下拉刷新与列表底部按钮共用入口）。
+    Q_INVOKABLE void shuffleRecommended();
     Q_INVOKABLE void loadNextPage();   ///< 加载公开列表下一页（推荐模式调用为空操作）
-    Q_INVOKABLE void refresh();   ///< 重新加载当前模式的第一页
+    Q_INVOKABLE void refresh();   ///< 重新加载当前模式的第一页（推荐模式下 = 换一批）
     /// 进入即清空并重载（切菜谱不短暂显示旧数据）；失败：有快照静默显示、无快照置
     /// detailLoadFailed（不发 errorOccurred）；期间切走则本响应作废（m_detailRequestedId）。
     Q_INVOKABLE void loadRecipeDetail(int recipeId);

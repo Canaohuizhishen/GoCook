@@ -49,6 +49,7 @@ qt_add_qml_module(appclient
     QML_FILES qml/components/RecipeCard.qml
     QML_FILES qml/components/RecipeGridCard.qml
     QML_FILES qml/components/LoadingIndicator.qml
+    QML_FILES qml/components/PullToRefresh.qml
     QML_FILES qml/components/CircularImage.qml
     QML_FILES qml/components/SwipeToDeleteItem.qml
     QML_FILES qml/pages/FavoritesPage.qml
