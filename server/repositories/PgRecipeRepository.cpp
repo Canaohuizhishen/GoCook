@@ -257,12 +257,15 @@ PagedRecipes PgRecipeRepository::searchRecipes(const std::string& keyword,
         ParamBuilder pb;
 
         // 关键词模糊匹配：匹配菜名、描述、食材名称（ingredients 是 JSONB 数组）
+        // 值走参数化（ParamBuilder，与下方过滤/分页同一体系），% 通配符留在 SQL 文本侧：
+        // 拼出 ILIKE '%' || $n || '%'——用户输入永远作为参数，不进入 SQL 文本
         if (!keyword.empty()) {
-            std::string safeKw = txn.esc(keyword);
-            where += " AND (r.name ILIKE '%' || '" + safeKw + "' || '%'"  // 名字模糊匹配
-                     " OR r.description ILIKE '%' || '" + safeKw + "' || '%'"  // 或描述模糊匹配
+            std::string kw = pb.next();  // 同一占位符在 3 处复用（协议允许重复引用）
+            pb.add(keyword);
+            where += " AND (r.name ILIKE '%' || " + kw + " || '%'"  // 名字模糊匹配
+                     " OR r.description ILIKE '%' || " + kw + " || '%'"  // 或描述模糊匹配
                      " OR EXISTS (SELECT 1 FROM jsonb_array_elements(r.ingredients) AS ing"  // 或食材名模糊匹配
-                     "           WHERE ing->>'name' ILIKE '%' || '" + safeKw + "' || '%'))";
+                     "           WHERE ing->>'name' ILIKE '%' || " + kw + " || '%'))";
         }
 
         // 动态拼接筛选条件的SQL骨架

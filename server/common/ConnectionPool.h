@@ -67,7 +67,6 @@ public:
 private:
     void returnConnection(std::unique_ptr<pqxx::connection> conn);   // 归还：放回空闲队列 + 唤醒等待者
     std::unique_ptr<pqxx::connection> createConnection();            // 新建一条 libpq 连接（TCP 握手 + 认证）
-    bool isConnectionAlive(pqxx::connection& conn);                  // 探活：SELECT 1
 
     std::string connStr_;                                            // 连接串（dbname=... user=... password=...）
     int maxSize_;                                                    // 池大小上限 = 数据库并发上限
