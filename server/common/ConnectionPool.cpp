@@ -11,18 +11,6 @@ ConnectionPool::~ConnectionPool() {
     pool_.clear();               // 空闲连接全部析构关闭
 }
 
-bool ConnectionPool::isConnectionAlive(pqxx::connection& conn) {
-    if (!conn.is_open()) return false;
-    try {
-        pqxx::work txn(conn);
-        txn.exec("SELECT 1");
-        txn.abort();
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
 std::unique_ptr<pqxx::connection> ConnectionPool::createConnection() {
     auto conn = std::make_unique<pqxx::connection>(connStr_);
     if (!conn->is_open()) {
