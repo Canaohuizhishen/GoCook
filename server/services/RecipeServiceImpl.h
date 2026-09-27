@@ -40,9 +40,11 @@ public:
                                                 int page, int size,
                                                 const nlohmann::json& filters) override;
 
-    // 结合用户偏好与库存生成智能推荐菜谱（分页）
+    // 结合用户偏好与库存生成智能推荐菜谱（分页；seed≠0 时做「换一批」全量种子洗牌重排，
+    // 锚点数由 SHUFFLE_ANCHOR_COUNT 常量控制，当前为 0 = 无固定锚点）
     gocook::models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
-                                                                   int page, int size) override;
+                                                                   int page, int size,
+                                                                   unsigned int seed = 0) override;
 
     // 获取菜谱详情（userId 非 0 时附带当前用户的收藏状态）
     gocook::models::RecipeDetail getRecipeDetail(int recipeId, int userId = 0) override;

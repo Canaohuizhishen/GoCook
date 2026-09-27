@@ -3,6 +3,7 @@
 #include <QDebug>
 #include <QPointer>
 #include <QStringList>
+#include <QRandomGenerator>
 #include "../api/HttpGoCookApi.h"
 #include "../database/LocalDatabase.h"
 
@@ -51,7 +52,7 @@ void RecipeViewModel::refresh()
     m_currentPage = 1;
 
     if (m_currentMode == LoadMode::Recommended)
-        loadRecommendedRecipes(1, m_pageSize);
+        shuffleRecommended();   // 推荐语境下「刷新」= 换一批（新 seed）
     else
         loadPublicRecipes(1, m_pageSize);
 }
@@ -60,10 +61,11 @@ void RecipeViewModel::loadNextPage()
 {
     if (m_isLoading || !m_hasMore) return;
 
-    if (m_currentMode == LoadMode::Recommended)
-        loadRecommendedRecipes(m_currentPage + 1, m_pageSize);
-    else
-        loadPublicRecipes(m_currentPage + 1, m_pageSize);
+    // 推荐为单批语义（整批替换、无续页）：显式空操作。
+    // 若无此拦截，"推荐模式 + 残留 hasMore"的边缘态会把公开列表整列替换为推荐批
+    if (m_currentMode == LoadMode::Recommended) return;
+
+    loadPublicRecipes(m_currentPage + 1, m_pageSize);
 }
 
 void RecipeViewModel::loadPublicRecipes(int page, int size)
@@ -102,13 +104,13 @@ void RecipeViewModel::loadPublicRecipes(int page, int size)
                             });
 }
 
-void RecipeViewModel::loadRecommendedRecipes(int page, int size)
+void RecipeViewModel::loadRecommendedRecipes(int page, int size, unsigned int seed)
 {
     m_currentMode = LoadMode::Recommended;
     m_isLoading = true;
     emit isLoadingChanged();
 
-    m_api->getRecommendedRecipes(page, size,
+    m_api->getRecommendedRecipes(page, size, seed,
                                  [self = QPointer<RecipeViewModel>(this)](bool success, const gocook::models::PagedRecommendedRecipes& data, const std::string& error) {
                                      if (!self) return;
                                      if (!success) {
@@ -132,6 +134,14 @@ void RecipeViewModel::loadRecommendedRecipes(int page, int size)
                                      self->m_isLoading = false;
                                      emit self->isLoadingChanged();
                                  });
+}
+
+void RecipeViewModel::shuffleRecommended()
+{
+    // 「换一批」：生成非零随机种子（0 保留给"确定性首屏"；同 seed 同数据由服务端复现）
+    unsigned int seed = QRandomGenerator::global()->generate();
+    if (seed == 0) seed = 1;
+    loadRecommendedRecipes(1, kRecPageSize, seed);
 }
 
 void RecipeViewModel::loadRecipeDetail(int recipeId)

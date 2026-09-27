@@ -51,3 +51,24 @@ inline int parseIntParam(const httplib::Request& req, const std::string& name, i
     } catch (...) {}
     return defaultValue;
 }
+
+/**
+ * @brief 安全解析请求中的无符号整数参数（有效范围 0 ~ 4294967295）
+ *
+ * 仅接受纯数字写法；非数字 / 负号 / 空白等带符号写法 / 超出范围，
+ * 一律静默返回 defaultValue（不抛异常）。
+ * 注意：不能直接用 std::stoul——它对 "-1" 这类负值按回绕处理而不是报错，
+ * 必须先做"纯数字"预检；超出 unsigned long long 的长数字则由 stoull 抛错兜住。
+ */
+inline unsigned int parseUIntParam(const httplib::Request& req, const std::string& name, unsigned int defaultValue = 0) {
+    try {
+        if (req.has_param(name)) {
+            const std::string v = req.get_param_value(name);
+            if (!v.empty() && v.find_first_not_of("0123456789") == std::string::npos) {
+                const unsigned long long val = std::stoull(v);
+                if (val <= 0xFFFFFFFFull) return static_cast<unsigned int>(val);
+            }
+        }
+    } catch (...) {}
+    return defaultValue;
+}

@@ -81,7 +81,7 @@ bool waitForCount(const std::atomic<int>& count, int target, int timeoutMs = 500
     return true;
 }
 
-// 桩服务：收藏列表 / 收藏分组 / 收藏写操作 / 搜索 / 我的投稿与我的评论（含删除菜谱）
+// 桩服务：收藏列表 / 收藏分组 / 收藏写操作 / 搜索 / 推荐（换一批）/ 我的投稿与我的评论（含删除菜谱）
 class FavoriteStubServer {
 public:
     // 请求流水一条记录（收藏列表请求用 page/size/group；搜索请求用 page/size/keyword）
@@ -92,10 +92,19 @@ public:
         std::string keyword;
     };
 
+    // 推荐请求流水（seedPresent 区分“未携带 seed 参数”与“携带 seed=0”）
+    struct RecommendReq {
+        int page = 0;
+        int size = 0;
+        unsigned int seed = 0;
+        bool seedPresent = false;
+    };
+
     std::atomic<int> favoritesListReqCount{0};
     std::atomic<int> groupsReqCount{0};
     std::atomic<int> favoriteWriteReqCount{0};
     std::atomic<int> favoriteWriteStatus{200}; // 可切换：200 成功 / 500 失败
+    std::atomic<int> recommendReqCount{0};
 
     // M 系列（我的投稿/我的评论）：请求计数 + 可切换延迟（模拟“在途”窗口）与删除状态
     std::atomic<int> myRecipesReqCount{0};
@@ -122,6 +131,11 @@ public:
     {
         std::lock_guard<std::mutex> lk(reqMx);
         return searchReqs.empty() ? ListReq{} : searchReqs.back();
+    }
+    RecommendReq lastRecommendReq()
+    {
+        std::lock_guard<std::mutex> lk(reqMx);
+        return recommendReqs.empty() ? RecommendReq{} : recommendReqs.back();
     }
 
     FavoriteStubServer()
@@ -210,6 +224,29 @@ public:
                 "application/json");
         });
 
+        // 推荐（换一批）：记录 page/size/seed 供参数断言；返回最小推荐体（1 条占位）
+        svr.Get("/api/recipes/recommend", [this](const httplib::Request& req, httplib::Response& res) {
+            RecommendReq rec;
+            rec.page = std::stoi(req.get_param_value("page"));
+            rec.size = std::stoi(req.get_param_value("size"));
+            rec.seedPresent = req.has_param("seed");
+            if (rec.seedPresent)
+                rec.seed = static_cast<unsigned int>(std::stoul(req.get_param_value("seed")));
+            recommendReqCount++;
+            {
+                std::lock_guard<std::mutex> lk(reqMx);
+                recommendReqs.push_back(rec);
+            }
+            res.status = 200;
+            res.set_content(
+                "{\"health_filter_applied\":false,"
+                "\"pagination\":{\"page\":" + std::to_string(rec.page) +
+                ",\"size\":" + std::to_string(rec.size) + ",\"total\":1,\"total_pages\":1},"
+                "\"data\":[{\"id\":1,\"name\":\"清蒸鲈鱼\",\"match_score\":0.5,"
+                "\"health_notice\":\"\",\"match_status\":{\"available_ingredients\":[],\"missing_ingredients\":[]}}]}",
+                "application/json");
+        });
+
         // ---- M 系列：我的投稿 / 我的评论 / 删除菜谱 ----
         svr.Get("/api/recipes/my", [this](const httplib::Request& req, httplib::Response& res) {
             myRecipesReqCount++;
@@ -281,9 +318,10 @@ private:
     std::thread th;
     std::mutex writeMx;              // 保护收藏写请求体（服务端线程写入，测试线程读取）
     std::string lastWriteBody;
-    std::mutex reqMx;                // 保护两个请求流水（服务端线程写入，测试线程读取）
+    std::mutex reqMx;                // 保护三组请求流水（服务端线程写入，测试线程读取）
     std::vector<ListReq> favoriteListReqs;
     std::vector<ListReq> searchReqs;
+    std::vector<RecommendReq> recommendReqs;
 };
 
 class RecipeVmTest : public ::testing::Test {
@@ -960,5 +998,67 @@ TEST_F(RecipeVmTest, deleteRecipe会话切换后失败不回滚复活旧列表)
 
     QObject::disconnect(&vm, &RecipeViewModel::myRecipesChanged, nullptr, nullptr);
     QObject::disconnect(&vm, &RecipeViewModel::deleteFailed, nullptr, nullptr);
+}
+
+// ==================== JP1：推荐首载按批次尺寸且不携带种子 ====================
+TEST_F(RecipeVmTest, 推荐首载按批次尺寸且不携带种子)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<bool> loaded{false};
+    QObject::connect(&vm, &RecipeViewModel::recipesChanged, [&]() {
+        if (!vm.recipes().isEmpty())
+            loaded = true;   // 入口清空也会发 Changed，用“非空”区分加载完成（对齐 S1 写法）
+    });
+
+    vm.loadRecommendedRecipes(1);
+    ASSERT_TRUE(waitUntil(loaded)) << "推荐加载超时";
+
+    const auto req = stub.lastRecommendReq();
+    EXPECT_EQ(req.page, 1);
+    EXPECT_EQ(req.size, RecipeViewModel::kRecPageSize) << "推荐批次尺寸必须与公开列表解耦";
+    EXPECT_FALSE(req.seedPresent) << "首屏不得携带 seed（确定性路径）";
+    ASSERT_EQ(vm.recipes().size(), 1);
+    EXPECT_EQ(vm.recipes()[0].toMap()["name"].toString(), QStringLiteral("清蒸鲈鱼"));
+    EXPECT_FALSE(vm.healthFilterApplied());
+
+    QObject::disconnect(&vm, &RecipeViewModel::recipesChanged, nullptr, nullptr);
+}
+
+// ==================== JP2：推荐换一批携带非零种子且逐次刷新 ====================
+TEST_F(RecipeVmTest, 推荐换一批携带非零种子且逐次不同)
+{
+    FavoriteStubServer stub;
+    api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
+    api.setToken(QStringLiteral("token-A"));
+
+    RecipeViewModel vm(&api);
+    std::atomic<int> loadedCount{0};
+    QObject::connect(&vm, &RecipeViewModel::recipesChanged, [&]() {
+        if (!vm.recipes().isEmpty())
+            loadedCount++;
+    });
+
+    vm.shuffleRecommended();
+    ASSERT_TRUE(waitForCount(loadedCount, 1)) << "首次换一批超时";
+    const auto r1 = stub.lastRecommendReq();
+
+    vm.shuffleRecommended();
+    ASSERT_TRUE(waitForCount(loadedCount, 2)) << "二次换一批超时";
+    const auto r2 = stub.lastRecommendReq();
+
+    EXPECT_TRUE(r1.seedPresent) << "换一批必须携带 seed";
+    EXPECT_TRUE(r2.seedPresent) << "换一批必须携带 seed";
+    EXPECT_NE(r1.seed, 0u) << "换一批种子必须非零（0 保留给确定性首屏）";
+    EXPECT_NE(r2.seed, 0u);
+    EXPECT_EQ(r1.size, RecipeViewModel::kRecPageSize);
+    EXPECT_EQ(r2.size, RecipeViewModel::kRecPageSize);
+    // 两次种子必须不同（QRandomGenerator 碰撞概率 2^-32；相同即疑似种子未刷新）
+    EXPECT_NE(r1.seed, r2.seed) << "两次换一批种子相同（疑似种子未刷新）";
+
+    QObject::disconnect(&vm, &RecipeViewModel::recipesChanged, nullptr, nullptr);
 }
 } // namespace

@@ -1148,11 +1148,14 @@ void HttpGoCookApi::getPublicRecipes(int page, int size,
     }, true);
 }
 
-void HttpGoCookApi::getRecommendedRecipes(int page, int size,
+void HttpGoCookApi::getRecommendedRecipes(int page, int size, unsigned int seed,
                                           PagedRecommendedRecipesCallback callback) {
     QUrlQuery query;
     query.addQueryItem("page", QString::number(page));
     query.addQueryItem("size", QString::number(size));
+    // 「换一批」种子：0（首屏/默认）不携带，保持确定性请求形态
+    if (seed != 0)
+        query.addQueryItem("seed", QString::number(seed));
     QString endpoint = QString("/api/recipes/recommend?%1").arg(query.toString(QUrl::FullyEncoded));
 
     get(endpoint, [callback](bool success, const QString& errorMsg, const QJsonDocument& doc) {

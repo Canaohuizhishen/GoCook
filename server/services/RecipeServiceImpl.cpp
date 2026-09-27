@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <cctype>
 #include <cstdio>
+#include <random>
 #include "HealthConditionLists.h"
 #include "../common/Logger.h"
 
@@ -21,6 +22,11 @@ namespace {
 
     // 从仓库多取多少倍候选，供过滤/多样化后裁切
     constexpr int CANDIDATE_MULTIPLIER = 3;
+
+    // 「换一批」种子化重排：锚点道数 = 保留在最前、不参与洗牌的候选数。
+    // 默认 0 = 全量洗牌（每次换批整体重抽——保留头部锚点会让前几道永远不动，
+    // 用户容易误判"换批失灵"）；调大可让头部更稳，按产品语义权衡。
+    constexpr int SHUFFLE_ANCHOR_COUNT = 0;
 
     // 最终评分权重
     constexpr double WEIGHT_INVENTORY    = 0.50;  // 库存（已有食材占菜谱总食材的比例）
@@ -353,7 +359,8 @@ PagedRecipes RecipeServiceImpl::searchRecipes(const std::string& keyword,
 // ═══════════════════════════════════════════════════════════════
 PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
                                                                   int page,
-                                                                  int size) {
+                                                                  int size,
+                                                                  unsigned int seed) {
     if (!inventoryRepo_ || !userRepo_) {
         throw ServiceException("推荐功能未完全配置", 501);
     }
@@ -460,6 +467,15 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
                   return a.match_score > b.match_score;
               });
 
+    // ── 7.5 「换一批」种子化重排（seed≠0 时）：全量种子洗牌（SHUFFLE_ANCHOR_COUNT=0）──
+    // 洗牌只改变"批次组成"，不改变评分；输出顺序由末段统一收敛为复合分降序。
+    // 同 seed 同数据结果可复现；seed=0（首屏）完全走确定性路径。
+    if (seed != 0) {
+        std::mt19937 rng(static_cast<std::mt19937::result_type>(seed));
+        const auto anchor = std::min<size_t>(SHUFFLE_ANCHOR_COUNT, candidates.size());
+        std::shuffle(candidates.begin() + anchor, candidates.end(), rng);
+    }
+
     // ── 8. 多样化重排序 ──
     // 策略：同 flavor 最多 MAX_PER_FLAVOR 道，同 cooking_method 最多 MAX_PER_METHOD 道
     std::vector<RecommendedRecipe> diverse;
@@ -505,6 +521,13 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     for (size_t i = 0; i < candidates.size() && diverse.size() < size; ++i) {
         if (!taken[i]) diverse.push_back(candidates[i]);
     }
+
+    // 输出顺序规范化：恒为复合分降序（stable——同分保持既有相对序，同 seed 可复现）。
+    // 洗牌批次与兜底补位只影响"组成"，不改变"展示序"；seed=0 路径据此也收敛回严格降序。
+    std::stable_sort(diverse.begin(), diverse.end(),
+                     [](const RecommendedRecipe& a, const RecommendedRecipe& b) {
+                         return a.match_score > b.match_score;
+                     });
 
     // ── 9. 构建响应 ──
     PagedRecommendedRecipes result;
