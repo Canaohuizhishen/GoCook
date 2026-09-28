@@ -51,6 +51,8 @@ public:
     MOCK_METHOD(void, deleteAccount, (int), (override));
     // 获取用户密码哈希
     MOCK_METHOD(std::string, getPasswordHash, (int), (override));
+    // 查询会话版本号（JWT 主动吊销）
+    MOCK_METHOD(std::optional<int>, getTokenVersion, (int), (override));
     // 上传头像
     MOCK_METHOD(gocook::models::AvatarUploadResponse, uploadAvatar,
                 (int, const std::string&), (override));

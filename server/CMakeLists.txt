@@ -35,6 +35,7 @@ set(SERVER_LIB_SOURCES
     services/MealPlanServiceImpl.h services/MealPlanServiceImpl.cpp
     services/AnnouncementServiceImpl.h services/AnnouncementServiceImpl.cpp
     services/AdminServiceImpl.h services/AdminServiceImpl.cpp
+    services/HealthConditionLists.h
     repositories/PgUserRepository.h repositories/PgUserRepository.cpp
     repositories/PgRecipeRepository.h repositories/PgRecipeRepository.cpp
     repositories/PgInventoryRepository.h repositories/PgInventoryRepository.cpp
@@ -51,12 +52,14 @@ set(SERVER_LIB_SOURCES
     common/ErrorHelper.h
     common/PaginationHelper.h
     common/AuthHelper.h
+    common/AvatarFiles.h
     common/SerializationHelper.h
     common/EmailSender.h common/EmailSender.cpp
     common/JsonSerializer.h common/JsonSerializer.cpp
     common/Validation.h
     common/ImageUploadRules.h
     common/UploadFileServer.h
+    common/UploadOrphanGc.h
     common/UploadPaths.h
     common/Config.h
     common/Logger.h

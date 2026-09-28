@@ -73,6 +73,14 @@
 > ALTER TABLE notifications DROP COLUMN IF EXISTS is_read;
 > ```
 
+> JWT 主动吊销（token_version）——`users` 增加会话版本号列（改密 / 重置密码后自增，
+> 旧 JWT 立即失效；新建库由 `create_all_tables.sql` 直接包含）。**保留数据的存量库**手工执行：
+> ```sql
+> ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT NOT NULL DEFAULT 0;
+> ```
+> **升级顺序**：先执行上面这条 ALTER、再升级服务端——反序部署时新服务端查不到该列，
+> 认证链路按 fail-closed 对全部认证请求返回 401（旧服务端不读该列，先迁移无副作用）。
+
 ## 一键重置（推荐入口）
 
 > 脚本位于 **server/ 根目录**（`server/reset_db.sh`），刻意不放本目录——本目录被 docker-compose

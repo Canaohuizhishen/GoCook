@@ -52,7 +52,9 @@ public:
                        const gocook::models::UpdateProfileRequest& profile) override;
     // 获取用户密码哈希（修改密码时验证原密码用）
     std::string getPasswordHash(int userId) override;
-    // 更新密码哈希
+    // 查询会话版本号（JWT 主动吊销：与令牌 ver claim 比对）
+    std::optional<int> getTokenVersion(int userId) override;
+    // 更新密码哈希（同时自增 token_version 吊销全部旧 JWT）
     void changePassword(int userId, const std::string& newPasswordHash) override;
     // 注销账户
     void deleteAccount(int userId) override;

@@ -29,9 +29,18 @@ set(TEST_SOURCES
     test_favorites_integration.cpp
     test_notification_watermark_integration.cpp
     test_user_token_integration.cpp
+    test_token_revocation_integration.cpp
 )
 
-add_executable(test_services ${TEST_SOURCES})
+# 测试用 Mock 头文件（仅登记，供 IDE 项目树显示；头文件不参与独立编译）
+set(TEST_MOCK_HEADERS
+    MockInventoryRepository.h
+    MockNutritionRepository.h
+    MockRecipeRepository.h
+    MockUserRepository.h
+)
+
+add_executable(test_services ${TEST_SOURCES} ${TEST_MOCK_HEADERS})
 
 target_include_directories(test_services PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..

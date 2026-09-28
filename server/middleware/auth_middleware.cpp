@@ -40,6 +40,19 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
         info.userId = std::stoi(decoded.get_payload_claim("userId").as_string());
         info.username = decoded.get_payload_claim("username").as_string();
         info.role = decoded.get_payload_claim("role").as_string();   // 提取角色
+
+        // 7. 会话版本校验（JWT 主动吊销）：与 users.token_version 比对。
+        //    - ver 缺失按 0（兼容部署前签发的旧格式令牌，改密前仍有效）
+        //    - 用户不存在 / 版本不符 → 无效；查库异常落入下方 catch（fail-closed，不放行）
+        int issuedVersion = 0;
+        if (decoded.has_payload_claim("ver")) {
+            issuedVersion = std::stoi(decoded.get_payload_claim("ver").as_string());
+        }
+        const auto currentVersion = userRepo_.getTokenVersion(info.userId);
+        if (!currentVersion.has_value() || currentVersion.value() != issuedVersion) {
+            throw std::runtime_error("令牌已被吊销（会话版本不匹配）");
+        }
+
         info.valid = true;
 
     } catch (const std::exception& e) {

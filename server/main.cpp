@@ -84,7 +84,9 @@ int main(int argc, char* argv[]) {
      *   整个依赖链严格面向接口，符合依赖倒置原则。
      */
     ConnectionPool db(cfg.dbConnString, cfg.dbPoolSize);
-    AuthMiddleware authMiddleware(cfg.jwtSecret);
+    // 中间件专用用户仓库：仅用于会话版本校验（JWT 主动吊销：改密 / 重置后旧令牌立即失效）
+    PgUserRepository userAuthRepo(db);
+    AuthMiddleware authMiddleware(cfg.jwtSecret, userAuthRepo);
 
     RecipeServiceImpl recipeService(
         std::make_unique<PgRecipeRepository>(db),

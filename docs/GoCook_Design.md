@@ -283,14 +283,14 @@
 
 | # | 规则 | 说明 |
 |---|------|------|
-| R1 | JWT | HS256、issuer=GoCook、claims userId/username/role、有效期 7 天；中间件验签 + 显式再查过期（防御性）；无 exp 视为非法 |
+| R1 | JWT | HS256、issuer=GoCook、claims userId/username/role/ver（会话版本号）、有效期 7 天；中间件验签 + 显式再查过期（防御性）+ 比对 `ver` 与 `users.token_version`（不一致 / 用户不存在 / 查库失败 → 401，fail-closed）；无 exp 视为非法 |
 | R2 | 密码存储 | bcrypt（`$2a$` cost 10）+ 16 字节随机盐（OpenSSL RAND）；校验用常量时间比较（`CRYPTO_memcmp`），先比长度防越界 |
 | R3 | 登录失败统一 | 用户不存在与密码错误均返回同一 401「用户名或密码错误」（防用户名枚举） |
 | R4 | 注册（两段化） | 提交响应不泄露邮箱注册状态（恒 200「我们已向该邮箱发送邮件，请按邮件提示继续。」）：字段校验 400、用户名冲突 409 照常；邮箱未注册 → 验证码邮件 + 写 `pending_registrations`（15 分钟）；已注册 → 提示邮件（不建号）；`POST /api/register/verify`（邮箱 + 验证码）核验后原子建号 |
 | R5 | 密码强度 | 修改 / 重置路径：≥6 位且含字母和数字（`UserServiceImpl`）；注册路径：仅 ≥6 位（api-spec 错误示例已随 v2.16 对齐） |
 | R6 | 密码重置 | ① 忘记密码：用户名 + 邮箱**双匹配才发信**（不匹配 → 400「用户名或邮箱不正确」且不发信——双字段即防轰炸门槛）；6 位数字验证码（CSPRNG）；库内 15 分钟过期；SMTP 已配置 → 发邮件（失败 500）；未配置（开发模式）→ 邮件正文（含验证码）经 [DEV MAIL] 打印服务端日志，不发信、不回传令牌。② 重置：令牌单次使用（同一事务内改密码 + 标记已用，防重放） |
 | R7 | 注销 | 匿名化菜谱（`author_id` → NULL，内容保留）+ 删除用户行（级联清偏好 / 档案 / 库存 / 清单 / 通知 / 计划 / 收藏；评分随删） |
-| R8 | 已知限制（代码注释留档） | JWT 无黑名单 / 版本号：密码修改 / 重置后旧令牌在过期前仍有效；如需立即吊销需引入 token 版本号 |
+| R8 | Token 主动吊销（见 [D-15](#d-15)） | 改密 / 重置 / 注销后旧令牌**立即失效**：`users.token_version` 自增（改密与重置在更新密码的同一语句内），中间件比对 `ver` claim（缺失按 0 兼容；不一致 / 用户不存在 / 查库失败一律 401）；api-spec v2.27 |
 
 **唯一事实源**：`UserServiceImpl`（`generateToken` / `hashPassword` / `validatePassword` / `registerUser` / `verifyRegistration` / `requestPasswordReset` / `resetPassword` / `deleteAccount`）；`AuthMiddleware::authenticate`；`Validation.h`；`PgUserRepository`（`upsertPendingRegistration` / `createUserFromPendingRegistration` / `deleteAccount`）；登录 / 注册限流见 3.4。
 
@@ -550,6 +550,15 @@
 - **被否方案**：① SQL `ORDER BY md5(id || seed)` 扰动——服务层在其后重排会覆盖该序（小库则完全无效）；大库中池被截断时等于"随机子集当候选"，高分菜可能整批缺席（伤质量）。② 候选分页递进当"下一批"——批次质量逐批递减，体验反直觉。
 - **落点**：`RecipeServiceImpl`（批次重排块 + 常量区）/ `RecipeHandler`（seed 解析，非法归 0）/ `IServices.h`+`IGoCookApi.h`（seed 形参）/ `RecipeViewModel`+`PullToRefresh.qml`（交互单点）；测试：服务端换一批 5 例 + 客户端换批参数 2 例。
 
+<a id="d-15"></a>
+### D-15 JWT 主动吊销：token_version 版本号机制（2026-09-28）
+
+- **背景**：JWT 无状态——改密 / 重置密码 / 注销后，旧令牌在 7 天有效期内仍可用（原 R8 已知限制）；api-spec 3.11.4 自 v2.3 起即要求“注销后立即吊销全部 Token”，实现缺口一直存在。
+- **决策**：`users` 增 `token_version`；签发时写入 `ver` claim；`AuthMiddleware`（认证唯一收口）在验签后比对 `ver == token_version`——不一致 / 用户不存在 / 查库失败一律 401（fail-closed）；改密与重置在更新密码的**同一语句**内自增版本；注销后用户行删除、版本查询必空，旧令牌一律拒绝；兼容：旧格式令牌无 `ver` 按 0 处理（部署不触发全员登出，改密后同样立即失效）。
+- **理由**：单点收口（全部 Handler 的 50+ 处 `requireAuth` 调用零改动）；维持无状态 JWT（不引入黑名单 / 会话表）；自增与密码更新同事务，无窗口期；每请求 +1 次主键查询，项目规模可忽略。
+- **被否方案**：① 令牌黑名单表（需存储、清理与淘汰策略，同样是每请求查询）；② 短 token + Refresh Token（复杂度高，暂不引入）；③ 校验点下放到各 Handler（50+ 处重复逻辑，违背横切收束 D-07）。
+- **落点**：`users.token_version`（`create_all_tables.sql` + `sql/README.md` 存量库 ALTER）；`IUserRepository::getTokenVersion` / `PgUserRepository`（changePassword、resetPasswordAndMarkTokenUsed 同语句自增）；`UserServiceImpl::generateToken`（`ver` claim）；`AuthMiddleware::authenticate`（版本校验）；api-spec v2.27；测试：吊销集成 6 例（`test_token_revocation_integration.cpp`）。
+
 ---
 
 
@@ -566,7 +575,7 @@
 **种子纪律**：
 
 - 种子数据嵌入 `INSERT VALUES`（不追加 UPDATE 语句）；脚本幂等、可重复执行；
-- 营养库种子为幂等全量同步（先清空旧行再插入）——营养修正 / 扩充随重跑自动生效。
+- 营养库种子为幂等全量同步（先清空旧行再插入）——营养修正 / 扩充随重跑对**之后**的新投稿 / 编辑生效；已保存菜谱的营养为投稿 / 编辑时快照，不回溯重算（见 [D-06](#d-06)）。
 
 **迁移纪律**：
 
@@ -592,6 +601,8 @@
 
 | 版本 | 日期 | 变更说明 |
 |------|------|----------|
+| v1.6 | 2026-09-28 | JWT 主动吊销（token_version）：改密 / 重置 / 注销后旧令牌立即失效（新增 [D-15](#d-15)；2.6 R1/R8 同步；api-spec v2.27；users 增列 + 存量库 ALTER 见 sql/README） |
+| v1.5 | 2026-09-28 | §5 措辞澄清：营养库修正 / 扩充随重跑仅对**之后**的新投稿 / 编辑生效，已保存菜谱快照不回溯重算（对齐 D-06 既有语义；无行为变更） |
 | v1.4 | 2026-09-28 | 推荐引擎「换一批」种子批次重排（R12；流程/边界同步，新增 D-14）；下拉刷新抽为公共组件 PullToRefresh（首页与结果页共用）；spec v2.25 |
 | v1.3 | 2026-09-27 | R6/边界口径修正：密码重置开发模式改 [DEV MAIL] 服务端日志（不发信、不回传令牌，响应同形；对齐 D-13 ③）；spec v2.24 |
 | v1.2 | 2026-09-12 | 防枚举与防轰炸收口：注册两段化 + 找回双字段门槛（D-13）；spec v2.17 |
