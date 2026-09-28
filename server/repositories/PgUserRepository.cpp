@@ -185,9 +185,9 @@ void PgUserRepository::resetPasswordAndMarkTokenUsed(
     int userId, const std::string& newPasswordHash, const std::string& token)
 {
     executeDb(db_, [&](pqxx::work& txn) {
-        LOG_DEBUG("[SQL] UPDATE users SET password_hash = $1 WHERE id = $2 | $2=%d", userId);
+        LOG_DEBUG("[SQL] UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2 | $2=%d", userId);
         auto r = txn.exec(
-            "UPDATE users SET password_hash = $1 WHERE id = $2",
+            "UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2",
             pqxx::params{newPasswordHash, userId});
         if (r.affected_rows() == 0) {
             throw ServiceException("用户不存在", 404);
@@ -282,11 +282,23 @@ std::string PgUserRepository::getPasswordHash(int userId) {
     }, "数据库操作失败");
 }
 
+std::optional<int> PgUserRepository::getTokenVersion(int userId) {
+    return executeDb(db_, [&](pqxx::work& txn) -> std::optional<int> {
+        LOG_DEBUG("[SQL] SELECT token_version FROM users WHERE id = $1 | $1=%d", userId);
+        pqxx::result r = txn.exec(
+            "SELECT token_version FROM users WHERE id = $1", pqxx::params{userId});
+        if (r.empty()) {
+            return std::nullopt;  // 用户不存在（含已注销）：调用方按无效令牌处理
+        }
+        return r[0]["token_version"].as<int>();
+    }, "数据库操作失败");
+}
+
 void PgUserRepository::changePassword(int userId, const std::string& newPasswordHash) {
     executeDb(db_, [&](pqxx::work& txn) {
-        LOG_DEBUG("[SQL] UPDATE users SET password_hash = $1 WHERE id = $2 | $2=%d", userId);
+        LOG_DEBUG("[SQL] UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2 | $2=%d", userId);
         auto r = txn.exec(
-            "UPDATE users SET password_hash = $1 WHERE id = $2",
+            "UPDATE users SET password_hash = $1, token_version = token_version + 1 WHERE id = $2",
             pqxx::params{newPasswordHash, userId});
         if (r.affected_rows() == 0) {
             throw ServiceException("用户不存在", 404);

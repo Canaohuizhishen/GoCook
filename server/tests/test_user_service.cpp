@@ -256,6 +256,59 @@ TEST(UserServiceTest, JWT令牌校验) {
     EXPECT_EQ(decoded.get_payload_claim("role").as_string(), "user");
 }
 
+// 签发侧 ver 写入（审查跟进）：登录签发的令牌必须携带当前会话版本——中间件据此与
+// users.token_version 比对做主动吊销（覆盖配对见 test_token_revocation_integration.cpp）
+TEST(UserServiceTest, 登录令牌携带当前会话版本ver) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    char salt_buf[128], hash_buf[128];
+    const char fi[16] = {};
+    char* s = _crypt_gensalt_blowfish_rn("$2a$", 4, fi, 16, salt_buf, sizeof(salt_buf));
+    ASSERT_NE(s, nullptr);
+    char* hh = _crypt_blowfish_rn("password123", s, hash_buf, sizeof(hash_buf));
+    ASSERT_NE(hh, nullptr);
+
+    EXPECT_CALL(*repo, findByUsername("testuser"))
+        .WillOnce(Return(UserAuthInfo{42, "testuser", std::string(hh), "user"}));
+    EXPECT_CALL(*repo, getTokenVersion(42)).WillOnce(Return(std::optional<int>{3}));
+
+    LoginResponse resp = service.login({"testuser", "password123"});
+
+    auto decoded = jwt::decode(resp.token);
+    auto verifier = jwt::verify()
+        .allow_algorithm(jwt::algorithm::hs256{TEST_JWT_SECRET});
+    EXPECT_NO_THROW(verifier.verify(decoded));
+    ASSERT_TRUE(decoded.has_payload_claim("ver"));
+    EXPECT_EQ(decoded.get_payload_claim("ver").as_string(), "3");
+}
+
+// 版本查询缺失（用户被并发删除等竞态）→ ver 按 0 兜底签发（.value_or(0) 兼容路径）；
+// 该令牌随后会被中间件按「用户不存在」拒绝，不构成放行缺口
+TEST(UserServiceTest, 登录令牌版本查询缺失ver按零兜底) {
+    auto mock = std::make_unique<NiceMock<MockUserRepository>>();
+    auto* repo = mock.get();
+    UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
+
+    char salt_buf[128], hash_buf[128];
+    const char fi[16] = {};
+    char* s = _crypt_gensalt_blowfish_rn("$2a$", 4, fi, 16, salt_buf, sizeof(salt_buf));
+    ASSERT_NE(s, nullptr);
+    char* hh = _crypt_blowfish_rn("password123", s, hash_buf, sizeof(hash_buf));
+    ASSERT_NE(hh, nullptr);
+
+    EXPECT_CALL(*repo, findByUsername("testuser"))
+        .WillOnce(Return(UserAuthInfo{42, "testuser", std::string(hh), "user"}));
+    EXPECT_CALL(*repo, getTokenVersion(42)).WillOnce(Return(std::nullopt));
+
+    LoginResponse resp = service.login({"testuser", "password123"});
+
+    auto decoded = jwt::decode(resp.token);
+    ASSERT_TRUE(decoded.has_payload_claim("ver"));
+    EXPECT_EQ(decoded.get_payload_claim("ver").as_string(), "0");
+}
+
 TEST(UserServiceTest, 登录用户不存在) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     auto* repo = mock.get();

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS users (
     preferences_complete BOOLEAN DEFAULT FALSE,
     role TEXT DEFAULT 'user' CHECK (role IN ('user', 'moderator', 'super_admin')),
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'frozen')),
+    token_version INT NOT NULL DEFAULT 0, -- 会话版本号（JWT 主动吊销）：改密 / 重置密码后自增，旧令牌立即失效
     created_at TIMESTAMP DEFAULT NOW()
 );
 

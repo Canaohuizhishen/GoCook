@@ -103,12 +103,16 @@ std::string UserServiceImpl::generateToken(int userId, const std::string& userna
     auto now = std::chrono::system_clock::now();
     auto exp = now + std::chrono::hours(24 * 7);
 
+    // 会话版本号（JWT 主动吊销）：改密 / 重置后服务端自增，携带旧版本的令牌将被中间件拒绝
+    const int tokenVersion = userRepo_->getTokenVersion(userId).value_or(0);
+
     auto token = jwt::create()
                      .set_issuer("GoCook")
                      .set_type("JWS")
                      .set_payload_claim("userId", jwt::claim(std::to_string(userId)))
                      .set_payload_claim("username", jwt::claim(username))
                      .set_payload_claim("role", jwt::claim(role))
+                     .set_payload_claim("ver", jwt::claim(std::to_string(tokenVersion)))
                      .set_issued_at(now)
                      .set_expires_at(exp)
                      .sign(jwt::algorithm::hs256{jwt_secret_});
@@ -256,8 +260,8 @@ void UserServiceImpl::requestPasswordReset(const std::string& username,
 }
 
 void UserServiceImpl::resetPassword(const std::string& token, const std::string& newPassword) {
-    // \note 已知限制：密码重置后，旧的 JWT 令牌在过期前仍然有效。
-    //       当前无服务器端令牌黑名单/版本号机制。
+    // \note 主动吊销：重置密码时自增 token_version（见 resetPasswordAndMarkTokenUsed），
+    //       全部旧 JWT 立即失效，需用新密码重新登录。
     // 1. 校验令牌 — 从有效（未使用且未过期）的令牌中查找 user_id
     auto userIdOpt = userRepo_->findUserIdByResetToken(token);
     if (!userIdOpt.has_value()) {
@@ -331,9 +335,8 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
     }
     return *updated;
 }
-/// \note 已知限制：密码修改后，旧的 JWT 令牌在过期前仍然有效。
-///       当前无服务器端令牌黑名单/版本号机制。
-///       若需立即吊销令牌，后续需引入 token 版本号字段并嵌入 JWT payload。
+/// \note 主动吊销：修改密码时自增 token_version（见 IUserRepository::changePassword），
+///       全部旧 JWT（含当前设备）立即失效，需用新密码重新登录。
 void UserServiceImpl::changePassword(int userId,
                                       const std::string& currentPassword,
                                       const std::string& newPassword) {

@@ -96,7 +96,7 @@ public:
     /// 标记密码重置令牌为已使用
     virtual void markResetTokenUsed(const std::string& token) = 0;
 
-    /// 在同一事务中重置密码并标记令牌为已用（防止令牌重放）
+    /// 在同一事务中重置密码并标记令牌为已用（防止令牌重放；同时自增 token_version 吊销全部旧 JWT）
     virtual void resetPasswordAndMarkTokenUsed(int userId,
                                                 const std::string& newPasswordHash,
                                                 const std::string& token) = 0;
@@ -112,8 +112,12 @@ public:
     /// 获取用户密码哈希（用于修改密码时验证原密码）
     virtual std::string getPasswordHash(int userId) = 0;
 
+    /// 查询会话版本号（JWT 主动吊销：与令牌 ver claim 比对；改密 / 重置后自增）
+    /// @return 当前版本号；用户不存在（含已注销）返回 nullopt
+    virtual std::optional<int> getTokenVersion(int userId) = 0;
+
     /**
-     * @brief 更新用户密码哈希。
+     * @brief 更新用户密码哈希（同一语句自增 token_version：全部旧 JWT 立即失效）。
      * @param userId 用户 ID
      * @param newPasswordHash 新密码哈希
      */

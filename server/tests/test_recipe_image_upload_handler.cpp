@@ -24,6 +24,7 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -33,9 +34,11 @@
 #include "../middleware/auth_middleware.h"
 #include "../services/RecipeServiceImpl.h"
 #include "MockRecipeRepository.h"
+#include "MockUserRepository.h"
 
 using ::testing::_;
 using ::testing::NiceMock;
+using ::testing::Return;
 using gocook::services::ServiceException;
 
 namespace {
@@ -43,7 +46,8 @@ namespace {
 constexpr const char* kTestSecret = "recipe-image-handler-test-secret";
 constexpr int kUserId = 7;
 
-/// 自签 JWT：载荷结构与 UserServiceImpl::generateToken 一致（iss=GoCook／userId／username／role／exp）
+/// 自签 JWT：iss=GoCook／userId／username／role／exp；刻意不携带 ver——
+/// 覆盖「ver 缺失按 0」的兼容路径（mock 仓库默认返回版本 0，与真实令牌校验等价）
 std::string mintToken(int userId) {
     const auto now = std::chrono::system_clock::now();
     return jwt::create()
@@ -103,7 +107,11 @@ protected:
         auto mock = std::make_unique<NiceMock<MockRecipeRepository>>();
         repo_ = mock.get();
         service_ = std::make_unique<RecipeServiceImpl>(std::move(mock));
-        auth_ = std::make_unique<AuthMiddleware>(kTestSecret);
+        auto userMock = std::make_unique<NiceMock<MockUserRepository>>();
+        // 缺 ver 的测试令牌按 0 校验 → mock 返回版本 0（JWT 主动吊销的兼容路径）
+        ON_CALL(*userMock, getTokenVersion(_)).WillByDefault(Return(std::optional<int>{0}));
+        userRepoOwn_ = std::move(userMock);
+        auth_ = std::make_unique<AuthMiddleware>(kTestSecret, *userRepoOwn_);
         handler_ = std::make_unique<RecipeHandler>(*service_, *auth_);
         // 最后构造 → 最先析构：先停 HTTP 服务（其在途请求持有 handler 引用）再拆依赖
         srv_ = std::make_unique<HandlerTestServer>(*handler_);
@@ -114,6 +122,7 @@ protected:
 
     NiceMock<MockRecipeRepository>* repo_ = nullptr;
     std::unique_ptr<RecipeServiceImpl> service_;
+    std::unique_ptr<NiceMock<MockUserRepository>> userRepoOwn_;  ///< 中间件版本校验用（先于 auth_ 声明 → 后于其析构）
     std::unique_ptr<AuthMiddleware> auth_;
     std::unique_ptr<RecipeHandler> handler_;
     std::unique_ptr<HandlerTestServer> srv_;
