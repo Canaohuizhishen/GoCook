@@ -73,9 +73,9 @@ namespace gocook::services {
          * @param userId 用户 ID
          * @param page 页码（从 1 开始）
          * @param size 每页数量
-         * @param seed 「换一批」种子：非 0 时在评分排序后对全部候选做种子洗牌
-         *             （当前无固定锚点，锚点数由 SHUFFLE_ANCHOR_COUNT 常量控制，
-         *             常量调大才会保留头部；同 seed 同数据结果可复现）；
+         * @param seed 「换一批」种子：非 0 时在评分排序后对全库候选做加权随机序重排
+         *             （权重随复合分升高——高分常见、低分概率极低但非零，
+         *             候选范围随库规模增长；同 seed 同数据结果可复现）；
          *             0 = 确定性默认排序（首屏）
          * @return 分页的推荐菜谱（含匹配度与库存匹配详情）
          */

@@ -9,6 +9,8 @@
 #include <cctype>
 #include <cstdio>
 #include <random>
+#include <limits>
+#include <utility>
 #include "HealthConditionLists.h"
 #include "../common/Logger.h"
 
@@ -20,13 +22,17 @@ using namespace gocook::services;
 // ============================================================
 namespace {
 
-    // 从仓库多取多少倍候选，供过滤/多样化后裁切
-    constexpr int CANDIDATE_MULTIPLIER = 3;
+    // 候选池上限（安全阀）：池 = 全库已发布菜谱，超上限时由 SQL 排序截断。
+    // 不随 size 缩放——固定池（曾为 size×3）会让「换一批」的候选范围不随库增长
+    // （库 > 池后只能在前池名内轮转）；300 覆盖合法 size 上限（100）的 3× 余量，
+    // 项目规模下即全库。
+    constexpr int CANDIDATE_POOL_CAP = 300;
 
-    // 「换一批」种子化重排：锚点道数 = 保留在最前、不参与洗牌的候选数。
-    // 默认 0 = 全量洗牌（每次换批整体重抽——保留头部锚点会让前几道永远不动，
-    // 用户容易误判"换批失灵"）；调大可让头部更稳，按产品语义权衡。
-    constexpr int SHUFFLE_ANCHOR_COUNT = 0;
+    // 「换一批」加权随机序参数：权重 = (复合分 + FLOOR)^EXPONENT，键 = u^(1/权重) 降序。
+    // 高分菜出镜频率显著更高（质量地板从"硬截断"改为"软偏置"），低分菜概率极低
+    // 但非零——候选范围随库规模增长；EXPONENT 调大更头部化、调小更均匀。
+    constexpr double SHUFFLE_WEIGHT_EXPONENT = 2.0;
+    constexpr double SHUFFLE_WEIGHT_FLOOR    = 0.1;
 
     // 最终评分权重
     constexpr double WEIGHT_INVENTORY    = 0.50;  // 库存（已有食材占菜谱总食材的比例）
@@ -397,9 +403,10 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
         LOG_WARN("读取健康档案失败，按无健康档案处理: %s", e.what());
     }
 
-    // ── 4. 从仓库拉取候选（size × CANDIDATE_MULTIPLIER） ──
-    int candidateSize = size * CANDIDATE_MULTIPLIER;
-    auto raw = recipeRepo_->findRecommendedRecipes(userId, 1, candidateSize);
+    // ── 4. 从仓库拉取候选（全库，安全阀 CANDIDATE_POOL_CAP） ──
+    // 池不随 size 缩放：随机选择在评分之后发生（步骤 7.5），候选范围随库规模增长；
+    // 上限仅防御超大库（SQL LIMIT 自然截断到实际行数）。
+    auto raw = recipeRepo_->findRecommendedRecipes(userId, 1, CANDIDATE_POOL_CAP);
 
     // ── 5. 健康过滤（硬档剔除 + 软档提示） ──
     std::vector<RecommendedRecipe> candidates;
@@ -467,13 +474,34 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
                   return a.match_score > b.match_score;
               });
 
-    // ── 7.5 「换一批」种子化重排（seed≠0 时）：全量种子洗牌（SHUFFLE_ANCHOR_COUNT=0）──
-    // 洗牌只改变"批次组成"，不改变评分；输出顺序由末段统一收敛为复合分降序。
+    // ── 7.5 「换一批」加权随机序（seed≠0 时）：键 u^(1/权重) 降序重排 ──
+    // Efraimidis–Spirakis 无偏加权抽样：权重随复合分升高——高分菜常见、低分菜概率
+    // 极低但非零（质量地板 = 软偏置，不再是固定 size×3 池的硬截断）。
+    // 只改变"批次组成"，不改变评分；输出顺序由末段统一收敛为复合分降序。
     // 同 seed 同数据结果可复现；seed=0（首屏）完全走确定性路径。
     if (seed != 0) {
         std::mt19937 rng(static_cast<std::mt19937::result_type>(seed));
-        const auto anchor = std::min<size_t>(SHUFFLE_ANCHOR_COUNT, candidates.size());
-        std::shuffle(candidates.begin() + anchor, candidates.end(), rng);
+        std::uniform_real_distribution<double> uniform01(0.0, 1.0);
+        std::vector<std::pair<double, size_t>> keys;
+        keys.reserve(candidates.size());
+        for (size_t i = 0; i < candidates.size(); ++i) {
+            const double weight = std::pow(candidates[i].match_score + SHUFFLE_WEIGHT_FLOOR,
+                                           SHUFFLE_WEIGHT_EXPONENT);
+            // u 取开区间防御：避免极小/零值产生极端键
+            const double u = std::max(uniform01(rng), std::numeric_limits<double>::min());
+            keys.emplace_back(std::pow(u, 1.0 / weight), i);
+        }
+        std::sort(keys.begin(), keys.end(),
+                  [](const std::pair<double, size_t>& a,
+                     const std::pair<double, size_t>& b) {
+                      return a.first > b.first;
+                  });
+        std::vector<RecommendedRecipe> reordered;
+        reordered.reserve(candidates.size());
+        for (const auto& key : keys) {
+            reordered.push_back(std::move(candidates[key.second]));
+        }
+        candidates = std::move(reordered);
     }
 
     // ── 8. 多样化重排序 ──
@@ -523,7 +551,7 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     }
 
     // 输出顺序规范化：恒为复合分降序（stable——同分保持既有相对序，同 seed 可复现）。
-    // 洗牌批次与兜底补位只影响"组成"，不改变"展示序"；seed=0 路径据此也收敛回严格降序。
+    // 加权随机批与兜底补位只影响"组成"，不改变"展示序"；seed=0 路径据此也收敛回严格降序。
     std::stable_sort(diverse.begin(), diverse.end(),
                      [](const RecommendedRecipe& a, const RecommendedRecipe& b) {
                          return a.match_score > b.match_score;
