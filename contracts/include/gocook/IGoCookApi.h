@@ -450,9 +450,9 @@ public:
      * @brief 智能推荐菜谱（需认证，根据用户偏好和库存）
      * @param page 页码（推荐为单批语义：page 仅回显，不做续批）
      * @param size 每批数量
-     * @param seed 「换一批」种子：非 0 时服务端在评分排序后对全部候选做种子洗牌
-     *             （当前无固定锚点，锚点数由服务端 SHUFFLE_ANCHOR_COUNT 常量控制，
-     *             常量调大才会保留头部；同 seed 同数据可复现）；0 = 确定性首屏
+     * @param seed 「换一批」种子：非 0 时服务端在评分排序后对全库候选做加权随机序重排
+     *             （权重随复合分升高——高分常见、低分概率极低但非零，
+     *             候选范围随库规模增长；同 seed 同数据可复现）；0 = 确定性首屏
      * @param callback 回调 (success, pagedResult, error)
      */
     virtual void getRecommendedRecipes(int page, int size, unsigned int seed,

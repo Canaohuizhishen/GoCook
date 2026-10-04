@@ -40,8 +40,8 @@ public:
                                                 int page, int size,
                                                 const nlohmann::json& filters) override;
 
-    // 结合用户偏好与库存生成智能推荐菜谱（分页；seed≠0 时做「换一批」全量种子洗牌重排，
-    // 锚点数由 SHUFFLE_ANCHOR_COUNT 常量控制，当前为 0 = 无固定锚点）
+    // 结合用户偏好与库存生成智能推荐菜谱（分页；seed≠0 时做「换一批」加权随机序重排——
+    // 候选池 = 全库（安全阀上限），按复合分加权：高分常见、低分概率极低但非零）
     gocook::models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
                                                                    int page, int size,
                                                                    unsigned int seed = 0) override;

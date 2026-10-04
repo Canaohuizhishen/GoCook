@@ -164,7 +164,7 @@ protected:
         token_ = "Bearer " + mintToken(kUserId);
     }
 
-    /// 常用桩：库存非空 + 空偏好/无健康档案 + 固定候选池（size=6 → 候选 18）
+    /// 常用桩：库存非空 + 空偏好/无健康档案 + 固定候选集（服务端按全库上限 300 取数）
     void stubDefaults(const PagedRecommendedRecipes& candidates) {
         EXPECT_CALL(*invRepo_, findInventory(kUserId, 1, 1))
             .WillRepeatedly(Return(makePagedInventory(1)));
@@ -172,7 +172,7 @@ protected:
             .WillRepeatedly(Return(UserPreferences{}));
         EXPECT_CALL(*userRepo_, getHealthConditions(kUserId))
             .WillRepeatedly(Return(std::vector<std::string>{}));
-        EXPECT_CALL(*recipeRepo_, findRecommendedRecipes(kUserId, 1, 18))
+        EXPECT_CALL(*recipeRepo_, findRecommendedRecipes(kUserId, 1, 300))
             .WillRepeatedly(Return(candidates));
     }
 

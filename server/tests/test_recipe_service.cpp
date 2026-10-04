@@ -243,7 +243,7 @@ TEST(RecipeServiceTest, 推荐正常流程) {
     candidates.data.push_back(makeRec(2, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));
     candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.4, 3.5));
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -281,7 +281,7 @@ TEST(RecipeServiceTest, 推荐偏好读取异常降级为空偏好) {
 
     PagedRecommendedRecipes candidates = makePagedRecommended(1, 1, 60);
     candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -316,7 +316,7 @@ TEST(RecipeServiceTest, 推荐健康档案读取DB故障降级为无档案) {
 
     PagedRecommendedRecipes candidates = makePagedRecommended(1, 1, 60);
     candidates.data.push_back(makeRec(1, "清蒸鱼", "清淡", "蒸", 0.6, 4.0));
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -356,7 +356,7 @@ TEST(RecipeServiceTest, 推荐健康过滤硬排除高钠加工品) {
 
     candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -401,7 +401,7 @@ TEST(RecipeServiceTest, 推荐健康软档仅提示不排除) {
 
     candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -451,7 +451,7 @@ TEST(RecipeServiceTest, 推荐健康软档降权影响排序) {
     sweet.match_status.missing_ingredients.push_back({"糖", 20.0, "克"});
     candidates.data.push_back(sweet);
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -495,7 +495,7 @@ TEST(RecipeServiceTest, 推荐糖尿病硬排除高糖加工品) {
 
     candidates.data.push_back(makeRec(3, "番茄炒蛋", "清淡", "炒", 0.5, 3.5));
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -542,7 +542,7 @@ TEST(RecipeServiceTest, 推荐偏好厌食减分) {
     r2.match_status.available_ingredients.push_back({"青菜", 1.0, "把"});
     candidates.data.push_back(r2);
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -599,7 +599,7 @@ TEST(RecipeServiceTest, 推荐喜欢风味与标签独立加分) {
     rBoth.submitted_at = "2020-01-01T00:00:00";
     candidates.data.push_back(rBoth);
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1005,7 +1005,7 @@ TEST(RecipeServiceTest, 推荐高血压钠含量阈值附提示并降权) {
     salty.sodium_mg = 900.0;  // 整道口径 ≥800 阈值（per_serving 语义为整道营养合计）
     candidates.data.push_back(salty);
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1055,7 +1055,7 @@ TEST(RecipeServiceTest, 推荐钠阈值提示仅高血压触发) {
     salty.sodium_mg = 1200.0;
     candidates.data.push_back(salty);
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1098,7 +1098,7 @@ TEST(RecipeServiceTest, 推荐软档多食材命中仍只降权一次) {
     threeHit.match_status.available_ingredients.push_back({"豆瓣酱", 5.0, "克"});
     candidates.data.push_back(threeHit);
 
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 60))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1137,7 +1137,7 @@ TEST(RecipeServiceTest, 推荐换一批同种子批次可复现) {
 
     PagedRecommendedRecipes candidates = makePagedRecommended(8, 1, 18);
     appendDistinctCandidates(candidates, 8);
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 18))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillRepeatedly(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1169,7 +1169,7 @@ TEST(RecipeServiceTest, 推荐换一批不同种子批次变化且头部不再�
 
     PagedRecommendedRecipes candidates = makePagedRecommended(8, 1, 18);
     appendDistinctCandidates(candidates, 8);
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 18))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillRepeatedly(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1183,7 +1183,7 @@ TEST(RecipeServiceTest, 推荐换一批不同种子批次变化且头部不再�
     ASSERT_EQ(r2.data.size(), 6u);
 
     // 批次组成随种子变化：固定种子区间内至少出现两种不同批次
-    // （不要求"任意两 seed 必不同"——8 选 6 的丢弃对撞车是 RNG 正常行为，概率约 1/28）
+    // （不要求"任意两 seed 必不同"——小池内撞批是抽样正常现象，加权后仍可能发生）
     std::vector<std::vector<int>> batches;
     for (unsigned int seed = 1; seed <= 16; ++seed) {
         auto r = service.getRecommendedRecipes(1, 1, 6, seed);
@@ -1195,8 +1195,8 @@ TEST(RecipeServiceTest, 推荐换一批不同种子批次变化且头部不再�
         [&](const std::vector<int>& ids) { return ids == batches.front(); });
     EXPECT_FALSE(allSeedBatchesSame) << "换一批未改变批次组成";
 
-    // 锚点已取消（SHUFFLE_ANCHOR_COUNT=0）：存在种子使最高分菜（id=1）整批缺席；
-    // 若恢复头部锚点语义，本断言必然失败（id=1 恒在批内）——改锚点常量时请看这里
+    // 无固定头部（加权随机序：高分高频但非保证）：存在种子使最高分菜（id=1）整批缺席；
+    // 若改为"头部恒在"语义（恢复锚点/必含 top-N），本断言必然失败——改选择逻辑时请看这里
     bool anySeedExcludesTop = false;
     for (const auto& ids : batches) {
         if (std::find(ids.begin(), ids.end(), 1) == ids.end()) {
@@ -1227,7 +1227,7 @@ TEST(RecipeServiceTest, 推荐换一批种子为零保持确定性排序) {
 
     PagedRecommendedRecipes candidates = makePagedRecommended(8, 1, 24);
     appendDistinctCandidates(candidates, 8);
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 24))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillRepeatedly(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1267,7 +1267,7 @@ TEST(RecipeServiceTest, 推荐换一批输出恒为分数降序含兜底补位) 
     candidates.data.push_back(makeRec(3, "清淡丙", "清淡", "炖", 0.70, 4.0));
     candidates.data.push_back(makeRec(4, "蒜香丁", "蒜香", "煮", 0.60, 4.0));
     candidates.data.push_back(makeRec(5, "麻辣戊", "麻辣", "拌", 0.50, 4.0));
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 15))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1301,7 +1301,7 @@ TEST(RecipeServiceTest, 推荐换一批候选不足不崩溃) {
 
     PagedRecommendedRecipes candidates = makePagedRecommended(3, 1, 30);
     appendDistinctCandidates(candidates, 3);
-    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 30))
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
         .WillOnce(Return(candidates));
 
     RecipeServiceImpl service(std::move(mockRecipe),
@@ -1314,4 +1314,83 @@ TEST(RecipeServiceTest, 推荐换一批候选不足不崩溃) {
     EXPECT_EQ(result.data[0].id, 1);
     EXPECT_EQ(result.data[1].id, 2);
     EXPECT_EQ(result.data[2].id, 3);
+}
+
+// ==================== 换一批（候选池扩容 + 加权随机序） ====================
+
+TEST(RecipeServiceTest, 推荐换一批可达到旧池上限之外的成员) {
+    // 意图锁定：候选池曾为 size×3=36 硬截断（库 > 36 后换批只能在前 36 名内轮转）。
+    // 现池=全库（安全阀 300）+ 加权随机序——库 > 36 时批次并集必须覆盖旧截断线之外的
+    // 成员；本用例连同 EXPECT_CALL 的取数尺寸（300）一并锁定。
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1)).WillRepeatedly(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1)).WillRepeatedly(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillRepeatedly(Return(std::vector<std::string>{}));
+
+    // 模拟"库 > 旧池上限"：60 条候选（id 1..60，复合分递减；id > 36 即旧池截断线之外）
+    PagedRecommendedRecipes candidates = makePagedRecommended(60, 1, 300);
+    appendDistinctCandidates(candidates, 60);
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
+        .WillRepeatedly(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    bool reachedBeyond36 = false;
+    for (unsigned int seed = 1; seed <= 64 && !reachedBeyond36; ++seed) {
+        auto r = service.getRecommendedRecipes(1, 1, 12, seed);
+        ASSERT_EQ(r.data.size(), 12u);
+        for (const auto& rec : r.data) {
+            if (rec.id > 36) { reachedBeyond36 = true; break; }
+        }
+    }
+    EXPECT_TRUE(reachedBeyond36)
+        << "固定种子区间内批次并集未覆盖旧池上限之外的候选（候选范围未随库规模增长）";
+}
+
+TEST(RecipeServiceTest, 推荐换一批高分出现频次显著高于低分) {
+    // 意图锁定：加权随机序——高分菜出镜频率显著更高（质量地板=软偏置），低分菜保留
+    // 非零可及性（不再被硬截断排除）。种子集合固定 → 计数确定性，无 flaky。
+    auto mockRecipe = std::make_unique<NiceMock<MockRecipeRepository>>();
+    auto mockUser = std::make_unique<NiceMock<MockUserRepository>>();
+    auto mockInv = std::make_unique<NiceMock<MockInventoryRepository>>();
+    auto* recipeRepo = mockRecipe.get();
+    auto* userRepo = mockUser.get();
+    auto* invRepo = mockInv.get();
+
+    EXPECT_CALL(*invRepo, findInventory(1, 1, 1)).WillRepeatedly(Return(makePagedInventory(1)));
+    EXPECT_CALL(*userRepo, getPreferences(1)).WillRepeatedly(Return(UserPreferences{}));
+    EXPECT_CALL(*userRepo, getHealthConditions(1))
+        .WillRepeatedly(Return(std::vector<std::string>{}));
+
+    // 16 条候选：id=1 复合分最高、id=16 最低（0.90 起每档 -0.05）
+    PagedRecommendedRecipes candidates = makePagedRecommended(16, 1, 300);
+    appendDistinctCandidates(candidates, 16);
+    EXPECT_CALL(*recipeRepo, findRecommendedRecipes(1, 1, 300))
+        .WillRepeatedly(Return(candidates));
+
+    RecipeServiceImpl service(std::move(mockRecipe),
+                              std::move(mockUser),
+                              std::move(mockInv));
+
+    int highCount = 0;  // id=1（最高分）出镜次数
+    int lowCount = 0;   // id=16（最低分）出镜次数
+    for (unsigned int seed = 1; seed <= 512; ++seed) {
+        auto r = service.getRecommendedRecipes(1, 1, 6, seed);
+        ASSERT_EQ(r.data.size(), 6u);
+        for (const auto& rec : r.data) {
+            if (rec.id == 1) ++highCount;
+            if (rec.id == 16) ++lowCount;
+        }
+    }
+    EXPECT_GT(highCount, lowCount * 3) << "高分出镜频次未显著高于低分";
+    EXPECT_GE(lowCount, 1) << "低分菜完全不可及（软地板被破坏）";
 }
