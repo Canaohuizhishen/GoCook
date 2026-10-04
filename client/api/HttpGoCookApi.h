@@ -447,7 +447,7 @@ private:
         QString methodOverride;
         std::function<void(int statusCode, const QByteArray &responseData)> handler;
     };
-    // 登录成功后重放全部挂起请求（tokenChanged 触发；重放时 token 已非空，不会再次拦截）
+    // 登录成功后重放全部挂起请求（tokenChanged 之后被调用；重放时 token 已非空，不会再次拦截）
     void replayPendingAuthRequests();
     // 清空挂起队列：每个请求按 -2（kAuthRequiredError）回调失败。两个触发点：
     // cancelAuthQueue（登录页被关闭/跳过）、setToken 置空（登出）。
