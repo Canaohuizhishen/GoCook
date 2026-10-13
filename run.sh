@@ -8,6 +8,9 @@
 #   4. 启动客户端
 #
 # 说明：
+#   - 首次部署防呆：GOCOOK_JWT_SECRET 不可解析（.env 缺失且未导出环境变量）时
+#     自动执行 server/setup.sh --env-only 生成 .env；docker compose config 预检
+#     失败立即中止（不再被"重建失败→旧镜像兜底"路径误吞、误报为网络问题）。
 #   - 服务端跑在容器里（gocook-server，监听 127.0.0.1:8080），
 #     客户端直接连接即可，不需要在宿主机再起一份服务端进程。
 #   - 默认不重建镜像（镜像已在本地时秒级启动、不依赖网络）。
@@ -36,6 +39,39 @@ echo "=============================================="
 # 与镜像无关，改动不需要重建镜像，必须排除——否则改个种子脚本也会误触发重建。
 echo ""
 echo "=== [1/4] 启动数据库 + 服务端（Docker） ==="
+
+# ── 防呆 · .env 密钥自检 ──
+# compose 对 GOCOOK_JWT_SECRET 做 :? 强校验（见 docker-compose.yml）：不可解析时 up 直接报错。
+# 这里检测「宿主机环境变量 或 .env 文件内非空值」是否至少有一处提供；都没有则自动执行
+# server/setup.sh --env-only（非交互，仅生成含随机密钥的 .env）——全新克隆无需额外步骤。
+ENV_KEY_IN_SHELL="${GOCOOK_JWT_SECRET:-}"
+ENV_KEY_IN_FILE=""
+if [ -f .env ]; then
+    ENV_KEY_IN_FILE=$(grep '^GOCOOK_JWT_SECRET=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)
+fi
+if [ -z "$ENV_KEY_IN_SHELL" ] && [ -z "$ENV_KEY_IN_FILE" ]; then
+    echo "ℹ️  未检测到 GOCOOK_JWT_SECRET（.env 缺失或未设置），自动生成..."
+    if ! bash server/setup.sh --env-only; then
+        echo "❌ 自动生成 .env 失败，请手动执行 ./server/setup.sh --env-only 后重试"
+        exit 1
+    fi
+    ENV_KEY_IN_FILE=$(grep '^GOCOOK_JWT_SECRET=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)
+    if [ -z "$ENV_KEY_IN_FILE" ]; then
+        echo "❌ .env 存在但缺少 GOCOOK_JWT_SECRET（setup.sh 不覆盖已有 .env）。"
+        echo "   请删除 .env 后重跑 run.sh（将生成新密钥、旧登录会话失效），或手动补写密钥。"
+        exit 1
+    fi
+    echo "✅ 已生成 .env（随机 JWT 密钥）"
+fi
+
+# ── 防呆 · compose 配置预检 ──
+# 纯渲染校验（不启容器）：配置类错误（密钥缺失 / YAML 损坏 / 变量拼写）在这里以
+# compose 原始报错呈现并中止——不再被下方"重建失败 → 改用现有镜像"的兜底路径误吞。
+if ! docker compose config -q; then
+    echo "❌ docker compose 配置校验失败（错误原因见上方输出），已中止。"
+    echo "   若为密钥缺失：执行 ./server/setup.sh --env-only 生成 .env 后重试"
+    exit 1
+fi
 
 IMAGE_CREATED=$(docker inspect gocook-gocook-server --format '{{.Created}}' 2>/dev/null || echo "")
 NEED_BUILD=0
@@ -68,9 +104,12 @@ if [ "$NEED_BUILD" = "1" ]; then
     if docker compose up -d --build; then
         echo "✅ 镜像重建成功，已用新镜像启动"
     else
-        echo "⚠️  镜像重建失败（常见原因：无法访问 Docker Hub），改用现有镜像启动"
+        echo "⚠️  镜像重建失败（构建/拉取镜像出错，常见原因：无法访问 Docker Hub），改用现有镜像启动"
         BUILD_FAILED=1
-        docker compose up -d
+        docker compose up -d || {
+            echo "❌ 用现有镜像启动同样失败，请查看上方错误；容器状态：docker compose ps"
+            exit 1
+        }
     fi
 else
     echo "✅ 服务端源码无更新，直接使用现有镜像启动（不联网）"

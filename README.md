@@ -2,6 +2,26 @@
 
 Qt QML 桌面客户端 + C++ httplib 服务端 + PostgreSQL。C/S 架构，智能推荐（库存匹配 + 健康过滤）、库存与购物清单闭环、评分评论、营养报告。
 
+<p align="center">
+  <a href="docs/media/GoCook_演示_终版_1080p.mp4">
+    <img src="docs/media/GoCook_封面_1920x1080.png" alt="GoCook — 菜谱管理与智能烹饪推荐系统" width="720">
+  </a>
+</p>
+
+<p align="center">
+  🎬 <b><a href="docs/media/GoCook_演示_终版_1080p.mp4">完整演示视频</a></b>（1:55 · 1080p · 解说 + 字幕）
+  &nbsp;｜&nbsp;
+  <a href="docs/media/GoCook_演示_小版_720p.mp4">720p 轻量版</a>
+  &nbsp;｜&nbsp;
+  <a href="docs/media/GoCook_演示_字幕.srt">字幕文件（.srt）</a>
+</p>
+
+<p align="center">
+  <img src="docs/media/GoCook_演示_推荐换一批.gif" alt="智能推荐 · 换一批" width="720">
+  <br>
+  <sub>智能推荐「换一批」— 库存匹配 + 健康过滤，加权随机重排</sub>
+</p>
+
 ```
 GoCook/
 ├── client/            # Qt QML 客户端（23 页面 / 5 ViewModel / SQLite 离线缓存）
@@ -11,7 +31,7 @@ GoCook/
 ├── Dockerfile         # 服务端多阶段镜像
 ├── DOCKER_NOTES.md    # Docker / PostgreSQL 操作笔记（备份恢复、常用命令）
 ├── run.sh             # 一键启动脚本（服务端+客户端）
-└── docs/              # GoCook_Design.md（设计说明书）+ api-spec.md（现行契约）+ TODO.md（待办清单）+ archive/（历史文档存档）
+└── docs/              # GoCook_Design.md（设计说明书）+ api-spec.md（现行契约）+ TODO.md（待办清单）+ archive/（历史文档存档）+ media/（README 演示物料）
 ```
 
 ---
@@ -241,6 +261,7 @@ cd <仓库根目录>
 
 **脚本内部做了什么**（4 步）：
 
+0. **启动前防呆**：未检测到 `GOCOOK_JWT_SECRET`（`.env` 缺失且未导出环境变量）时自动执行 `server/setup.sh --env-only` 生成 `.env`；随后 `docker compose config` 预检，配置错误立即中止（不会误入"旧镜像兜底"路径）
 1. **防呆检测**：比较服务端源码（`server/` `contracts/` `third_party/` `Dockerfile`，排除 build/uploads 等产物目录）与镜像构建时间——源码晚于镜像则尝试 `docker compose up -d --build` 重建；**重建失败（如断网）改用现有镜像启动，并在末尾打印醒目提示**；源码无更新则直接用现有镜像启动（不联网）
 2. 轮询等待服务端就绪（最多 60 秒），然后 curl 公告接口验证数据库链路——不通会直接打印自救提示
 3. `cmake` 构建客户端（未找到 cmake/ninja 时跳过，要求已有构建产物）
@@ -252,7 +273,7 @@ cd <仓库根目录>
 - 客户端关闭后服务端**继续在容器里运行**（正常现象，`docker compose stop` 才停）
 - 镜像重建需要能访问 Docker Hub；断网时若检测到源码有更新，脚本会用旧镜像启动并明确提示"改动未生效"，**不会静默跑旧版**
 - 想跳过客户端构建、只重启服务端：`docker compose up -d`
-- SMTP 邮件：配置在 `.env`，由 compose `env_file` 注入容器（改完 `.env` 后 `docker compose up -d` 生效）；未配置时注册验证码/重置令牌会打印到 `docker logs gocook-server`（开发模式）。`.env` 可缺失（`required: false`）：容器照常启动，此时 `GOCOOK_JWT_SECRET` 需通过环境变量提供
+- SMTP 邮件：配置在 `.env`，由 compose `env_file` 注入容器（改完 `.env` 后 `docker compose up -d` 生效）；未配置时注册验证码/重置令牌会打印到 `docker logs gocook-server`（开发模式）。`.env` 可缺失（`required: false`）：容器照常启动，此时 `GOCOOK_JWT_SECRET` 需通过环境变量提供（run.sh 会在缺失时自动生成 .env，见上方第 0 步）
 
 ---
 
