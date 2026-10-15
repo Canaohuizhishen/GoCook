@@ -52,7 +52,7 @@ TEST(ErrorHelperTest, 未识别状态码按500兜底) {
 TEST(ErrorHelperTest, JSON解析失败映射400) {
     httplib::Response res;
     try {
-        auto j = nlohmann::json::parse("{invalid json");   // 抛 parse_error
+        auto j = nlohmann::json::parse("{invalid json"); // 抛 parse_error
         (void)j;
     } catch (const std::exception& e) {
         handleStandardException(e, res);
@@ -65,7 +65,7 @@ TEST(ErrorHelperTest, 字段缺失out_of_range映射400) {
     httplib::Response res;
     try {
         nlohmann::json j = nlohmann::json::parse(R"({"a":1})");
-        (void)j.at("b");                                  // 抛 out_of_range
+        (void)j.at("b"); // 抛 out_of_range
     } catch (const std::exception& e) {
         handleStandardException(e, res);
     }
@@ -77,7 +77,7 @@ TEST(ErrorHelperTest, 字段类型不符type_error映射400) {
     httplib::Response res;
     try {
         nlohmann::json j = nlohmann::json::parse(R"({"a":"x"})");
-        (void)j["a"].get<int>();                          // 抛 type_error
+        (void)j["a"].get<int>(); // 抛 type_error
     } catch (const std::exception& e) {
         handleStandardException(e, res);
     }
@@ -91,8 +91,8 @@ TEST(ErrorHelperTest, 序列化层非法UTF8映射500) {
     httplib::Response res;
     try {
         nlohmann::json j;
-        j["s"] = std::string(1, static_cast<char>(0xFF));   // 程序内构造非法 UTF-8（请求体路径到不了这里）
-        (void)j.dump();                                     // 抛 type_error.316
+        j["s"] = std::string(1, static_cast<char>(0xFF)); // 程序内构造非法 UTF-8（请求体路径到不了这里）
+        (void)j.dump();                                   // 抛 type_error.316
     } catch (const std::exception& e) {
         handleStandardException(e, res);
     }
@@ -107,9 +107,9 @@ TEST(ErrorHelperTest, 请求体非法UTF8在解析层即被拒映射400) {
     httplib::Response res;
     try {
         std::string body = "{\"s\":\"a";
-        body += static_cast<char>(0xFF);                    // 非法 UTF-8 字节
+        body += static_cast<char>(0xFF); // 非法 UTF-8 字节
         body += " b\"}";
-        auto j = nlohmann::json::parse(body);               // 抛 parse_error（ill-formed UTF-8 byte）
+        auto j = nlohmann::json::parse(body); // 抛 parse_error（ill-formed UTF-8 byte）
         (void)j;
     } catch (const std::exception& e) {
         handleStandardException(e, res);

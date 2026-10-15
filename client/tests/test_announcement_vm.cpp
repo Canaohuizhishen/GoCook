@@ -38,29 +38,24 @@
 
 namespace {
 
-bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
-{
+bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!done.load()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     return true;
 }
 
-template <typename Fn>
-bool waitUntil(const Fn& fn, int timeoutMs = 5000)
-{
+template <typename Fn> bool waitUntil(const Fn& fn, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!fn()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
@@ -68,8 +63,7 @@ bool waitUntil(const Fn& fn, int timeoutMs = 5000)
 }
 
 // 负向断言用：驱动事件循环一小段时间
-void pumpEvents(int ms)
-{
+void pumpEvents(int ms) {
     QElapsedTimer timer;
     timer.start();
     while (timer.elapsed() < ms) {
@@ -86,14 +80,12 @@ public:
     std::atomic<bool> listFail{false};
     std::atomic<int> readStateReqCount{0};
 
-    std::vector<int> seenIdsCopy()
-    {
+    std::vector<int> seenIdsCopy() {
         std::lock_guard<std::mutex> lk(reqMx);
         return seenIds;
     }
 
-    AnnouncementStubServer()
-    {
+    AnnouncementStubServer() {
         svr.Get("/api/announcements", [this](const httplib::Request& req, httplib::Response& res) {
             listReqCount++;
             const int page = std::stoi(req.get_param_value("page"));
@@ -115,26 +107,21 @@ public:
             std::string arr = "[";
             for (int i = from; i < to; ++i) {
                 if (i > from) arr += ",";
-                const int id = base + total - i;   // i=0 → 922
-                arr += R"({"id":)" + std::to_string(id)
-                     + R"(,"title":"公告)" + std::to_string(id)
-                     + R"(","content":"内容","created_at":"2026-09-01T00:00:00Z"})";
+                const int id = base + total - i; // i=0 → 922
+                arr += R"({"id":)" + std::to_string(id) + R"(,"title":"公告)" + std::to_string(id) +
+                       R"(","content":"内容","created_at":"2026-09-01T00:00:00Z"})";
             }
             arr += "]";
             res.status = 200;
-            res.set_content(
-                R"({"pagination":{"page":)" + std::to_string(page)
-                + R"(,"size":)" + std::to_string(size)
-                + R"(,"total":)" + std::to_string(total)
-                + R"(,"total_pages":)" + std::to_string(totalPages)
-                + R"(},"data":)" + arr + "}",
-                "application/json");
+            res.set_content(R"({"pagination":{"page":)" + std::to_string(page) + R"(,"size":)" + std::to_string(size) +
+                                R"(,"total":)" + std::to_string(total) + R"(,"total_pages":)" +
+                                std::to_string(totalPages) + R"(},"data":)" + arr + "}",
+                            "application/json");
         });
 
         svr.Put("/api/users/me/announcements/read-state", [this](const httplib::Request& req, httplib::Response& res) {
             readStateReqCount++;
-            const QJsonObject obj = QJsonDocument::fromJson(
-                QByteArray::fromStdString(req.body)).object();
+            const QJsonObject obj = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
             {
                 std::lock_guard<std::mutex> lk(reqMx);
                 seenIds.push_back(obj["last_seen_id"].toInt());
@@ -144,47 +131,40 @@ public:
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
-        if (port <= 0)
-            throw std::runtime_error("AnnouncementStubServer: bind_to_any_port failed");
+        if (port <= 0) throw std::runtime_error("AnnouncementStubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
 
         // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running() 显式暴露启动失败
         for (int i = 0; i < 200; ++i) {
-            if (svr.is_running())
-                return;
+            if (svr.is_running()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         throw std::runtime_error("AnnouncementStubServer: failed to start");
     }
 
-    ~AnnouncementStubServer()
-    {
+    ~AnnouncementStubServer() {
         svr.stop();
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
     }
 
     std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
 
 private:
-    void sleepIfNeeded(const std::atomic<int>& ms)
-    {
+    void sleepIfNeeded(const std::atomic<int>& ms) {
         const int delay = ms.load();
-        if (delay > 0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+        if (delay > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
     }
 
     httplib::Server svr;
     int port = 0;
     std::thread th;
-    std::mutex reqMx;   // 保护 seenIds（服务端线程写 / 测试线程读）
-    std::vector<int> seenIds;   // 水位上报流水（last_seen_id 按到达顺序）
+    std::mutex reqMx;         // 保护 seenIds（服务端线程写 / 测试线程读）
+    std::vector<int> seenIds; // 水位上报流水（last_seen_id 按到达顺序）
 };
 
 class AnnouncementVmTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         api.setMaxRetries(0);
         api.setToken(QStringLiteral("token-A"));
     }
@@ -193,8 +173,7 @@ protected:
 };
 
 // ==================== A1：进入上报 + 防重复 ====================
-TEST_F(AnnouncementVmTest, 进入上报水位且重复进入不重报)
-{
+TEST_F(AnnouncementVmTest, 进入上报水位且重复进入不重报) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -204,13 +183,12 @@ TEST_F(AnnouncementVmTest, 进入上报水位且重复进入不重报)
     QObject::connect(&vm, &AnnouncementViewModel::announcementsSeen, [&]() { seenSignals++; });
 
     vm.refresh();
-    ASSERT_TRUE(waitUntil([&]() {
-        return vm.announcements().size() == 20 && !vm.isLoading();
-    })) << "公告第一页加载超时";
+    ASSERT_TRUE(waitUntil([&]() { return vm.announcements().size() == 20 && !vm.isLoading(); }))
+        << "公告第一页加载超时";
 
     EXPECT_GE(seenSignals, 1) << "第一页加载成功应发 announcementsSeen";
     ASSERT_TRUE(waitUntil([&]() { return stub.readStateReqCount.load() == 1; })) << "水位上报未到达";
-    pumpEvents(150);   // 等上报成功回执落账（本地防重记账以成功为准），保证"不重报"断言确定性
+    pumpEvents(150); // 等上报成功回执落账（本地防重记账以成功为准），保证"不重报"断言确定性
     auto ids = stub.seenIdsCopy();
     ASSERT_EQ(ids.size(), 1u);
     EXPECT_EQ(ids[0], 922) << "上报应为第一页最大公告 id";
@@ -229,8 +207,7 @@ TEST_F(AnnouncementVmTest, 进入上报水位且重复进入不重报)
 }
 
 // ==================== A2：续页不重报 ====================
-TEST_F(AnnouncementVmTest, 续页追加且不重报)
-{
+TEST_F(AnnouncementVmTest, 续页追加且不重报) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -240,17 +217,14 @@ TEST_F(AnnouncementVmTest, 续页追加且不重报)
     ASSERT_TRUE(waitUntil([&]() { return vm.announcements().size() == 20 && !vm.isLoading(); }));
 
     vm.loadNextPage();
-    ASSERT_TRUE(waitUntil([&]() {
-        return vm.announcements().size() == 22 && !vm.isLoading();
-    })) << "续页超时";
+    ASSERT_TRUE(waitUntil([&]() { return vm.announcements().size() == 22 && !vm.isLoading(); })) << "续页超时";
     EXPECT_FALSE(vm.hasMore());
     EXPECT_EQ(stub.readStateReqCount.load(), 1) << "续页不得重报水位";
     EXPECT_EQ(vm.announcements().last().toMap()["id"].toInt(), 901);
 }
 
 // ==================== A3：加载失败 ====================
-TEST_F(AnnouncementVmTest, 加载失败上报错误不发seen)
-{
+TEST_F(AnnouncementVmTest, 加载失败上报错误不发seen) {
     AnnouncementStubServer stub;
     stub.listFail = true;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -273,8 +247,7 @@ TEST_F(AnnouncementVmTest, 加载失败上报错误不发seen)
 }
 
 // ==================== A4：会话切换在途作废 ====================
-TEST_F(AnnouncementVmTest, 会话切换在途响应作废)
-{
+TEST_F(AnnouncementVmTest, 会话切换在途响应作废) {
     AnnouncementStubServer stub;
     stub.listDelayMs = 300;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -287,7 +260,7 @@ TEST_F(AnnouncementVmTest, 会话切换在途响应作废)
     vm.refresh();
     ASSERT_TRUE(vm.isLoading()) << "公告请求应在途";
 
-    api.setToken(QStringLiteral("token-B"));   // 登出/换号
+    api.setToken(QStringLiteral("token-B")); // 登出/换号
 
     ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "过期响应后未配平";
     pumpEvents(100);
@@ -297,8 +270,7 @@ TEST_F(AnnouncementVmTest, 会话切换在途响应作废)
 }
 
 // ==================== A5：clearAll 归零并重置已上报水位 ====================
-TEST_F(AnnouncementVmTest, clearAll归零并允许重新上报)
-{
+TEST_F(AnnouncementVmTest, clearAll归零并允许重新上报) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -316,14 +288,12 @@ TEST_F(AnnouncementVmTest, clearAll归零并允许重新上报)
 
     // 水位记账已清零：换号重进可重新上报同一公告集
     vm.refresh();
-    ASSERT_TRUE(waitUntil([&]() {
-        return stub.readStateReqCount.load() == 2 && !vm.isLoading();
-    })) << "clearAll 后应允许重新上报";
+    ASSERT_TRUE(waitUntil([&]() { return stub.readStateReqCount.load() == 2 && !vm.isLoading(); }))
+        << "clearAll 后应允许重新上报";
 }
 
 // ==================== A6：预览拉取不触发已读语义 ====================
-TEST_F(AnnouncementVmTest, 预览拉取不触发已读语义)
-{
+TEST_F(AnnouncementVmTest, 预览拉取不触发已读语义) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -347,8 +317,7 @@ TEST_F(AnnouncementVmTest, 预览拉取不触发已读语义)
 }
 
 // ==================== A7：预览失败静默保留旧值 ====================
-TEST_F(AnnouncementVmTest, 预览失败静默保留旧值)
-{
+TEST_F(AnnouncementVmTest, 预览失败静默保留旧值) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -365,8 +334,7 @@ TEST_F(AnnouncementVmTest, 预览失败静默保留旧值)
 }
 
 // ==================== A8：clearAll 同步清空预览 ====================
-TEST_F(AnnouncementVmTest, clearAll清空预览值)
-{
+TEST_F(AnnouncementVmTest, clearAll清空预览值) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -381,8 +349,7 @@ TEST_F(AnnouncementVmTest, clearAll清空预览值)
 }
 
 // ==================== A9：隐藏公告后刷新不复活、clearAll 恢复 ====================
-TEST_F(AnnouncementVmTest, 隐藏公告后刷新不复活且清空恢复)
-{
+TEST_F(AnnouncementVmTest, 隐藏公告后刷新不复活且清空恢复) {
     AnnouncementStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 

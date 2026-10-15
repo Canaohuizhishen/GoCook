@@ -9,12 +9,13 @@
 using json = nlohmann::json;
 using namespace gocook::models;
 
-AdminHandler::AdminHandler(gocook::services::IAdminService& service,
-                           AuthMiddleware& auth)
-    : service_(service), auth_(auth) {}
+AdminHandler::AdminHandler(gocook::services::IAdminService& service, AuthMiddleware& auth)
+    : service_(service),
+      auth_(auth) {}
 
-bool AdminHandler::requireRole(const httplib::Request& req, httplib::Response& res,
-                                const std::vector<std::string>& allowedRoles) {
+bool AdminHandler::requireRole(const httplib::Request& req,
+                               httplib::Response& res,
+                               const std::vector<std::string>& allowedRoles) {
     auto info = requireAuth(auth_, req, res);
     if (!info.valid) return false;
     for (const auto& role : allowedRoles) {

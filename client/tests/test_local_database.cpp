@@ -125,12 +125,15 @@ TEST_F(LocalDatabaseTest, 详情缓存重新访问刷新recency不被裁剪) {
 TEST_F(LocalDatabaseTest, 库存快照存取往返保留顺序与复合键) {
     ASSERT_TRUE(db->saveUser(1, "u", "t"));
     QVariantList snapshot;
-    snapshot << QVariantMap{{"id", 7}, {"ingredientName", "盐"}, {"quantity", 5.0},
-                            {"unit", "克"}, {"addedAt", "2026-05-01T00:00:00Z"}};
-    snapshot << QVariantMap{{"id", 8}, {"ingredientName", "盐"}, {"quantity", 2.0},
-                            {"unit", "茶匙"}, {"addedAt", "2026-05-02T00:00:00Z"}};
-    snapshot << QVariantMap{{"id", 9}, {"ingredientName", "番茄"}, {"quantity", 3.0},
-                            {"unit", "个"}, {"expiryDate", "2026-05-10"},
+    snapshot << QVariantMap{
+        {"id", 7}, {"ingredientName", "盐"}, {"quantity", 5.0}, {"unit", "克"}, {"addedAt", "2026-05-01T00:00:00Z"}};
+    snapshot << QVariantMap{
+        {"id", 8}, {"ingredientName", "盐"}, {"quantity", 2.0}, {"unit", "茶匙"}, {"addedAt", "2026-05-02T00:00:00Z"}};
+    snapshot << QVariantMap{{"id", 9},
+                            {"ingredientName", "番茄"},
+                            {"quantity", 3.0},
+                            {"unit", "个"},
+                            {"expiryDate", "2026-05-10"},
                             {"addedAt", "2026-05-03T00:00:00Z"}};
     ASSERT_TRUE(db->saveInventoryCache(snapshot));
     EXPECT_TRUE(db->hasInventoryCache());
@@ -231,8 +234,7 @@ TEST_F(LocalDatabaseTest, 整批脏条目放弃写入不落空快照) {
     EXPECT_EQ(db->getInventoryCache()[0].toMap()["ingredientName"].toString(), "米");
 }
 
-TEST_F(LocalDatabaseTest, 快照行级删除按复合键精确移除)
-{
+TEST_F(LocalDatabaseTest, 快照行级删除按复合键精确移除) {
     ASSERT_TRUE(db->saveUser(1, "u", "t"));
     QVariantList snapshot;
     snapshot << QVariantMap{{"id", 7}, {"ingredientName", "盐"}, {"quantity", 5.0}, {"unit", "克"}};
@@ -263,8 +265,7 @@ TEST_F(LocalDatabaseTest, 快照行级删除按复合键精确移除)
     EXPECT_TRUE(db->getInventoryCache().isEmpty());
 }
 
-TEST_F(LocalDatabaseTest, 未登录拒绝移除快照行)
-{
+TEST_F(LocalDatabaseTest, 未登录拒绝移除快照行) {
     EXPECT_FALSE(db->removeInventoryCacheItem("盐", "克"));
 }
 
@@ -345,8 +346,7 @@ TEST_F(LocalDatabaseTest, 存量v0库升级重建库存表且不丢其它数据)
     QFile::remove(v0Path);
 }
 
-TEST_F(LocalDatabaseTest, 存量v0库升级修复旧结构详情表并清理死表)
-{
+TEST_F(LocalDatabaseTest, 存量v0库升级修复旧结构详情表并清理死表) {
     // 手工造 v0 文件库："明细列"时代的老结构详情表 + 已拆功能死表（recipes_cache/pending_operations）
     const QString v0Conn = connName + "_v0old";
     const QString v0Path = QDir::tempPath() + QStringLiteral("/gocook_v0old_%1.db").arg(s_counter);
@@ -393,8 +393,7 @@ TEST_F(LocalDatabaseTest, 存量v0库升级修复旧结构详情表并清理死�
     QFile::remove(v0Path);
 }
 
-TEST_F(LocalDatabaseTest, 存量v1库升级到v2修复旧结构详情表)
-{
+TEST_F(LocalDatabaseTest, 存量v1库升级到v2修复旧结构详情表) {
     // 手工造 v1 文件库（已跑过首版门控的库）：新结构库存表 + 老结构详情表残留
     const QString v1Conn = connName + "_v1";
     const QString v1Path = QDir::tempPath() + QStringLiteral("/gocook_v1_%1.db").arg(s_counter);
@@ -409,7 +408,8 @@ TEST_F(LocalDatabaseTest, 存量v1库升级到v2修复旧结构详情表)
                            "user_id INTEGER NOT NULL, ingredient_name TEXT NOT NULL, unit TEXT NOT NULL, "
                            "ordinal INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT, "
                            "PRIMARY KEY (user_id, ingredient_name, unit))"));
-        ASSERT_TRUE(q.exec("CREATE TABLE inventory_cache_meta (user_id INTEGER PRIMARY KEY, updated_at TEXT NOT NULL)"));
+        ASSERT_TRUE(
+            q.exec("CREATE TABLE inventory_cache_meta (user_id INTEGER PRIMARY KEY, updated_at TEXT NOT NULL)"));
         ASSERT_TRUE(q.exec("CREATE TABLE recipe_detail_cache (id INTEGER PRIMARY KEY, name TEXT)")); // 老结构
         ASSERT_TRUE(q.exec("PRAGMA user_version = 1"));
         oldDb.close();

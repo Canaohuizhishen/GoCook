@@ -23,13 +23,12 @@ public:
         : inventoryRepo_(std::move(inventoryRepo)) {}
 
     // 获取当前用户库存（分页；keyword 非空时按食材名模糊过滤；默认空词 = 不过滤）
-    gocook::models::PagedInventory getInventory(int userId, int page, int size,
-                                                const std::string& keyword = "") override;
+    gocook::models::PagedInventory
+    getInventory(int userId, int page, int size, const std::string& keyword = "") override;
     // 添加库存项（同名同单位累加；不同单位新增行），返回库存项 ID
     int upsertInventory(int userId, const gocook::models::UpsertInventoryRequest& item) override;
     // 编辑库存项（按 id 整行替换）
-    void updateInventoryItem(int userId, int itemId,
-                             const gocook::models::UpsertInventoryRequest& item) override;
+    void updateInventoryItem(int userId, int itemId, const gocook::models::UpsertInventoryRequest& item) override;
     // 删除库存项
     void deleteInventoryItem(int userId, int itemId) override;
 
@@ -42,17 +41,17 @@ public:
     // 删除购物清单
     void deleteShoppingList(int userId, int listId) override;
     // 更新购物清单项状态（如勾选/取消勾选）
-    void updateShoppingListItem(int userId, int listId, int itemId,
+    void updateShoppingListItem(int userId,
+                                int listId,
+                                int itemId,
                                 const gocook::models::UpdateShoppingItemRequest& request) override;
     // 批量添加购物清单项，返回处理结果
-    gocook::models::BatchShoppingResponse batchAddShoppingItems(
-        int userId, int listId,
-        const std::vector<gocook::models::BatchShoppingItem>& items) override;
+    gocook::models::BatchShoppingResponse
+    batchAddShoppingItems(int userId, int listId, const std::vector<gocook::models::BatchShoppingItem>& items) override;
     // 删除购物清单项（删除已勾选条目时同事务回退库存）
     void deleteShoppingListItem(int userId, int listId, int itemId) override;
     // 导出购物清单（仅支持 "text" 纯文本；v2.13 起其他格式如 "image" 抛 400——图片导出为客户端本地能力）
-    std::string exportShoppingList(int userId, int listId,
-                                   const std::string& format) override;
+    std::string exportShoppingList(int userId, int listId, const std::string& format) override;
 
 private:
     std::unique_ptr<gocook::repository::IInventoryRepository> inventoryRepo_; ///< 库存仓库抽象

@@ -27,8 +27,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 constexpr const char* kTestSecret = "token-revocation-integration-test-secret";
 
@@ -78,8 +77,7 @@ constexpr const char* kEmail = "集成测试吊销@example.com";
 class TokenRevocationDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         cleanup();
         userId_ = ensureUser();
         repo_ = std::make_unique<PgUserRepository>(testPool());
@@ -91,23 +89,19 @@ protected:
     static void cleanup() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        ntxn.exec("DELETE FROM users WHERE username = $1",
-                  pqxx::params{std::string(kUsername)});
+        ntxn.exec("DELETE FROM users WHERE username = $1", pqxx::params{std::string(kUsername)});
     }
 
     /// 创建测试用户（密码哈希为占位——本文件不经 UserService 登录，只验证令牌吊销链路）
     static int ensureUser() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        auto row = ntxn.exec(
-            "INSERT INTO users (username, password_hash, email) VALUES ($1, 'x', $2) RETURNING id",
-            pqxx::params{std::string(kUsername), std::string(kEmail)});
+        auto row = ntxn.exec("INSERT INTO users (username, password_hash, email) VALUES ($1, 'x', $2) RETURNING id",
+                             pqxx::params{std::string(kUsername), std::string(kEmail)});
         return row[0]["id"].as<int>();
     }
 
-    bool tokenValid(const std::string& token) const {
-        return auth_->authenticate("Bearer " + token).valid;
-    }
+    bool tokenValid(const std::string& token) const { return auth_->authenticate("Bearer " + token).valid; }
 
     int userId_ = 0;
     std::unique_ptr<PgUserRepository> repo_;
@@ -140,9 +134,9 @@ TEST_F(TokenRevocationDbTest, 改密后旧令牌立即失效新版本令牌通�
     repo_->changePassword(userId_, "new-hash");
 
     ASSERT_EQ(repo_->getTokenVersion(userId_).value_or(-1), 1);
-    EXPECT_FALSE(tokenValid(oldToken));     // ver=0 旧令牌被吊销
-    EXPECT_FALSE(tokenValid(legacyToken));  // 缺 ver 兼容路径同样被吊销
-    EXPECT_TRUE(tokenValid(mintToken(userId_, 1)));  // 新签发令牌有效
+    EXPECT_FALSE(tokenValid(oldToken));             // ver=0 旧令牌被吊销
+    EXPECT_FALSE(tokenValid(legacyToken));          // 缺 ver 兼容路径同样被吊销
+    EXPECT_TRUE(tokenValid(mintToken(userId_, 1))); // 新签发令牌有效
 }
 
 // ==================== 重置密码：同样吊销 ====================

@@ -13,44 +13,55 @@ using json = nlohmann::json;
 using namespace gocook::models;
 
 namespace {
-    // 关键字两侧去空白：ASCII 空白 + 全角空格 U+3000（UTF-8: E3 80 80），
-    // 与客户端 QString::trimmed() 的空白集合对齐（纯空白 → 空串 = 不过滤）
-    std::string trimKeyword(const std::string& s) {
-        size_t b = 0, e = s.size();
-        while (b < e) {
-            const unsigned char c = static_cast<unsigned char>(s[b]);
-            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { ++b; continue; }
-            if (c == 0xE3 && b + 2 < e && static_cast<unsigned char>(s[b + 1]) == 0x80
-                && static_cast<unsigned char>(s[b + 2]) == 0x80) { b += 3; continue; }
-            break;
+// 关键字两侧去空白：ASCII 空白 + 全角空格 U+3000（UTF-8: E3 80 80），
+// 与客户端 QString::trimmed() 的空白集合对齐（纯空白 → 空串 = 不过滤）
+std::string trimKeyword(const std::string& s) {
+    size_t b = 0, e = s.size();
+    while (b < e) {
+        const unsigned char c = static_cast<unsigned char>(s[b]);
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            ++b;
+            continue;
         }
-        while (e > b) {
-            const unsigned char c = static_cast<unsigned char>(s[e - 1]);
-            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { --e; continue; }
-            if (c == 0x80 && e >= 3 && static_cast<unsigned char>(s[e - 2]) == 0x80
-                && static_cast<unsigned char>(s[e - 3]) == 0xE3) { e -= 3; continue; }
-            break;
+        if (c == 0xE3 && b + 2 < e && static_cast<unsigned char>(s[b + 1]) == 0x80 &&
+            static_cast<unsigned char>(s[b + 2]) == 0x80) {
+            b += 3;
+            continue;
         }
-        return s.substr(b, e - b);
+        break;
     }
-
-    // 库存写入请求（POST 累加 / PUT 整行替换）的共用解析：4 字段 + 条件 expiry_date。
-    // 调用前必须先通过 Validation::validateInventoryRequest（字段存在性/类型/取值校验），
-    // 此处假定字段齐全可直接取值。
-    UpsertInventoryRequest parseUpsertRequest(const json& reqJson) {
-        UpsertInventoryRequest item;
-        item.ingredient_name = reqJson["ingredient_name"];
-        item.quantity = reqJson["quantity"];
-        item.unit = reqJson["unit"];
-        if (reqJson.contains("expiry_date"))
-            item.expiry_date = reqJson["expiry_date"];
-        return item;
+    while (e > b) {
+        const unsigned char c = static_cast<unsigned char>(s[e - 1]);
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            --e;
+            continue;
+        }
+        if (c == 0x80 && e >= 3 && static_cast<unsigned char>(s[e - 2]) == 0x80 &&
+            static_cast<unsigned char>(s[e - 3]) == 0xE3) {
+            e -= 3;
+            continue;
+        }
+        break;
     }
+    return s.substr(b, e - b);
 }
 
-InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service,
-                                   AuthMiddleware& auth)
-    : service_(service), auth_(auth) {}
+// 库存写入请求（POST 累加 / PUT 整行替换）的共用解析：4 字段 + 条件 expiry_date。
+// 调用前必须先通过 Validation::validateInventoryRequest（字段存在性/类型/取值校验），
+// 此处假定字段齐全可直接取值。
+UpsertInventoryRequest parseUpsertRequest(const json& reqJson) {
+    UpsertInventoryRequest item;
+    item.ingredient_name = reqJson["ingredient_name"];
+    item.quantity = reqJson["quantity"];
+    item.unit = reqJson["unit"];
+    if (reqJson.contains("expiry_date")) item.expiry_date = reqJson["expiry_date"];
+    return item;
+}
+} // namespace
+
+InventoryHandler::InventoryHandler(gocook::services::IInventoryService& service, AuthMiddleware& auth)
+    : service_(service),
+      auth_(auth) {}
 
 void InventoryHandler::getInventory(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);
@@ -61,10 +72,8 @@ void InventoryHandler::getInventory(const httplib::Request& req, httplib::Respon
         // 食材名模糊过滤（v2.14 keyword；v2.15 服务端收口）：可选查询参数。
         // 统一 trim（ASCII 空白 + 全角空格，与客户端 QString::trimmed() 对齐）：
         // 前后空白/纯空白视为不过滤；UTF-8 长度上限 100 字节（防超长请求滥用），超限返 400
-        std::string keyword = trimKeyword(
-            req.has_param("keyword") ? req.get_param_value("keyword") : std::string());
-        if (keyword.size() > 100)
-            throw gocook::services::ServiceException("过滤词过长（上限 100 字节）", 400);
+        std::string keyword = trimKeyword(req.has_param("keyword") ? req.get_param_value("keyword") : std::string());
+        if (keyword.size() > 100) throw gocook::services::ServiceException("过滤词过长（上限 100 字节）", 400);
 
         auto paged = service_.getInventory(info.userId, pp.page, pp.size, keyword);
         res.set_header("Content-Type", "application/json");

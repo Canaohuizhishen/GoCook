@@ -46,29 +46,24 @@ namespace {
 
 // 轮询事件循环直到条件满足或超时（QNetworkAccessManager 是异步的，需要事件循环推进）。
 // 双形态：std::atomic<bool>（既有用例）与任意可调用谓词（lambda）共用
-bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
-{
+bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!done.load()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     return true;
 }
 
-template <typename Fn>
-bool waitUntil(const Fn& fn, int timeoutMs = 5000)
-{
+template <typename Fn> bool waitUntil(const Fn& fn, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!fn()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
@@ -82,28 +77,25 @@ public:
     std::atomic<int> inventoryReqCount{0};
     std::atomic<int> delayMs{0};
     std::atomic<int> totalPages{1};
-    std::atomic<int> respondedCount{0}; // 已写响应的请求数（sleep 之后递增：慢响应“服务端已完成”标记）
-    std::atomic<int> busy503Times{0};   // >0 时接下来的请求返回 503 并递减（服务器瞬时繁忙模拟）
-    std::atomic<int> fail500Times{0};   // >0 时接下来的 GET 返回 500 并递减（非瞬时失败：页内提示用例）
-    std::atomic<int> deleteReqCount{0}; // DELETE 请求计数
+    std::atomic<int> respondedCount{0};  // 已写响应的请求数（sleep 之后递增：慢响应“服务端已完成”标记）
+    std::atomic<int> busy503Times{0};    // >0 时接下来的请求返回 503 并递减（服务器瞬时繁忙模拟）
+    std::atomic<int> fail500Times{0};    // >0 时接下来的 GET 返回 500 并递减（非瞬时失败：页内提示用例）
+    std::atomic<int> deleteReqCount{0};  // DELETE 请求计数
     std::atomic<int> deleteFailTimes{0}; // >0 时接下来的 DELETE 返回 500 并递减（删除失败回滚用例）
 
     // 最近一次请求携带的 keyword（库存页过滤框断言用）
-    std::string lastKeyword() const
-    {
+    std::string lastKeyword() const {
         std::lock_guard<std::mutex> lock(mu);
         return seenKeyword;
     }
 
     // 最近一次请求携带的 page（过滤态翻页断言用）
-    int lastPage() const
-    {
+    int lastPage() const {
         std::lock_guard<std::mutex> lock(mu);
         return seenPage;
     }
 
-    InventoryStubServer()
-    {
+    InventoryStubServer() {
         svr.Get("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
             inventoryReqCount++;
             // 服务器瞬时繁忙模拟（503）：按次数返回，之后恢复正常（“503 自动退避恢复”用例）
@@ -129,28 +121,23 @@ public:
                 seenPage = page;
             }
             const int delay = delayMs.load();
-            if (delay > 0)
-                std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            if (delay > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
             const int tp = totalPages.load();
             res.status = 200;
             if (page <= 1) {
                 // 首页：固定 1 行番茄数据（V1 断言依赖），total_pages 由 totalPages 配置
-                res.set_content(
-                    R"({"pagination":{"page":1,"size":50,"total":)" +
-                        std::to_string(tp) +
-                        R"(,"total_pages":)" + std::to_string(tp) +
-                        R"(},"data":[{"id":7,"ingredient_name":"番茄","quantity":3.0,"unit":"个",)"
-                        R"("expiry_date":"2026-05-10","added_at":"2026-05-01T00:00:00Z"}]})",
-                    "application/json");
+                res.set_content(R"({"pagination":{"page":1,"size":50,"total":)" + std::to_string(tp) +
+                                    R"(,"total_pages":)" + std::to_string(tp) +
+                                    R"(},"data":[{"id":7,"ingredient_name":"番茄","quantity":3.0,"unit":"个",)"
+                                    R"("expiry_date":"2026-05-10","added_at":"2026-05-01T00:00:00Z"}]})",
+                                "application/json");
             } else {
                 // 后续页：1 行“土豆”数据（id 8，区分于首页番茄）——供翻页追加语义断言
-                res.set_content(
-                    R"({"pagination":{"page":)" + std::to_string(page) +
-                        R"(,"size":50,"total":)" + std::to_string(tp) +
-                        R"(,"total_pages":)" + std::to_string(tp) +
-                        R"(},"data":[{"id":8,"ingredient_name":"土豆","quantity":2.0,"unit":"个",)"
-                        R"("expiry_date":"2026-05-20","added_at":"2026-05-02T00:00:00Z"}]})",
-                    "application/json");
+                res.set_content(R"({"pagination":{"page":)" + std::to_string(page) + R"(,"size":50,"total":)" +
+                                    std::to_string(tp) + R"(,"total_pages":)" + std::to_string(tp) +
+                                    R"(},"data":[{"id":8,"ingredient_name":"土豆","quantity":2.0,"unit":"个",)"
+                                    R"("expiry_date":"2026-05-20","added_at":"2026-05-02T00:00:00Z"}]})",
+                                "application/json");
             }
             respondedCount++;
         });
@@ -169,25 +156,21 @@ public:
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
-        if (port <= 0)
-            throw std::runtime_error("InventoryStubServer: bind_to_any_port failed");
+        if (port <= 0) throw std::runtime_error("InventoryStubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
 
         // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running()
         // 显式暴露启动失败；同时消除“端口已绑定但尚未开始监听”的竞态窗口
         for (int i = 0; i < 200; ++i) {
-            if (svr.is_running())
-                return;
+            if (svr.is_running()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         throw std::runtime_error("InventoryStubServer: failed to start");
     }
 
-    ~InventoryStubServer()
-    {
+    ~InventoryStubServer() {
         svr.stop();
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
     }
 
     std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
@@ -196,15 +179,14 @@ private:
     httplib::Server svr;
     int port = 0;
     std::thread th;
-    mutable std::mutex mu;         ///< 保护 seenKeyword
-    std::string seenKeyword;       ///< 最近一次请求的 keyword 参数
-    int seenPage = 1;              ///< 最近一次请求的 page 参数
+    mutable std::mutex mu;   ///< 保护 seenKeyword
+    std::string seenKeyword; ///< 最近一次请求的 keyword 参数
+    int seenPage = 1;        ///< 最近一次请求的 page 参数
 };
 
 class InventoryVmTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         api.setMaxRetries(0);
         api.setToken(QString()); // 每个用例从未登录开始（避免 token 污染）
         // 独立内存库注入 VM（不触生产数据路径）；预置用户行使快照写路径可用
@@ -215,15 +197,14 @@ protected:
         ASSERT_TRUE(testDb->saveUser(1, QStringLiteral("tester"), QStringLiteral("token-A")));
     }
 
-    void TearDown() override
-    {
+    void TearDown() override {
         delete testDb;
         testDb = nullptr;
         QSqlDatabase::removeDatabase(connName);
     }
 
     HttpGoCookApi api;
-    LocalDatabase *testDb = nullptr;
+    LocalDatabase* testDb = nullptr;
     QString connName;
     static int s_counter;
 };
@@ -231,8 +212,7 @@ protected:
 int InventoryVmTest::s_counter = 0;
 
 // ==================== V1：正常加载 ====================
-TEST_F(InventoryVmTest, 正常加载填充数据)
-{
+TEST_F(InventoryVmTest, 正常加载填充数据) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -251,8 +231,7 @@ TEST_F(InventoryVmTest, 正常加载填充数据)
 }
 
 // ==================== V2：会话切换后过期响应被丢弃 ====================
-TEST_F(InventoryVmTest, 会话切换后过期响应被丢弃)
-{
+TEST_F(InventoryVmTest, 会话切换后过期响应被丢弃) {
     InventoryStubServer stub;
     stub.delayMs = 300; // 慢响应：请求在途期间完成登出
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -262,9 +241,9 @@ TEST_F(InventoryVmTest, 会话切换后过期响应被丢弃)
     std::atomic<bool> itemsChangedFlag{false};
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { itemsChangedFlag = true; });
 
-    vm.loadInventory();      // token-A 的请求在途
-    api.setToken(QString()); // 登出（token 变化 → 快照不匹配）
-    vm.clearAll();           // Main.qml 登出分支调用（此时 itemsChanged 会被触发，属预期）
+    vm.loadInventory();       // token-A 的请求在途
+    api.setToken(QString());  // 登出（token 变化 → 快照不匹配）
+    vm.clearAll();            // Main.qml 登出分支调用（此时 itemsChanged 会被触发，属预期）
     itemsChangedFlag = false; // 清掉 clearAll 的信号，只观察过期响应
 
     std::this_thread::sleep_for(std::chrono::milliseconds(600)); // 等过期响应到达
@@ -279,8 +258,7 @@ TEST_F(InventoryVmTest, 会话切换后过期响应被丢弃)
 }
 
 // ==================== V3：clearAll ====================
-TEST_F(InventoryVmTest, clearAll清空数据与状态)
-{
+TEST_F(InventoryVmTest, clearAll清空数据与状态) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -302,8 +280,7 @@ TEST_F(InventoryVmTest, clearAll清空数据与状态)
 }
 
 // ==================== V4：未登录守卫拦截 ====================
-TEST_F(InventoryVmTest, 未登录守卫拦截不发请求)
-{
+TEST_F(InventoryVmTest, 未登录守卫拦截不发请求) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl())); // 无 token
 
@@ -321,8 +298,7 @@ TEST_F(InventoryVmTest, 未登录守卫拦截不发请求)
 }
 
 // ==================== V5：过滤词随请求携带（库存页过滤框） ====================
-TEST_F(InventoryVmTest, 设置过滤词请求携带keyword并回填)
-{
+TEST_F(InventoryVmTest, 设置过滤词请求携带keyword并回填) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -342,8 +318,7 @@ TEST_F(InventoryVmTest, 设置过滤词请求携带keyword并回填)
 }
 
 // ==================== V6：清空过滤词恢复全量请求 ====================
-TEST_F(InventoryVmTest, 清空过滤词后请求不再携带keyword)
-{
+TEST_F(InventoryVmTest, 清空过滤词后请求不再携带keyword) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -369,8 +344,7 @@ TEST_F(InventoryVmTest, 清空过滤词后请求不再携带keyword)
 // 未声明 Q_INVOKABLE 时 InventoryPage.qml 报 "Property 'setFilterText' ... is not a function"，
 // 过滤功能整体失效。本用例以 context property + QQmlEngine 最小场景复现 QML→C++ 方法调用形态
 //（与库存页过滤框防抖回调同构），修复前必然失败：TypeError 使 setter 不执行、过滤词为空。
-TEST_F(InventoryVmTest, QML可通过方法调用设置过滤词)
-{
+TEST_F(InventoryVmTest, QML可通过方法调用设置过滤词) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -382,10 +356,9 @@ TEST_F(InventoryVmTest, QML可通过方法调用设置过滤词)
     QQmlEngine engine;
     engine.rootContext()->setContextProperty("inventoryVM", &vm);
     QQmlComponent comp(&engine);
-    comp.setData(
-        "import QtQml\n"
-        "QtObject { Component.onCompleted: inventoryVM.setFilterText(\"  料酒  \") }",
-        QUrl());
+    comp.setData("import QtQml\n"
+                 "QtObject { Component.onCompleted: inventoryVM.setFilterText(\"  料酒  \") }",
+                 QUrl());
     QScopedPointer<QObject> root(comp.create());
     ASSERT_FALSE(comp.isError()) << qPrintable(comp.errorString());
 
@@ -402,8 +375,7 @@ TEST_F(InventoryVmTest, QML可通过方法调用设置过滤词)
 // 旧词响应到达时代次已落后 → 静默丢弃：不落数据、不触发 itemsChanged、不补发冗余请求。
 // 旧实现（单飞 + 快照词比对补发）下本用例两点必失败：新词请求在 R1 回归前发不出，
 // 且 R1 回归会触发一次冗余补发（请求总数变为 3）。
-TEST_F(InventoryVmTest, 在途期间过滤词变化丢弃过期响应并立即补发最新词)
-{
+TEST_F(InventoryVmTest, 在途期间过滤词变化丢弃过期响应并立即补发最新词) {
     InventoryStubServer stub;
     stub.delayMs = 600; // R1 慢响应：制造“改词发生在 R1 在途期间”的窗口（为时序断言留裕量）
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -414,13 +386,12 @@ TEST_F(InventoryVmTest, 在途期间过滤词变化丢弃过期响应并立即�
     QObject::connect(&vm, &InventoryViewModel::itemsChanged, [&]() { changeCount++; });
 
     vm.setFilterText(QStringLiteral("料酒")); // R1（慢 600ms）在途
-    ASSERT_TRUE(waitUntil([&]() { return stub.inventoryReqCount.load() >= 1; }))
-        << "R1 必须已发出（此时在途）";
+    ASSERT_TRUE(waitUntil([&]() { return stub.inventoryReqCount.load() >= 1; })) << "R1 必须已发出（此时在途）";
     EXPECT_EQ(stub.lastKeyword(), "料酒");
 
     QElapsedTimer timer;
     timer.start();
-    stub.delayMs = 0; // 后续请求不再延迟：若新词请求被押后，必等到 R1 的 600ms 睡完才发出
+    stub.delayMs = 0;                          // 后续请求不再延迟：若新词请求被押后，必等到 R1 的 600ms 睡完才发出
     vm.setFilterText(QStringLiteral("料酒2")); // 改词：必须立即发出 R2（不被在途 R1 阻塞）
     ASSERT_TRUE(waitUntil([&]() { return stub.inventoryReqCount.load() >= 2; }))
         << "改词后新请求未发出（旧实现会押后到 R1 回归才补发）";
@@ -446,8 +417,7 @@ TEST_F(InventoryVmTest, 在途期间过滤词变化丢弃过期响应并立即�
 }
 
 // ==================== V9：过滤态翻页自动携带 keyword ====================
-TEST_F(InventoryVmTest, 过滤态翻页自动携带keyword)
-{
+TEST_F(InventoryVmTest, 过滤态翻页自动携带keyword) {
     InventoryStubServer stub;
     stub.totalPages = 3;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -477,8 +447,7 @@ TEST_F(InventoryVmTest, 过滤态翻页自动携带keyword)
 }
 // ==================== V10+：离线策略（快照兜底 / 联网即同步 / 退避重试） ====================
 
-TEST_F(InventoryVmTest, 断网无快照置loadFailed且不发页内提示)
-{
+TEST_F(InventoryVmTest, 断网无快照置loadFailed且不发页内提示) {
     // 指向无监听端口：连接拒绝 → 网络层错误
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
     api.setToken(QStringLiteral("token-A"));
@@ -499,14 +468,13 @@ TEST_F(InventoryVmTest, 断网无快照置loadFailed且不发页内提示)
     QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
 }
 
-TEST_F(InventoryVmTest, 断网有快照静默兜底不发提示)
-{
+TEST_F(InventoryVmTest, 断网有快照静默兜底不发提示) {
     // 预置快照（模拟上次在线成功同步）
     QVariantList snapshot;
-    snapshot << QVariantMap{{"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0},
-                            {"unit", "个"}, {"addedAt", "2026-05-01T00:00:00Z"}};
-    snapshot << QVariantMap{{"id", 8}, {"ingredientName", "盐"}, {"quantity", 5.0},
-                            {"unit", "克"}, {"addedAt", "2026-05-02T00:00:00Z"}};
+    snapshot << QVariantMap{
+        {"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0}, {"unit", "个"}, {"addedAt", "2026-05-01T00:00:00Z"}};
+    snapshot << QVariantMap{
+        {"id", 8}, {"ingredientName", "盐"}, {"quantity", 5.0}, {"unit", "克"}, {"addedAt", "2026-05-02T00:00:00Z"}};
     ASSERT_TRUE(testDb->saveInventoryCache(snapshot));
     ASSERT_TRUE(testDb->hasInventoryCache());
 
@@ -528,8 +496,7 @@ TEST_F(InventoryVmTest, 断网有快照静默兜底不发提示)
     QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
 }
 
-TEST_F(InventoryVmTest, 成功加载刷新本地快照)
-{
+TEST_F(InventoryVmTest, 成功加载刷新本地快照) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -550,8 +517,7 @@ TEST_F(InventoryVmTest, 成功加载刷新本地快照)
     QObject::disconnect(&vm, &InventoryViewModel::itemsChanged, nullptr, nullptr);
 }
 
-TEST_F(InventoryVmTest, 网络恢复自动重拉)
-{
+TEST_F(InventoryVmTest, 网络恢复自动重拉) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网
     api.setToken(QStringLiteral("token-A"));
@@ -571,8 +537,7 @@ TEST_F(InventoryVmTest, 网络恢复自动重拉)
     EXPECT_FALSE(vm.isLoading());
 }
 
-TEST_F(InventoryVmTest, 网络恢复时健康数据不重拉)
-{
+TEST_F(InventoryVmTest, 网络恢复时健康数据不重拉) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -588,8 +553,7 @@ TEST_F(InventoryVmTest, 网络恢复时健康数据不重拉)
     EXPECT_EQ(stub.inventoryReqCount.load(), reqCount) << "健康数据不得触发重拉";
 }
 
-TEST_F(InventoryVmTest, 退避重试自动恢复)
-{
+TEST_F(InventoryVmTest, 退避重试自动恢复) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网
     api.setToken(QStringLiteral("token-A"));
@@ -605,8 +569,7 @@ TEST_F(InventoryVmTest, 退避重试自动恢复)
     EXPECT_FALSE(vm.loadFailed()) << "重试成功后必须退出离线态";
 }
 
-TEST_F(InventoryVmTest, clearAll复位失败态并停重试)
-{
+TEST_F(InventoryVmTest, clearAll复位失败态并停重试) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
     api.setToken(QStringLiteral("token-A"));
@@ -628,8 +591,7 @@ TEST_F(InventoryVmTest, clearAll复位失败态并停重试)
     EXPECT_EQ(stub.inventoryReqCount.load(), 0) << "clearAll 必须停掉退避重试";
 }
 
-TEST_F(InventoryVmTest, 服务器繁忙503自动退避恢复)
-{
+TEST_F(InventoryVmTest, 服务器繁忙503自动退避恢复) {
     InventoryStubServer stub;
     stub.busy503Times = 1; // 首个请求 503（连接池饱和语义），之后恢复
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -649,8 +611,7 @@ TEST_F(InventoryVmTest, 服务器繁忙503自动退避恢复)
     QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
 }
 
-TEST_F(InventoryVmTest, 过滤态快照兜底按词过滤且可重派生)
-{
+TEST_F(InventoryVmTest, 过滤态快照兜底按词过滤且可重派生) {
     // 预置快照（两条：番茄、盐）——断网时唯一数据源
     QVariantList snapshot;
     snapshot << QVariantMap{{"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0}, {"unit", "个"}};
@@ -673,8 +634,7 @@ TEST_F(InventoryVmTest, 过滤态快照兜底按词过滤且可重派生)
     // 2) 换过滤词“盐”再失败 → 从全量快照重派生（不回滚旧词子集、也不在子集上二次过滤）
     vm.setFilterText(QStringLiteral("盐"));
     ASSERT_TRUE(waitUntil([&]() {
-        return vm.items().size() == 1
-            && vm.items()[0].toMap()["ingredientName"].toString() == QStringLiteral("盐");
+        return vm.items().size() == 1 && vm.items()[0].toMap()["ingredientName"].toString() == QStringLiteral("盐");
     })) << "换词后未从快照重派生";
     EXPECT_FALSE(vm.loadFailed());
 
@@ -687,8 +647,7 @@ TEST_F(InventoryVmTest, 过滤态快照兜底按词过滤且可重派生)
     QObject::disconnect(&vm, &InventoryViewModel::errorOccurred, nullptr, nullptr);
 }
 
-TEST_F(InventoryVmTest, 恢复边沿在自身在途响应到达时不重复拉取)
-{
+TEST_F(InventoryVmTest, 恢复边沿在自身在途响应到达时不重复拉取) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
     api.setToken(QStringLiteral("token-A"));
@@ -712,8 +671,7 @@ TEST_F(InventoryVmTest, 恢复边沿在自身在途响应到达时不重复拉�
     EXPECT_FALSE(vm.isLoading());
 }
 
-TEST_F(InventoryVmTest, 接线契约_网络恢复由旁路请求触发自动重拉)
-{
+TEST_F(InventoryVmTest, 接线契约_网络恢复由旁路请求触发自动重拉) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先失联
     api.setToken(QStringLiteral("token-A"));
@@ -729,9 +687,8 @@ TEST_F(InventoryVmTest, 接线契约_网络恢复由旁路请求触发自动重�
     // 恢复联网：由一个旁路请求（非 VM 发起）的首个成功响应触发恢复边沿
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     std::atomic<bool> sideDone{false};
-    api.getInventory(1, 50, "", [&](bool, const gocook::models::PagedInventory&, const std::string&) {
-        sideDone = true;
-    });
+    api.getInventory(
+        1, 50, "", [&](bool, const gocook::models::PagedInventory&, const std::string&) { sideDone = true; });
     ASSERT_TRUE(waitUntil(sideDone)) << "旁路请求超时";
 
     // 无需手调 onNetworkRestored：接线应已驱动 VM 自动重拉
@@ -741,8 +698,7 @@ TEST_F(InventoryVmTest, 接线契约_网络恢复由旁路请求触发自动重�
 }
 
 // ==================== 删除成功：快照行同步移除（防离线兜底复活已删项） ====================
-TEST_F(InventoryVmTest, 删除成功同步移除快照行防离线复活)
-{
+TEST_F(InventoryVmTest, 删除成功同步移除快照行防离线复活) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -768,8 +724,7 @@ TEST_F(InventoryVmTest, 删除成功同步移除快照行防离线复活)
 }
 
 // ==================== 删除失败：列表回滚 + 快照不被误改 ====================
-TEST_F(InventoryVmTest, 删除失败快照保持不变且列表回滚)
-{
+TEST_F(InventoryVmTest, 删除失败快照保持不变且列表回滚) {
     InventoryStubServer stub;
     stub.deleteFailTimes = 1; // 首次删除 500（非瞬时，仅回滚不重试）
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -798,8 +753,7 @@ TEST_F(InventoryVmTest, 删除失败快照保持不变且列表回滚)
 }
 
 // ==================== 非瞬时首页失败（有数据）：页内提示且数据保留 ====================
-TEST_F(InventoryVmTest, 非瞬时首页失败有数据时页内提示且数据保留)
-{
+TEST_F(InventoryVmTest, 非瞬时首页失败有数据时页内提示且数据保留) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -828,8 +782,7 @@ TEST_F(InventoryVmTest, 非瞬时首页失败有数据时页内提示且数据�
 }
 
 // ==================== 瞬时首页失败（有数据）：静默保留 + 退避重试 ====================
-TEST_F(InventoryVmTest, 瞬时首页失败有数据时静默保留)
-{
+TEST_F(InventoryVmTest, 瞬时首页失败有数据时静默保留) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -860,8 +813,7 @@ TEST_F(InventoryVmTest, 瞬时首页失败有数据时静默保留)
 }
 
 // ==================== 重试 tick 在途守卫：不插请求、不断链 ====================
-TEST_F(InventoryVmTest, 重试tick不打断在途请求)
-{
+TEST_F(InventoryVmTest, 重试tick不打断在途请求) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网
     api.setToken(QStringLiteral("token-A"));
@@ -891,8 +843,7 @@ TEST_F(InventoryVmTest, 重试tick不打断在途请求)
 }
 
 // ==================== viewState 派生：四态与依赖信号转发 ====================
-TEST_F(InventoryVmTest, viewState派生四态与信号转发)
-{
+TEST_F(InventoryVmTest, viewState派生四态与信号转发) {
     InventoryStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -901,25 +852,21 @@ TEST_F(InventoryVmTest, viewState派生四态与信号转发)
     std::atomic<int> viewStateChangedCount{0};
     QObject::connect(&vm, &InventoryViewModel::viewStateChanged, [&]() { viewStateChangedCount++; });
 
-    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Empty)
-        << "初始：无数据、未加载、未失败 → Empty";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Empty) << "初始：无数据、未加载、未失败 → Empty";
 
     stub.delayMs = 300; // 慢响应：制造「在途且无数据」窗口，断言 InitialLoading
     vm.loadInventory();
-    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::InitialLoading)
-        << "在途且无数据 → InitialLoading";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::InitialLoading) << "在途且无数据 → InitialLoading";
     EXPECT_GE(viewStateChangedCount.load(), 1) << "isLoading 变化必须转发 viewStateChanged";
 
     ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "加载超时";
     EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Content) << "有数据 → Content";
-    EXPECT_GE(viewStateChangedCount.load(), 3)
-        << "items/isLoading 变化须持续转发（QML 绑定刷新）";
+    EXPECT_GE(viewStateChangedCount.load(), 3) << "items/isLoading 变化须持续转发（QML 绑定刷新）";
 
     QObject::disconnect(&vm, &InventoryViewModel::viewStateChanged, nullptr, nullptr);
 }
 
-TEST_F(InventoryVmTest, viewState派生离线态优先于初始加载)
-{
+TEST_F(InventoryVmTest, viewState派生离线态优先于初始加载) {
     InventoryStubServer stub;
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 先断网（无快照）
     api.setToken(QStringLiteral("token-A"));
@@ -935,8 +882,7 @@ TEST_F(InventoryVmTest, viewState派生离线态优先于初始加载)
     stub.delayMs = 300;
     vm.loadInventory();
     ASSERT_TRUE(vm.isLoading()) << "重拉必须在途";
-    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Offline)
-        << "重试在途不得回退为 InitialLoading";
+    EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Offline) << "重试在途不得回退为 InitialLoading";
 
     // 响应落地成功：失败态清除 → Content
     ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "重拉超时";
@@ -944,12 +890,11 @@ TEST_F(InventoryVmTest, viewState派生离线态优先于初始加载)
     EXPECT_EQ(vm.viewState(), InventoryViewModel::ViewState::Content);
 }
 
-TEST_F(InventoryVmTest, viewState派生快照兜底为Content)
-{
+TEST_F(InventoryVmTest, viewState派生快照兜底为Content) {
     // 预置快照（上次在线同步）：断网 → 静默兜底，有数据可显示 → Content（不进离线态）
     QVariantList snapshot;
-    snapshot << QVariantMap{{"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0},
-                            {"unit", "个"}, {"addedAt", "2026-05-01T00:00:00Z"}};
+    snapshot << QVariantMap{
+        {"id", 7}, {"ingredientName", "番茄"}, {"quantity", 3.0}, {"unit", "个"}, {"addedAt", "2026-05-01T00:00:00Z"}};
     ASSERT_TRUE(testDb->saveInventoryCache(snapshot));
 
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
@@ -966,35 +911,30 @@ TEST_F(InventoryVmTest, viewState派生快照兜底为Content)
 // InventoryPage.qml 以 InventoryViewModel.Empty / InitialLoading / Offline 收敛三处判定，
 // 依赖 Q_ENUM + qmlRegisterUncreatableType（main.cpp 中的注册形态与此一致）。本用例验证枚举值经
 // QML 类型系统按「类型.值」解析且数值与 C++ 一致——防 Q_ENUM 遗漏/枚举重排/类型未注册导致页面绑定失配。
-TEST_F(InventoryVmTest, viewState枚举可被QML解析且与Cpp取值一致)
-{
-    qmlRegisterUncreatableType<InventoryViewModel>("client", 1, 0, "InventoryViewModel",
-                                                   "仅用于枚举访问（视图状态），不可实例化");
+TEST_F(InventoryVmTest, viewState枚举可被QML解析且与Cpp取值一致) {
+    qmlRegisterUncreatableType<InventoryViewModel>(
+        "client", 1, 0, "InventoryViewModel", "仅用于枚举访问（视图状态），不可实例化");
 
     QQmlEngine engine;
     QQmlComponent comp(&engine);
-    comp.setData(
-        "import QtQml\n"
-        "import client\n"
-        "QtObject {\n"
-        "    property var initialLoading: InventoryViewModel.InitialLoading\n"
-        "    property var empty: InventoryViewModel.Empty\n"
-        "    property var offline: InventoryViewModel.Offline\n"
-        "    property var content: InventoryViewModel.Content\n"
-        "}",
-        QUrl());
+    comp.setData("import QtQml\n"
+                 "import client\n"
+                 "QtObject {\n"
+                 "    property var initialLoading: InventoryViewModel.InitialLoading\n"
+                 "    property var empty: InventoryViewModel.Empty\n"
+                 "    property var offline: InventoryViewModel.Offline\n"
+                 "    property var content: InventoryViewModel.Content\n"
+                 "}",
+                 QUrl());
     QScopedPointer<QObject> root(comp.create());
     ASSERT_FALSE(comp.isError()) << qPrintable(comp.errorString());
     ASSERT_TRUE(root != nullptr);
 
     EXPECT_EQ(root->property("initialLoading").toInt(),
               static_cast<int>(InventoryViewModel::ViewState::InitialLoading));
-    EXPECT_EQ(root->property("empty").toInt(),
-              static_cast<int>(InventoryViewModel::ViewState::Empty));
-    EXPECT_EQ(root->property("offline").toInt(),
-              static_cast<int>(InventoryViewModel::ViewState::Offline));
-    EXPECT_EQ(root->property("content").toInt(),
-              static_cast<int>(InventoryViewModel::ViewState::Content));
+    EXPECT_EQ(root->property("empty").toInt(), static_cast<int>(InventoryViewModel::ViewState::Empty));
+    EXPECT_EQ(root->property("offline").toInt(), static_cast<int>(InventoryViewModel::ViewState::Offline));
+    EXPECT_EQ(root->property("content").toInt(), static_cast<int>(InventoryViewModel::ViewState::Content));
 }
 
 } // namespace

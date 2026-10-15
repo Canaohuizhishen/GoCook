@@ -9,21 +9,13 @@ using json = nlohmann::json;
 using namespace gocook::models;
 
 static json toJson(const AnnouncementItem& ann) {
-    return {
-        {"id", ann.id},
-        {"title", ann.title},
-        {"content", ann.content},
-        {"created_at", ann.created_at}
-    };
+    return {{"id", ann.id}, {"title", ann.title}, {"content", ann.content}, {"created_at", ann.created_at}};
 }
 
 AnnouncementHandler::AnnouncementHandler(gocook::services::IAnnouncementService& service)
-    : service_(service)
-{
-}
+    : service_(service) {}
 
-void AnnouncementHandler::getAnnouncements(const httplib::Request& req, httplib::Response& res)
-{
+void AnnouncementHandler::getAnnouncements(const httplib::Request& req, httplib::Response& res) {
     try {
         auto pp = parsePagination(req, 5);
         auto paged = service_.getAnnouncements(pp.page, pp.size);

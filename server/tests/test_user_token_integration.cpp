@@ -21,8 +21,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 // 两条链路 TTL 期望的硬编码语义值（秒）：= EMAIL_CODE_EXPIRY_MINUTES 当前取值 15 分钟
 constexpr double kExpectedTtlSeconds = 15 * 60;
@@ -53,8 +52,7 @@ bool dbAvailable() {
 class UserTokenExpiryDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         cleanup();
         userId_ = ensureUser();
     }
@@ -70,21 +68,18 @@ protected:
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
         // password_reset_tokens 随 users 级联删除；pending_registrations 按邮箱清理
-        ntxn.exec("DELETE FROM users WHERE username = $1",
-                  pqxx::params{std::string(kUsername)});
-        ntxn.exec("DELETE FROM pending_registrations WHERE email = $1",
-                  pqxx::params{std::string(kEmail)});
+        ntxn.exec("DELETE FROM users WHERE username = $1", pqxx::params{std::string(kUsername)});
+        ntxn.exec("DELETE FROM pending_registrations WHERE email = $1", pqxx::params{std::string(kEmail)});
     }
 
     /// 创建（或复用）测试用户，返回用户 id
     static int ensureUser() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
-            " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
-            " RETURNING id",
-            pqxx::params{std::string(kUsername)});
+        pqxx::result r = ntxn.exec("INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
+                                   " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                                   " RETURNING id",
+                                   pqxx::params{std::string(kUsername)});
         return r[0][0].as<int>();
     }
 
@@ -92,10 +87,9 @@ protected:
     static double resetTokenRemainingSeconds(const std::string& token) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "SELECT EXTRACT(EPOCH FROM (expires_at - NOW())) "
-            "FROM password_reset_tokens WHERE token = $1",
-            pqxx::params{token});
+        pqxx::result r = ntxn.exec("SELECT EXTRACT(EPOCH FROM (expires_at - NOW())) "
+                                   "FROM password_reset_tokens WHERE token = $1",
+                                   pqxx::params{token});
         return r[0][0].as<double>();
     }
 
@@ -103,10 +97,9 @@ protected:
     static double pendingCodeRemainingSeconds(const std::string& email) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "SELECT EXTRACT(EPOCH FROM (expires_at - NOW())) "
-            "FROM pending_registrations WHERE email = $1",
-            pqxx::params{email});
+        pqxx::result r = ntxn.exec("SELECT EXTRACT(EPOCH FROM (expires_at - NOW())) "
+                                   "FROM pending_registrations WHERE email = $1",
+                                   pqxx::params{email});
         return r[0][0].as<double>();
     }
 
@@ -114,8 +107,7 @@ protected:
 };
 
 // ==================== 密码重置令牌：expires_at = NOW() + 常量（15 分钟） ====================
-TEST_F(UserTokenExpiryDbTest, 重置令牌过期时间与常量一致)
-{
+TEST_F(UserTokenExpiryDbTest, 重置令牌过期时间与常量一致) {
     PgUserRepository repo(testPool());
 
     const std::string token = "集成测试重置令牌-1";
@@ -127,8 +119,7 @@ TEST_F(UserTokenExpiryDbTest, 重置令牌过期时间与常量一致)
 }
 
 // ==================== 注册验证码：expires_at = NOW() + 常量（15 分钟） ====================
-TEST_F(UserTokenExpiryDbTest, 注册验证码过期时间与常量一致)
-{
+TEST_F(UserTokenExpiryDbTest, 注册验证码过期时间与常量一致) {
     PgUserRepository repo(testPool());
 
     repo.upsertPendingRegistration(kUsername, "x", kEmail, "123456");

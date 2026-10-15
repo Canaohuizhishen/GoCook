@@ -17,53 +17,61 @@ using namespace gocook::services;
 using namespace gocook::repository;
 
 namespace {
-    const std::string TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests";
+const std::string TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests";
 
-    RegisterRequest makeRegisterReq() {
-        return {"testuser", "password123", "test@example.com"};
-    }
-
-    LoginRequest makeLoginReq() {
-        return {"testuser", "password123"};
-    }
-
-    UserProfile makeUserProfile(int id = 42) {
-        return {id, "testuser", "Test User", "test@example.com",
-                "13800138000", "http://example.com/avatar.png", true, "2026-01-01"};
-    }
-
-    // 环境变量守卫：用例内 set，作用域结束恢复原值（与 test_upload_paths.cpp 同一模式）
-    class EnvGuard {
-    public:
-        explicit EnvGuard(const char* name) : name_(name) {
-            if (const char* v = std::getenv(name); v != nullptr)
-                saved_ = std::string(v);
-        }
-        ~EnvGuard() {
-            if (saved_) setenv(name_.c_str(), saved_->c_str(), 1);
-            else unsetenv(name_.c_str());
-        }
-        void set(const char* value) { setenv(name_.c_str(), value, 1); }
-        void unset() { unsetenv(name_.c_str()); }
-    private:
-        std::string name_;
-        std::optional<std::string> saved_;
-    };
-
-    /// 建独立临时上传根目录，并可选写入一个托管头像文件（<base>/avatars/<filename>）
-    std::filesystem::path makeUploadsRoot(const std::string& tag,
-                                          const std::string& filename = "") {
-        auto base = std::filesystem::temp_directory_path() / ("gocook_avatar_bind_" + tag);
-        std::error_code ec;
-        std::filesystem::remove_all(base, ec);
-        std::filesystem::create_directories(base / "avatars");
-        if (!filename.empty()) {
-            std::ofstream ofs(base / "avatars" / filename, std::ios::binary);
-            ofs << "x";
-        }
-        return base;
-    }
+RegisterRequest makeRegisterReq() {
+    return {"testuser", "password123", "test@example.com"};
 }
+
+LoginRequest makeLoginReq() {
+    return {"testuser", "password123"};
+}
+
+UserProfile makeUserProfile(int id = 42) {
+    return {id,
+            "testuser",
+            "Test User",
+            "test@example.com",
+            "13800138000",
+            "http://example.com/avatar.png",
+            true,
+            "2026-01-01"};
+}
+
+// 环境变量守卫：用例内 set，作用域结束恢复原值（与 test_upload_paths.cpp 同一模式）
+class EnvGuard {
+public:
+    explicit EnvGuard(const char* name)
+        : name_(name) {
+        if (const char* v = std::getenv(name); v != nullptr) saved_ = std::string(v);
+    }
+    ~EnvGuard() {
+        if (saved_)
+            setenv(name_.c_str(), saved_->c_str(), 1);
+        else
+            unsetenv(name_.c_str());
+    }
+    void set(const char* value) { setenv(name_.c_str(), value, 1); }
+    void unset() { unsetenv(name_.c_str()); }
+
+private:
+    std::string name_;
+    std::optional<std::string> saved_;
+};
+
+/// 建独立临时上传根目录，并可选写入一个托管头像文件（<base>/avatars/<filename>）
+std::filesystem::path makeUploadsRoot(const std::string& tag, const std::string& filename = "") {
+    auto base = std::filesystem::temp_directory_path() / ("gocook_avatar_bind_" + tag);
+    std::error_code ec;
+    std::filesystem::remove_all(base, ec);
+    std::filesystem::create_directories(base / "avatars");
+    if (!filename.empty()) {
+        std::ofstream ofs(base / "avatars" / filename, std::ios::binary);
+        ofs << "x";
+    }
+    return base;
+}
+} // namespace
 
 // ==================== 注册 ====================
 
@@ -146,8 +154,7 @@ TEST(UserServiceTest, 注册验证码无效或过期) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _))
-        .WillOnce(Return(RegistrationOutcome::InvalidCode));
+    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _)).WillOnce(Return(RegistrationOutcome::InvalidCode));
 
     try {
         service.verifyRegistration("test@example.com", "000000");
@@ -163,8 +170,7 @@ TEST(UserServiceTest, 注册验证用户名被占用) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _))
-        .WillOnce(Return(RegistrationOutcome::UsernameTaken));
+    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _)).WillOnce(Return(RegistrationOutcome::UsernameTaken));
 
     try {
         service.verifyRegistration("test@example.com", "123456");
@@ -180,8 +186,7 @@ TEST(UserServiceTest, 注册验证邮箱已被注册) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _))
-        .WillOnce(Return(RegistrationOutcome::EmailTaken));
+    EXPECT_CALL(*repo, createUserFromPendingRegistration(_, _)).WillOnce(Return(RegistrationOutcome::EmailTaken));
 
     try {
         service.verifyRegistration("test@example.com", "123456");
@@ -199,8 +204,7 @@ TEST(UserServiceTest, 登录成功) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, findByUsername("testuser"))
-        .WillOnce(Return(UserAuthInfo{42, "testuser", "", "user"}));
+    EXPECT_CALL(*repo, findByUsername("testuser")).WillOnce(Return(UserAuthInfo{42, "testuser", "", "user"}));
 
     EXPECT_THROW(service.login(makeLoginReq()), ServiceException);
 }
@@ -213,15 +217,13 @@ TEST(UserServiceTest, 登录验证密码) {
     char salt_buf[128];
     char hash_buf[128];
     const char fixed_input[16] = {};
-    char* salt = _crypt_gensalt_blowfish_rn(
-        "$2a$", 4, fixed_input, 16, salt_buf, sizeof(salt_buf));
+    char* salt = _crypt_gensalt_blowfish_rn("$2a$", 4, fixed_input, 16, salt_buf, sizeof(salt_buf));
     ASSERT_NE(salt, nullptr);
     char* hashed = _crypt_blowfish_rn("password123", salt, hash_buf, sizeof(hash_buf));
     ASSERT_NE(hashed, nullptr);
     std::string knownHash(hashed);
 
-    EXPECT_CALL(*repo, findByUsername("testuser"))
-        .WillOnce(Return(UserAuthInfo{42, "testuser", knownHash, "user"}));
+    EXPECT_CALL(*repo, findByUsername("testuser")).WillOnce(Return(UserAuthInfo{42, "testuser", knownHash, "user"}));
 
     LoginResponse resp = service.login({"testuser", "password123"});
     EXPECT_GT(resp.token.size(), 0);
@@ -247,8 +249,7 @@ TEST(UserServiceTest, JWT令牌校验) {
     LoginResponse resp = service.login({"testuser", "pwd"});
 
     auto decoded = jwt::decode(resp.token);
-    auto verifier = jwt::verify()
-        .allow_algorithm(jwt::algorithm::hs256{TEST_JWT_SECRET});
+    auto verifier = jwt::verify().allow_algorithm(jwt::algorithm::hs256{TEST_JWT_SECRET});
     EXPECT_NO_THROW(verifier.verify(decoded));
 
     EXPECT_EQ(decoded.get_payload_claim("userId").as_string(), "42");
@@ -277,8 +278,7 @@ TEST(UserServiceTest, 登录令牌携带当前会话版本ver) {
     LoginResponse resp = service.login({"testuser", "password123"});
 
     auto decoded = jwt::decode(resp.token);
-    auto verifier = jwt::verify()
-        .allow_algorithm(jwt::algorithm::hs256{TEST_JWT_SECRET});
+    auto verifier = jwt::verify().allow_algorithm(jwt::algorithm::hs256{TEST_JWT_SECRET});
     EXPECT_NO_THROW(verifier.verify(decoded));
     ASSERT_TRUE(decoded.has_payload_claim("ver"));
     EXPECT_EQ(decoded.get_payload_claim("ver").as_string(), "3");
@@ -314,8 +314,7 @@ TEST(UserServiceTest, 登录用户不存在) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, findByUsername("nonexistent"))
-        .WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, findByUsername("nonexistent")).WillOnce(Return(std::nullopt));
 
     try {
         service.login({"nonexistent", "password123"});
@@ -330,8 +329,7 @@ TEST(UserServiceTest, 登录密码错误) {
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, findByUsername("testuser"))
-        .WillOnce(Return(UserAuthInfo{42, "testuser", "badhash", "user"}));
+    EXPECT_CALL(*repo, findByUsername("testuser")).WillOnce(Return(UserAuthInfo{42, "testuser", "badhash", "user"}));
 
     try {
         service.login({"testuser", "password123"});
@@ -455,8 +453,7 @@ TEST(UserServiceTest, 请求重置密码用户名邮箱不匹配报错不发信)
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, findIdByUsernameAndEmail("unknown_user", "unreg@test.com"))
-        .WillOnce(Return(std::nullopt));
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("unknown_user", "unreg@test.com")).WillOnce(Return(std::nullopt));
     // 双字段匹配是发信门槛：不匹配不发信、不建令牌
     EXPECT_CALL(*repo, createPasswordResetToken(_, _)).Times(0);
 
@@ -481,16 +478,13 @@ TEST(UserServiceTest, 请求重置密码邮箱已注册生成令牌) {
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     std::string issuedToken;
-    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "user@test.com"))
-        .WillOnce(Return(std::optional<int>(42)));
-    EXPECT_CALL(*repo, createPasswordResetToken(42, _))
-        .WillOnce(SaveArg<1>(&issuedToken));
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "user@test.com")).WillOnce(Return(std::optional<int>(42)));
+    EXPECT_CALL(*repo, createPasswordResetToken(42, _)).WillOnce(SaveArg<1>(&issuedToken));
 
     // SMTP 未配置（开发模式）：不抛异常、不返回令牌；验证码经 [DEV MAIL] 打到服务端日志；令牌 6 位数字并在仓库边界入库
     service.requestPasswordReset("testuser", "user@test.com");
-    EXPECT_EQ(issuedToken.size(), 6);   // 6 位数字验证码
-    EXPECT_TRUE(std::all_of(issuedToken.begin(), issuedToken.end(),
-                            [](char c) { return c >= '0' && c <= '9'; }));
+    EXPECT_EQ(issuedToken.size(), 6); // 6 位数字验证码
+    EXPECT_TRUE(std::all_of(issuedToken.begin(), issuedToken.end(), [](char c) { return c >= '0' && c <= '9'; }));
 }
 
 TEST(UserServiceTest, 重置密码令牌无效) {
@@ -533,16 +527,14 @@ TEST(UserServiceTest, 更新个人资料成功) {
     profile.email = "new@example.com";
     profile.phone = "13900139000";
 
-    auto currentProfile = makeUserProfile(42);  // 该资料带邮箱 "test@example.com"
+    auto currentProfile = makeUserProfile(42); // 该资料带邮箱 "test@example.com"
     auto updatedProfile = makeUserProfile(42);
     updatedProfile.display_name = "新昵称";
     updatedProfile.email = "new@example.com";
     updatedProfile.phone = "13900139000";
 
     // 第一次 findById 用于邮箱查重（返回当前资料），第二次用于返回更新后的资料
-    EXPECT_CALL(*repo, findById(42))
-        .WillOnce(Return(currentProfile))
-        .WillOnce(Return(updatedProfile));
+    EXPECT_CALL(*repo, findById(42)).WillOnce(Return(currentProfile)).WillOnce(Return(updatedProfile));
     EXPECT_CALL(*repo, existsByEmail("new@example.com")).WillOnce(Return(false));
     EXPECT_CALL(*repo, updateProfile(42, _)).Times(1);
 
@@ -612,12 +604,10 @@ TEST(UserServiceTest, 更新个人资料邮箱不变跳过检查) {
 
     UpdateProfileRequest profile;
     profile.display_name = "新昵称";
-    profile.email = "same@example.com";  // 与当前邮箱相同 — 不应调用 existsByEmail
+    profile.email = "same@example.com"; // 与当前邮箱相同 — 不应调用 existsByEmail
 
-    EXPECT_CALL(*repo, findById(42))
-        .Times(2)
-        .WillRepeatedly(Return(current));
-    EXPECT_CALL(*repo, existsByEmail(_)).Times(0);  // 不应检查邮箱唯一性
+    EXPECT_CALL(*repo, findById(42)).Times(2).WillRepeatedly(Return(current));
+    EXPECT_CALL(*repo, existsByEmail(_)).Times(0); // 不应检查邮箱唯一性
     EXPECT_CALL(*repo, updateProfile(42, _)).Times(1);
 
     auto result = service.updateProfile(42, profile);
@@ -634,8 +624,7 @@ TEST(UserServiceTest, 上传头像成功) {
     AvatarUploadResponse expectedResp;
     expectedResp.avatar_url = "/uploads/avatars/user_42_12345.jpg";
 
-    EXPECT_CALL(*repo, uploadAvatar(42, "/tmp/test_avatar.jpg"))
-        .WillOnce(Return(expectedResp));
+    EXPECT_CALL(*repo, uploadAvatar(42, "/tmp/test_avatar.jpg")).WillOnce(Return(expectedResp));
 
     auto result = service.uploadAvatar(42, "/tmp/test_avatar.jpg");
     EXPECT_EQ(result.avatar_url, "/uploads/avatars/user_42_12345.jpg");
@@ -667,8 +656,11 @@ TEST(UserServiceTest, 更新资料绑定本人暂存头像成功) {
     UpdateProfileRequest profile;
     profile.avatar_url = "/uploads/avatars/user_42_12345.jpg";
 
-    EXPECT_CALL(*repo, updateProfile(42, Field(&UpdateProfileRequest::avatar_url,
-        Optional(std::string("/uploads/avatars/user_42_12345.jpg"))))).Times(1);
+    EXPECT_CALL(
+        *repo,
+        updateProfile(
+            42, Field(&UpdateProfileRequest::avatar_url, Optional(std::string("/uploads/avatars/user_42_12345.jpg")))))
+        .Times(1);
     EXPECT_CALL(*repo, findById(42)).WillOnce(Return(makeUserProfile(42)));
 
     EXPECT_NO_THROW(service.updateProfile(42, profile));
@@ -682,7 +674,7 @@ TEST(UserServiceTest, 更新资料绑定他人前缀头像被拒) {
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
     UpdateProfileRequest profile;
-    profile.avatar_url = "/uploads/avatars/user_99_12345.jpg";  // 非本人前缀
+    profile.avatar_url = "/uploads/avatars/user_99_12345.jpg"; // 非本人前缀
 
     try {
         service.updateProfile(42, profile);
@@ -697,7 +689,7 @@ TEST(UserServiceTest, 更新资料绑定不存在暂存头像被拒) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    const auto base = makeUploadsRoot("bind_missing");  // 空目录：文件不存在
+    const auto base = makeUploadsRoot("bind_missing"); // 空目录：文件不存在
     EnvGuard guard("GOCOOK_UPLOADS_DIR");
     guard.set(base.c_str());
 
@@ -757,7 +749,7 @@ TEST(UserServiceTest, 放弃暂存头像删除文件) {
     EnvGuard guard("GOCOOK_UPLOADS_DIR");
     guard.set(base.c_str());
 
-    auto user = makeUserProfile(42);  // 当前头像指向别的文件
+    auto user = makeUserProfile(42); // 当前头像指向别的文件
     EXPECT_CALL(*repo, findById(42)).WillOnce(Return(user));
 
     EXPECT_NO_THROW(service.discardPendingAvatar(42, "/uploads/avatars/user_42_111.jpg"));
@@ -910,15 +902,15 @@ TEST(UserServiceTest, 更新饮食偏好用户不存在) {
 // ==================== 修改密码 ====================
 
 namespace {
-    // 生成已知密码的 bcrypt 哈希（用于修改密码测试）
-    std::string makeBcryptHash(const std::string& plain) {
-        char salt_buf[128], hash_buf[128];
-        const char fi[16] = {};
-        char* s = _crypt_gensalt_blowfish_rn("$2a$", 4, fi, 16, salt_buf, sizeof(salt_buf));
-        char* h = _crypt_blowfish_rn(plain.c_str(), s, hash_buf, sizeof(hash_buf));
-        return std::string(h ? h : "");
-    }
+// 生成已知密码的 bcrypt 哈希（用于修改密码测试）
+std::string makeBcryptHash(const std::string& plain) {
+    char salt_buf[128], hash_buf[128];
+    const char fi[16] = {};
+    char* s = _crypt_gensalt_blowfish_rn("$2a$", 4, fi, 16, salt_buf, sizeof(salt_buf));
+    char* h = _crypt_blowfish_rn(plain.c_str(), s, hash_buf, sizeof(hash_buf));
+    return std::string(h ? h : "");
 }
+} // namespace
 
 TEST(UserServiceTest, 修改密码成功) {
     auto mock = std::make_unique<NiceMock<MockUserRepository>>();
@@ -988,7 +980,7 @@ TEST(UserServiceTest, 获取健康指标成功) {
     EXPECT_EQ(result.height_cm, 175);
     EXPECT_EQ(result.weight_kg, 70.0);
     EXPECT_EQ(result.conditions.size(), 1u);
-    EXPECT_GT(result.suggested_avoidances.size(), 0u);  // 应生成忌口建议
+    EXPECT_GT(result.suggested_avoidances.size(), 0u); // 应生成忌口建议
 }
 
 TEST(UserServiceTest, 获取健康指标用户不存在) {
@@ -1149,7 +1141,7 @@ TEST(UserServiceTest, 获取通知列表成功) {
     notif.title = "审核结果";
     notif.content = "您的菜谱已通过审核";
     notif.type = "review";
-    notif.is_read = false;   // 由仓库按"id > 水位"动态计算，服务层透传
+    notif.is_read = false; // 由仓库按"id > 水位"动态计算，服务层透传
     PagedNotifications expected;
     expected.data = {notif};
     expected.pagination = {1, 1, 1, 20};
@@ -1270,8 +1262,7 @@ TEST(UserServiceTest, 创建收藏分组名称重复) {
 
     auto profile = makeUserProfile(42);
     EXPECT_CALL(*repo, findById(42)).WillOnce(Return(profile));
-    EXPECT_CALL(*repo, createFavoriteGroup(42, _))
-        .WillOnce(Throw(ServiceException("分组名已存在", 409)));
+    EXPECT_CALL(*repo, createFavoriteGroup(42, _)).WillOnce(Throw(ServiceException("分组名已存在", 409)));
 
     CreateGroupRequest req{"最爱菜品"};
     try {
@@ -1416,8 +1407,7 @@ TEST_F(SmtpEnvironmentTest, SMTP已配置但不可达时requestPasswordReset抛�
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "test@example.com"))
-        .WillOnce(Return(42));
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "test@example.com")).WillOnce(Return(42));
     EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
 
     try {
@@ -1434,8 +1424,7 @@ TEST_F(SmtpEnvironmentTest, SMTP已配置但发送失败时不回退开发模式
     auto* repo = mock.get();
     UserServiceImpl service(std::move(mock), TEST_JWT_SECRET);
 
-    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "test@example.com"))
-        .WillOnce(Return(42));
+    EXPECT_CALL(*repo, findIdByUsernameAndEmail("testuser", "test@example.com")).WillOnce(Return(42));
     EXPECT_CALL(*repo, createPasswordResetToken(42, _)).Times(1);
 
     // SMTP 已配置但发送失败：抛 500 且文案与注册链路统一（而非静默降级为 [DEV MAIL] 开发模式日志）；

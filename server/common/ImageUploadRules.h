@@ -31,25 +31,28 @@ inline constexpr size_t kMaxImageBytes = 5 * 1024 * 1024;
 inline std::string extractMimeType(const std::string& ct) {
     auto p = ct.find(';');
     std::string m = (p == std::string::npos) ? ct : ct.substr(0, p);
-    while (!m.empty() && (m.front() == ' ' || m.front() == '\t')) m.erase(0, 1);
-    while (!m.empty() && (m.back() == ' ' || m.back() == '\t')) m.pop_back();
-    for (char& c : m) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    while (!m.empty() && (m.front() == ' ' || m.front() == '\t'))
+        m.erase(0, 1);
+    while (!m.empty() && (m.back() == ' ' || m.back() == '\t'))
+        m.pop_back();
+    for (char& c : m)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return m;
 }
 
 /// 支持的图片 MIME 白名单。
 /// 注意：不含 image/webp —— Qt 客户端无法渲染，禁止单边放开。
 inline bool isSupportedImageType(const std::string& mime) {
-    return mime == "image/jpeg" || mime == "image/jpg" || mime == "image/png"
-        || mime == "image/gif" || mime == "image/bmp" || mime == "image/svg+xml";
+    return mime == "image/jpeg" || mime == "image/jpg" || mime == "image/png" || mime == "image/gif" ||
+           mime == "image/bmp" || mime == "image/svg+xml";
 }
 
 /// MIME 类型 -> 文件扩展名（含前导 '.'），未知回退 ".jpg"。
 inline std::string imageTypeToExtension(const std::string& mime) {
-    if (mime == "image/png")      return ".png";
-    if (mime == "image/gif")      return ".gif";
-    if (mime == "image/bmp")      return ".bmp";
-    if (mime == "image/svg+xml")  return ".svg";
+    if (mime == "image/png") return ".png";
+    if (mime == "image/gif") return ".gif";
+    if (mime == "image/bmp") return ".bmp";
+    if (mime == "image/svg+xml") return ".svg";
     return ".jpg";
 }
 
@@ -61,8 +64,8 @@ inline bool containsIgnoreCase(const std::string& haystack, const std::string& n
     for (size_t i = 0; i + needle.size() <= haystack.size(); ++i) {
         size_t j = 0;
         for (; j < needle.size(); ++j) {
-            if (std::tolower(static_cast<unsigned char>(haystack[i + j]))
-                != std::tolower(static_cast<unsigned char>(needle[j])))
+            if (std::tolower(static_cast<unsigned char>(haystack[i + j])) !=
+                std::tolower(static_cast<unsigned char>(needle[j])))
                 break;
         }
         if (j == needle.size()) return true;
@@ -76,28 +79,36 @@ inline bool containsIgnoreCase(const std::string& haystack, const std::string& n
 inline std::string sniffImageType(const std::string& content) {
     const size_t n = content.size();
     // JPEG: FF D8 FF
-    if (n >= 3
-        && static_cast<unsigned char>(content[0]) == 0xFF
-        && static_cast<unsigned char>(content[1]) == 0xD8
-        && static_cast<unsigned char>(content[2]) == 0xFF)
+    if (n >= 3 && static_cast<unsigned char>(content[0]) == 0xFF && static_cast<unsigned char>(content[1]) == 0xD8 &&
+        static_cast<unsigned char>(content[2]) == 0xFF)
         return "image/jpeg";
     // PNG: 89 50 4E 47 0D 0A 1A 0A
     static constexpr unsigned char kPng[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
     if (n >= 8 && std::memcmp(content.data(), kPng, 8) == 0) return "image/png";
     // GIF: GIF87a / GIF89a
-    if (n >= 6 && (content.compare(0, 6, "GIF87a") == 0 || content.compare(0, 6, "GIF89a") == 0))
-        return "image/gif";
+    if (n >= 6 && (content.compare(0, 6, "GIF87a") == 0 || content.compare(0, 6, "GIF89a") == 0)) return "image/gif";
     // BMP: BM
     if (n >= 2 && content.compare(0, 2, "BM") == 0) return "image/bmp";
 
     // SVG 启发式检测（黑名单不承诺完备，权威防线见 UploadFileServer.h 的 CSP）
     static constexpr const char* kSvgForbiddenSubstrings[] = {
         "<script",
-        "onload", "onerror", "onclick",
-        "onmousedown", "onmouseup", "onmouseover", "onmousemove", "onmouseout",
-        "onfocus", "onblur",
-        "onkeydown", "onkeypress", "onkeyup",
-        "onbegin", "onend", "onrepeat",
+        "onload",
+        "onerror",
+        "onclick",
+        "onmousedown",
+        "onmouseup",
+        "onmouseover",
+        "onmousemove",
+        "onmouseout",
+        "onfocus",
+        "onblur",
+        "onkeydown",
+        "onkeypress",
+        "onkeyup",
+        "onbegin",
+        "onend",
+        "onrepeat",
         "javascript:",
     };
     if (content.find("<svg") != std::string::npos) {
@@ -112,26 +123,22 @@ inline std::string sniffImageType(const std::string& content) {
 /// 图片上传校验状态码。
 /// 由 classifyUpload() 返回，调用方（Handler）据此决定对客户端的响应行为。
 enum class UploadError {
-    None,              // 校验通过，允许继续落盘。
-    UnsupportedType,   // MIME 类型不在白名单中（如 webp），拒绝上传。
-    TooLarge,          // 文件大小超过 5MB 上限，拒绝上传。
-    ContentMismatch    // 内容不可识别或格式异常（如伪装文件、恶意 SVG / SVGZ），拒绝上传。
+    None,            // 校验通过，允许继续落盘。
+    UnsupportedType, // MIME 类型不在白名单中（如 webp），拒绝上传。
+    TooLarge,        // 文件大小超过 5MB 上限，拒绝上传。
+    ContentMismatch  // 内容不可识别或格式异常（如伪装文件、恶意 SVG / SVGZ），拒绝上传。
 };
 
 /// 校验上传图片并决策落盘扩展名。
 /// 执行顺序：白名单 -> 5MB 上限 -> 内容嗅探。
 /// 嗅探采用“宽容修正”：声明与真实类型不符时，按真实类型落盘（避免误杀）。
 /// 内容完全不可识别（含恶意 SVG / svgz / 伪装格式）时返回 ContentMismatch。
-inline UploadError classifyUpload(const std::string& content,
-                                  const std::string& declaredMime,
-                                  std::string& outExtension) {
-    if (!isSupportedImageType(declaredMime))
-        return UploadError::UnsupportedType;
-    if (content.size() > kMaxImageBytes)
-        return UploadError::TooLarge;
+inline UploadError
+classifyUpload(const std::string& content, const std::string& declaredMime, std::string& outExtension) {
+    if (!isSupportedImageType(declaredMime)) return UploadError::UnsupportedType;
+    if (content.size() > kMaxImageBytes) return UploadError::TooLarge;
     const std::string actualMime = sniffImageType(content);
-    if (actualMime.empty())
-        return UploadError::ContentMismatch;
+    if (actualMime.empty()) return UploadError::ContentMismatch;
     outExtension = imageTypeToExtension(actualMime);
     return UploadError::None;
 }
@@ -140,16 +147,16 @@ inline UploadError classifyUpload(const std::string& content,
 /// 仅对非 None 的 UploadError 调用；None 不是错误态，返回空串。
 inline const char* uploadErrorMessage(UploadError err) {
     switch (err) {
-        case UploadError::UnsupportedType:
-            return "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）";
-        case UploadError::TooLarge:
-            return "图片大小不能超过5MB";
-        case UploadError::ContentMismatch:
-            return "图片内容与格式不符，请重新选择";
-        case UploadError::None:
-            break;
+    case UploadError::UnsupportedType:
+        return "不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）";
+    case UploadError::TooLarge:
+        return "图片大小不能超过5MB";
+    case UploadError::ContentMismatch:
+        return "图片内容与格式不符，请重新选择";
+    case UploadError::None:
+        break;
     }
-    return "";  // None 不是错误态；调用方不应走到这里
+    return ""; // None 不是错误态；调用方不应走到这里
 }
 
 /// 上传体为空时的统一提示（三个上传入口共用）。
@@ -158,14 +165,12 @@ inline constexpr const char* kEmptyImageMessage = "请选择图片";
 /// 将上传内容写入 /tmp 下唯一命名的临时文件。
 /// @param tag 业务前缀（如 "avatar_1"），最终路径为 /tmp/gocook_<tag>_<时间戳><ext>。
 /// @return 成功返回完整路径，失败（如无法打开文件）返回 nullopt。
-inline std::optional<std::string> writeTempImageFile(const std::string& tag,
-                                                     const std::string& content,
-                                                     const std::string& ext) {
-    const std::string tempPath = "/tmp/gocook_" + tag + "_"
-        + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ext;
+inline std::optional<std::string>
+writeTempImageFile(const std::string& tag, const std::string& content, const std::string& ext) {
+    const std::string tempPath =
+        "/tmp/gocook_" + tag + "_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ext;
     std::ofstream ofs(tempPath, std::ios::binary);
-    if (!ofs)
-        return std::nullopt;
+    if (!ofs) return std::nullopt;
     ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
     ofs.close();
     return tempPath;

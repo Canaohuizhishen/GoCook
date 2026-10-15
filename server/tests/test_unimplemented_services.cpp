@@ -17,14 +17,14 @@ using namespace gocook::models;
 class MockMealPlanRepository : public gocook::repository::IMealPlanRepository {
 public:
     MOCK_METHOD(int, createMealPlan, (int, const MealPlanRequest&), (override));
-    MOCK_METHOD(MealPlansResponse, findMealPlans,
-                (int, const std::string&, const std::string&, int, int), (override));
-    MOCK_METHOD(PagedCalendarDays, findMealPlanDetail,
-                (int, const std::string&, const std::string&, int, int), (override));
+    MOCK_METHOD(MealPlansResponse, findMealPlans, (int, const std::string&, const std::string&, int, int), (override));
+    MOCK_METHOD(PagedCalendarDays,
+                findMealPlanDetail,
+                (int, const std::string&, const std::string&, int, int),
+                (override));
     MOCK_METHOD(void, updateMealPlan, (int, int, const MealPlanRequest&), (override));
     MOCK_METHOD(void, deleteMealPlan, (int, int), (override));
-    MOCK_METHOD(NutritionTrendResponse, findNutritionTrend,
-                (int, const std::string&, const std::string&), (override));
+    MOCK_METHOD(NutritionTrendResponse, findNutritionTrend, (int, const std::string&, const std::string&), (override));
 };
 
 TEST(MealPlanServiceTest, 全部方法返回501) {

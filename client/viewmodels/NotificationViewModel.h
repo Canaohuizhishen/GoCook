@@ -18,25 +18,29 @@
  *
  * 双分类状态各自独立（列表 / 分页 / 是否已加载）：切换不重拉，退出重进刷新（refresh 将两类标记过期）。
  */
-class NotificationViewModel : public QObject
-{
+class NotificationViewModel : public QObject {
     Q_OBJECT
-    Q_PROPERTY(QVariantList notifications READ notifications NOTIFY notificationsChanged)   ///< 当前选中分类的列表
-    Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)   ///< 有加载请求在途（计数派生）
-    Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)   ///< 当前分类还有下一页
-    Q_PROPERTY(bool isRefreshing READ isRefreshing NOTIFY isRefreshingChanged)   ///< 下拉刷新态（QML 指示器）
-    Q_PROPERTY(QString currentType READ currentType WRITE setCurrentType NOTIFY currentTypeChanged)   ///< "review"=审核结果 / "interaction"=互动提醒
-    Q_PROPERTY(int reviewUnread READ reviewUnread NOTIFY unreadSummaryChanged)   ///< 审核结果未读数（汇总值；删除未读条目时本地 -1）
-    Q_PROPERTY(int interactionUnread READ interactionUnread NOTIFY unreadSummaryChanged)   ///< 互动提醒未读数
-    Q_PROPERTY(int unreadTotal READ unreadTotal NOTIFY unreadSummaryChanged)   ///< 可计数未读总数（review+interaction；铃铛数字用，不含系统红点）
-    Q_PROPERTY(bool systemHasNew READ systemHasNew NOTIFY unreadSummaryChanged)   ///< 系统通知是否有新内容（公告红点；由系统通知页上报后清除）
+    Q_PROPERTY(QVariantList notifications READ notifications NOTIFY notificationsChanged) ///< 当前选中分类的列表
+    Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)          ///< 有加载请求在途（计数派生）
+    Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)                ///< 当前分类还有下一页
+    Q_PROPERTY(bool isRefreshing READ isRefreshing NOTIFY isRefreshingChanged) ///< 下拉刷新态（QML 指示器）
+    Q_PROPERTY(QString currentType READ currentType WRITE setCurrentType NOTIFY
+                   currentTypeChanged) ///< "review"=审核结果 / "interaction"=互动提醒
+    Q_PROPERTY(int reviewUnread READ reviewUnread NOTIFY
+                   unreadSummaryChanged) ///< 审核结果未读数（汇总值；删除未读条目时本地 -1）
+    Q_PROPERTY(int interactionUnread READ interactionUnread NOTIFY unreadSummaryChanged) ///< 互动提醒未读数
+    Q_PROPERTY(int unreadTotal READ unreadTotal NOTIFY
+                   unreadSummaryChanged) ///< 可计数未读总数（review+interaction；铃铛数字用，不含系统红点）
+    Q_PROPERTY(bool systemHasNew READ systemHasNew NOTIFY
+                   unreadSummaryChanged) ///< 系统通知是否有新内容（公告红点；由系统通知页上报后清除）
 
 public:
-    explicit NotificationViewModel(IGoCookApi *api, QObject *parent = nullptr);   ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
+    explicit NotificationViewModel(IGoCookApi* api,
+                                   QObject* parent = nullptr); ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
 
     // getter 组：返回同名 Q_PROPERTY 的值（语义见属性行）；仅特殊实现单独注明。
     QVariantList notifications() const;
-    bool isLoading() const;   ///< 特殊实现：在途加载计数派生
+    bool isLoading() const; ///< 特殊实现：在途加载计数派生
     bool hasMore() const;
     bool isRefreshing() const;
     QString currentType() const;
@@ -85,11 +89,11 @@ signals:
 private:
     /// 分类列表状态（review / interaction 各一份：切换不重拉，退出重进刷新）
     struct CategoryState {
-        QVariantList items;      ///< 已加载条目（page 递增追加）
-        int page = 1;            ///< 已加载到第几页
-        int totalPages = 0;      ///< 服务端总页数
-        bool hasMore = false;    ///< 是否还有下一页
-        bool loaded = false;     ///< 本次入页内是否已加载过（惰性加载依据；refresh 时两类一并置否）
+        QVariantList items;   ///< 已加载条目（page 递增追加）
+        int page = 1;         ///< 已加载到第几页
+        int totalPages = 0;   ///< 服务端总页数
+        bool hasMore = false; ///< 是否还有下一页
+        bool loaded = false;  ///< 本次入页内是否已加载过（惰性加载依据；refresh 时两类一并置否）
     };
 
     const CategoryState& stateFor(const QString& type) const;
@@ -109,18 +113,18 @@ private:
     /// 某分类未读数增量调整（删除未读条目用）
     void adjustUnread(const QString& type, int delta);
 
-    IGoCookApi *m_api;   ///< API 门面（构造注入）
-    QString m_currentType = QStringLiteral("review");   ///< 当前选中分类（默认审核结果）
-    CategoryState m_review;          ///< 审核结果分类状态
-    CategoryState m_interaction;     ///< 互动提醒分类状态
-    int m_pendingLoads = 0;          ///< 在途加载计数（isLoading 据此翻转）
-    int m_pageSize = kPageSize;      ///< 每页数量（loadNotifications 传入值）
-    bool m_isRefreshing = false;     ///< 刷新态（refresh 置真；完成回调置假）
+    IGoCookApi* m_api;                                ///< API 门面（构造注入）
+    QString m_currentType = QStringLiteral("review"); ///< 当前选中分类（默认审核结果）
+    CategoryState m_review;                           ///< 审核结果分类状态
+    CategoryState m_interaction;                      ///< 互动提醒分类状态
+    int m_pendingLoads = 0;                           ///< 在途加载计数（isLoading 据此翻转）
+    int m_pageSize = kPageSize;                       ///< 每页数量（loadNotifications 传入值）
+    bool m_isRefreshing = false;                      ///< 刷新态（refresh 置真；完成回调置假）
 
     // 汇总（服务端权威值；本地仅在删除未读条目时即时 -1）
-    int m_reviewUnread = 0;          ///< 审核结果未读数
-    int m_interactionUnread = 0;     ///< 互动提醒未读数
-    bool m_systemHasNew = false;     ///< 系统通知红点（公告布尔标记）
+    int m_reviewUnread = 0;      ///< 审核结果未读数
+    int m_interactionUnread = 0; ///< 互动提醒未读数
+    bool m_systemHasNew = false; ///< 系统通知红点（公告布尔标记）
 
-    QHash<QString, int> m_reportedWatermark;   ///< 分类 → 本会话已成功上报的水位（防重复上报）
+    QHash<QString, int> m_reportedWatermark; ///< 分类 → 本会话已成功上报的水位（防重复上报）
 };

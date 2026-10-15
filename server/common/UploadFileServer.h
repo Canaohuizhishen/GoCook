@@ -30,9 +30,12 @@ inline std::string escapeLogText(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
-        if (c == '\r')      out += "\\r";
-        else if (c == '\n') out += "\\n";
-        else                 out += c;
+        if (c == '\r')
+            out += "\\r";
+        else if (c == '\n')
+            out += "\\n";
+        else
+            out += c;
     }
     return out;
 }
@@ -42,9 +45,7 @@ inline std::string escapeLogText(const std::string& s) {
 /// @param subdir 业务子目录（"avatars"[头像]、"recipes"[菜谱封面/步骤图]），
 ///               同时决定 URL 前缀与磁盘子目录
 /// @param label  日志文案用的中文名称（如"头像"），便于运维排查，为空时回退用 subdir
-inline void registerUploadRoutes(httplib::Server& svr,
-                                 const std::string& subdir,
-                                 const std::string& label = {}) {
+inline void registerUploadRoutes(httplib::Server& svr, const std::string& subdir, const std::string& label = {}) {
     const std::string dir = UploadPaths::baseDir() + "/" + subdir + "/";
     const std::string display = label.empty() ? subdir : label;
 
@@ -56,14 +57,12 @@ inline void registerUploadRoutes(httplib::Server& svr,
     }
     LOG_INFO("%s存储目录：%s", display.c_str(), dir.c_str());
 
-    svr.Get("/uploads/" + subdir + "/(.+)",
-            [dir, display](const httplib::Request& req, httplib::Response& res) {
+    svr.Get("/uploads/" + subdir + "/(.+)", [dir, display](const httplib::Request& req, httplib::Response& res) {
         try {
             // 1. 安全响应头（无论成功或失败都应携带）
             // CSP sandbox：禁止脚本/iframe/同源访问，用于兜底 SVG 等可执行文件的 XSS 风险。
             // nosniff：防止浏览器嗅探 MIME 类型。
-            res.set_header("Content-Security-Policy",
-                           "sandbox; default-src 'none'; style-src 'unsafe-inline'");
+            res.set_header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'");
             res.set_header("X-Content-Type-Options", "nosniff");
 
             const std::string filename = req.matches[1];
@@ -83,8 +82,8 @@ inline void registerUploadRoutes(httplib::Server& svr,
 
             // 关键点：不仅要前缀匹配，还必须检查下一个字符是 '/' 或路径相等。
             // 防止放行 "/uploads/avatars_evil" 这类同前缀的兄弟目录（符号链接攻击）。
-            const bool inside = normStr.rfind(allowStr, 0) == 0
-                && (normStr.size() == allowStr.size() || normStr[allowStr.size()] == '/');
+            const bool inside = normStr.rfind(allowStr, 0) == 0 &&
+                                (normStr.size() == allowStr.size() || normStr[allowStr.size()] == '/');
             if (!inside) {
                 LOG_WARN("已拦截%s路径穿越请求：%s → %s",
                          display.c_str(),
@@ -98,8 +97,7 @@ inline void registerUploadRoutes(httplib::Server& svr,
             // 4. 文件存在性与类型校验
             // 只服务常规文件（is_regular_file）。
             // 规避 ifstream 陷阱：读目录返回空（误报 200），读管道会挂起线程（DoS）。
-            if (!std::filesystem::exists(normStr)
-                || !std::filesystem::is_regular_file(normStr)) {
+            if (!std::filesystem::exists(normStr) || !std::filesystem::is_regular_file(normStr)) {
                 res.status = 404;
                 res.set_content("未找到", "text/plain");
                 return;
@@ -113,8 +111,7 @@ inline void registerUploadRoutes(httplib::Server& svr,
                 res.set_content("服务器内部错误，请稍后重试", "text/plain");
                 return;
             }
-            std::string content((std::istreambuf_iterator<char>(ifs)),
-                                std::istreambuf_iterator<char>());
+            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
 
             // 5. MIME 类型匹配（扩展名小写化）
             // 解决 ".PNG" 被误判为 image/jpeg 的问题。
@@ -125,10 +122,14 @@ inline void registerUploadRoutes(httplib::Server& svr,
                     ext += std::tolower(static_cast<unsigned char>(c));
             }
             std::string mime = "image/jpeg";
-            if (ext == ".png")       mime = "image/png";
-            else if (ext == ".gif")  mime = "image/gif";
-            else if (ext == ".bmp")  mime = "image/bmp";
-            else if (ext == ".svg")  mime = "image/svg+xml";
+            if (ext == ".png")
+                mime = "image/png";
+            else if (ext == ".gif")
+                mime = "image/gif";
+            else if (ext == ".bmp")
+                mime = "image/bmp";
+            else if (ext == ".svg")
+                mime = "image/svg+xml";
 
             res.set_content(content, mime);
         } catch (const std::exception& e) {

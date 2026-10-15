@@ -36,8 +36,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -65,8 +64,7 @@ bool dbAvailable() {
 class InventoryDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         cleanup();
     }
 
@@ -85,18 +83,16 @@ protected:
     static int ensureUser(const std::string& username = "集成测试用户") {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
-            " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
-            " RETURNING id",
-            pqxx::params{username});
+        pqxx::result r = ntxn.exec("INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
+                                   " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                                   " RETURNING id",
+                                   pqxx::params{username});
         return r[0][0].as<int>();
     }
 
     /// 直接经仓库添加一条库存（组装请求）
-    static gocook::models::UpsertInventoryRequest makeReq(const std::string& name, double qty,
-                                                          const std::string& unit,
-                                                          const char* expiry = nullptr) {
+    static gocook::models::UpsertInventoryRequest
+    makeReq(const std::string& name, double qty, const std::string& unit, const char* expiry = nullptr) {
         gocook::models::UpsertInventoryRequest req;
         req.ingredient_name = name;
         req.quantity = qty;
@@ -106,8 +102,7 @@ protected:
     }
 
     /// 断言调用抛 ServiceException(status)（可选校验消息包含 msgPart）
-    template <typename Fn>
-    static void expectError(Fn&& fn, int status, const std::string& msgPart = {}) {
+    template <typename Fn> static void expectError(Fn&& fn, int status, const std::string& msgPart = {}) {
         bool thrown = false;
         try {
             fn();
@@ -115,8 +110,7 @@ protected:
             thrown = true;
             EXPECT_EQ(e.statusCode(), status) << "异常消息: " << e.what();
             if (!msgPart.empty())
-                EXPECT_NE(std::string(e.what()).find(msgPart), std::string::npos)
-                    << "异常消息: " << e.what();
+                EXPECT_NE(std::string(e.what()).find(msgPart), std::string::npos) << "异常消息: " << e.what();
         }
         if (!thrown) FAIL() << "期望 ServiceException(" << status << ") 但未抛出";
     }
@@ -132,9 +126,8 @@ protected:
     static std::optional<InvRow> fetchRow(int itemId) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "SELECT id, quantity, unit, expiry_date FROM inventory WHERE id = $1",
-            pqxx::params{itemId});
+        pqxx::result r =
+            ntxn.exec("SELECT id, quantity, unit, expiry_date FROM inventory WHERE id = $1", pqxx::params{itemId});
         if (r.empty()) return std::nullopt;
         InvRow row;
         row.id = r[0][0].as<int>();
@@ -148,10 +141,9 @@ protected:
     static std::vector<InvRow> fetchByName(int userId, const std::string& name) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "SELECT id, quantity, unit, expiry_date FROM inventory"
-            " WHERE user_id = $1 AND ingredient_name = $2 ORDER BY id",
-            pqxx::params{userId, name});
+        pqxx::result r = ntxn.exec("SELECT id, quantity, unit, expiry_date FROM inventory"
+                                   " WHERE user_id = $1 AND ingredient_name = $2 ORDER BY id",
+                                   pqxx::params{userId, name});
         std::vector<InvRow> rows;
         for (const auto& row : r) {
             InvRow item;
@@ -165,16 +157,15 @@ protected:
     }
 
     /// 造一条未勾选的购物清单项，返回 item id（回流前状态）
-    static int insertUncheckedItem(int listId, const std::string& name, double required,
-                                   double invQty, double toBuy, const std::string& unit) {
+    static int insertUncheckedItem(
+        int listId, const std::string& name, double required, double invQty, double toBuy, const std::string& unit) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO shopping_list_items"
-            " (list_id, ingredient_name, required_quantity, inventory_quantity,"
-            "  to_buy_quantity, unit, checked)"
-            " VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
-            pqxx::params{listId, name, required, invQty, toBuy, unit});
+        pqxx::result r = ntxn.exec("INSERT INTO shopping_list_items"
+                                   " (list_id, ingredient_name, required_quantity, inventory_quantity,"
+                                   "  to_buy_quantity, unit, checked)"
+                                   " VALUES ($1, $2, $3, $4, $5, $6, FALSE) RETURNING id",
+                                   pqxx::params{listId, name, required, invQty, toBuy, unit});
         return r[0][0].as<int>();
     }
 
@@ -182,10 +173,9 @@ protected:
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
         std::string name = "集成测试菜谱" + std::to_string(++s_recipeSeq);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO recipes (name, author_id, ingredients, status, tags)"
-            " VALUES ($1, $2, $3::jsonb, 'approved', '{}') RETURNING id",
-            pqxx::params{name, authorId, ingredientJson});
+        pqxx::result r = ntxn.exec("INSERT INTO recipes (name, author_id, ingredients, status, tags)"
+                                   " VALUES ($1, $2, $3::jsonb, 'approved', '{}') RETURNING id",
+                                   pqxx::params{name, authorId, ingredientJson});
         return r[0][0].as<int>();
     }
 
@@ -218,9 +208,9 @@ TEST_F(InventoryDbTest, 添加同名不同单位各自成行互不覆盖) {
     PgInventoryRepository repo(testPool());
 
     int idMl = repo.upsertInventory(uid, makeReq("集成测试料酒", 15, "毫升"));
-    int idG  = repo.upsertInventory(uid, makeReq("集成测试料酒", 100, "克"));
+    int idG = repo.upsertInventory(uid, makeReq("集成测试料酒", 100, "克"));
 
-    EXPECT_NE(idMl, idG);  // 不同单位 → 新行，不覆盖旧行（三维唯一约束落库后亦不冲突）
+    EXPECT_NE(idMl, idG); // 不同单位 → 新行，不覆盖旧行（三维唯一约束落库后亦不冲突）
     auto rows = fetchByName(uid, "集成测试料酒");
     ASSERT_EQ(rows.size(), 2u);
     EXPECT_EQ(rows[0].unit, "毫升");
@@ -256,7 +246,7 @@ TEST_F(InventoryDbTest, 原有到期日早于新批次则保留原到期日) {
     PgInventoryRepository repo(testPool());
 
     int id = repo.upsertInventory(uid, makeReq("集成测试酸奶", 100, "克", "2026-06-01"));
-    repo.upsertInventory(uid, makeReq("集成测试酸奶", 50, "克", "2026-05-01"));  // 更早的新批次
+    repo.upsertInventory(uid, makeReq("集成测试酸奶", 50, "克", "2026-05-01")); // 更早的新批次
     auto row = fetchRow(id);
     ASSERT_TRUE(row.has_value());
     EXPECT_DOUBLE_EQ(row->quantity, 150.0);
@@ -316,8 +306,7 @@ TEST_F(InventoryDbTest, 编辑缺省过期日清空既有过期日) {
 TEST_F(InventoryDbTest, 编辑不存在条目返回404) {
     int uid = ensureUser();
     PgInventoryRepository repo(testPool());
-    expectError([&] { repo.updateInventoryItem(uid, 9999999, makeReq("集成测试料酒", 1, "毫升")); },
-                404);
+    expectError([&] { repo.updateInventoryItem(uid, 9999999, makeReq("集成测试料酒", 1, "毫升")); }, 404);
 }
 
 TEST_F(InventoryDbTest, 编辑他人条目返回404) {
@@ -327,8 +316,7 @@ TEST_F(InventoryDbTest, 编辑他人条目返回404) {
 
     int idB = repo.upsertInventory(uidB, makeReq("集成测试料酒", 15, "毫升"));
     // A 编辑 B 的条目 → 归属校验失败，404 而非越权更新
-    expectError([&] { repo.updateInventoryItem(uidA, idB, makeReq("集成测试料酒", 99, "毫升")); },
-                404);
+    expectError([&] { repo.updateInventoryItem(uidA, idB, makeReq("集成测试料酒", 99, "毫升")); }, 404);
     // B 的行未被改动
     auto row = fetchRow(idB);
     ASSERT_TRUE(row.has_value());
@@ -343,9 +331,7 @@ TEST_F(InventoryDbTest, 编辑改名撞同名同单位唯一约束返回409且�
     int idSauce = repo.upsertInventory(uid, makeReq("集成测试蚝油", 1, "瓶"));
 
     // 把 料酒/毫升 行改名为 蚝油/瓶 → 与已有行撞 (user, name, unit) → 409
-    expectError([&] {
-        repo.updateInventoryItem(uid, idWine, makeReq("集成测试蚝油", 1, "瓶"));
-    }, 409, "同名同单位");
+    expectError([&] { repo.updateInventoryItem(uid, idWine, makeReq("集成测试蚝油", 1, "瓶")); }, 409, "同名同单位");
 
     // 冲突事务回滚，两行原样保留
     auto wine = fetchRow(idWine);
@@ -399,8 +385,15 @@ TEST_F(InventoryDbTest, 勾选回流跨单位新建行保留旧行) {
     ASSERT_EQ(rows.size(), 2u);
     bool foundOld = false, foundNew = false;
     for (const auto& r : rows) {
-        if (r.id == oldId) { foundOld = true; EXPECT_EQ(r.unit, "袋"); EXPECT_DOUBLE_EQ(r.quantity, 1.0); }
-        if (r.unit == "克") { foundNew = true; EXPECT_DOUBLE_EQ(r.quantity, 500.0); }
+        if (r.id == oldId) {
+            foundOld = true;
+            EXPECT_EQ(r.unit, "袋");
+            EXPECT_DOUBLE_EQ(r.quantity, 1.0);
+        }
+        if (r.unit == "克") {
+            foundNew = true;
+            EXPECT_DOUBLE_EQ(r.quantity, 500.0);
+        }
     }
     EXPECT_TRUE(foundOld) << "旧行（袋）必须保留";
     EXPECT_TRUE(foundNew) << "新行（克）应新建";
@@ -418,12 +411,12 @@ TEST_F(InventoryDbTest, 取消勾选回退且重复勾选不会重复回流) {
 
     gocook::models::UpdateShoppingItemRequest req;
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // false→true：回流一次（2+8=10）
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // true→true：不重复回流（仍 10）
+    repo.updateShoppingListItem(uid, listId, itemId, req); // false→true：回流一次（2+8=10）
+    repo.updateShoppingListItem(uid, listId, itemId, req); // true→true：不重复回流（仍 10）
     req.checked = false;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // true→false：对称回退一次（10−8=2）
+    repo.updateShoppingListItem(uid, listId, itemId, req); // true→false：对称回退一次（10−8=2）
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // false→true：再次回流（2+8=10）
+    repo.updateShoppingListItem(uid, listId, itemId, req); // false→true：再次回流（2+8=10）
 
     auto row = fetchRow(invId);
     ASSERT_TRUE(row.has_value());
@@ -442,12 +435,12 @@ TEST_F(InventoryDbTest, 取消勾选回退缺行时静默跳过) {
 
     gocook::models::UpdateShoppingItemRequest req;
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回流 4 → 5
+    repo.updateShoppingListItem(uid, listId, itemId, req); // 回流 4 → 5
 
-    repo.deleteInventoryItem(uid, invId);                    // 用户手动清掉了库存行
+    repo.deleteInventoryItem(uid, invId); // 用户手动清掉了库存行
 
     req.checked = false;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回退：行不存在 → 不报错、不新建行
+    repo.updateShoppingListItem(uid, listId, itemId, req); // 回退：行不存在 → 不报错、不新建行
     auto rows = fetchByName(uid, "集成测试酸奶");
     EXPECT_TRUE(rows.empty()) << "回退不得凭空重建库存行";
 }
@@ -464,7 +457,7 @@ TEST_F(InventoryDbTest, 取消勾选回退触底即删行不留零量残留) {
 
     gocook::models::UpdateShoppingItemRequest req;
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回流 9 → 10
+    repo.updateShoppingListItem(uid, listId, itemId, req); // 回流 9 → 10
 
     // 模拟库存被消耗到低于待购量（直接经连接修改，作用域内用完即还）
     {
@@ -474,7 +467,7 @@ TEST_F(InventoryDbTest, 取消勾选回退触底即删行不留零量残留) {
     }
 
     req.checked = false;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回退 9：2−9 触底 → 整行删除
+    repo.updateShoppingListItem(uid, listId, itemId, req); // 回退 9：2−9 触底 → 整行删除
     EXPECT_FALSE(fetchRow(invId).has_value()) << "触底行应被删除，不留 0 量库存行";
     EXPECT_TRUE(fetchByName(uid, "集成测试黄油").empty());
 }
@@ -491,13 +484,12 @@ TEST_F(InventoryDbTest, 取消勾选回退清零不留零量库存行) {
 
     gocook::models::UpdateShoppingItemRequest req;
     req.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // 新建 500 克行
+    repo.updateShoppingListItem(uid, listId, itemId, req); // 新建 500 克行
     ASSERT_EQ(fetchByName(uid, "集成测试猪里脊").size(), 1u);
 
     req.checked = false;
-    repo.updateShoppingListItem(uid, listId, itemId, req);   // 回退清零 → 删行
-    EXPECT_TRUE(fetchByName(uid, "集成测试猪里脊").empty())
-        << "回退清零后不得遗留 0 量库存行";
+    repo.updateShoppingListItem(uid, listId, itemId, req); // 回退清零 → 删行
+    EXPECT_TRUE(fetchByName(uid, "集成测试猪里脊").empty()) << "回退清零后不得遗留 0 量库存行";
 }
 
 // ---- createShoppingList 复合建单（v2.18：可选 items，单事务） ----
@@ -510,11 +502,11 @@ TEST_F(InventoryDbTest, 创建清单携带条目单事务落库且按库存计�
 
     gocook::models::CreateShoppingListRequest req;
     req.name = "集成测试清单";
-    gocook::models::BatchShoppingItem withStock;   // 库存 3 → 待购 2
+    gocook::models::BatchShoppingItem withStock; // 库存 3 → 待购 2
     withStock.ingredient_name = "集成测试鸡翅";
     withStock.quantity = 5;
     withStock.unit = "斤";
-    gocook::models::BatchShoppingItem noStock;     // 无库存 → 待购 2
+    gocook::models::BatchShoppingItem noStock; // 无库存 → 待购 2
     noStock.ingredient_name = "集成测试柠檬";
     noStock.quantity = 2;
     noStock.unit = "个";
@@ -568,7 +560,7 @@ TEST_F(InventoryDbTest, 删除已勾选条目同事务回退库存) {
 
     gocook::models::UpdateShoppingItemRequest check;
     check.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, check);   // 回流 2 → 3
+    repo.updateShoppingListItem(uid, listId, itemId, check); // 回流 2 → 3
 
     repo.deleteShoppingListItem(uid, listId, itemId);
 
@@ -590,10 +582,10 @@ TEST_F(InventoryDbTest, 删除已勾选条目回退触底同样删行) {
 
     gocook::models::UpdateShoppingItemRequest check;
     check.checked = true;
-    repo.updateShoppingListItem(uid, listId, itemId, check);   // 回流 3 → 3
+    repo.updateShoppingListItem(uid, listId, itemId, check); // 回流 3 → 3
     ASSERT_EQ(fetchByName(uid, "集成测试莲藕").size(), 1u);
 
-    repo.deleteShoppingListItem(uid, listId, itemId);          // 删除已勾选条目：回退触底
+    repo.deleteShoppingListItem(uid, listId, itemId); // 删除已勾选条目：回退触底
     EXPECT_TRUE(fetchByName(uid, "集成测试莲藕").empty()) << "触底回退应删行";
 }
 
@@ -631,14 +623,16 @@ TEST_F(InventoryDbTest, 库存同名多单位行不撑大推荐计数与匹配�
     invRepo.upsertInventory(uid, makeReq("集成测试料酒", 100, "克"));
 
     // 菜谱只需一种食材：料酒 10 毫升
-    int recipeId = insertRecipeWithIngredient(
-        uid, R"([{"name":"集成测试料酒","quantity":10,"unit":"毫升"}])");
+    int recipeId = insertRecipeWithIngredient(uid, R"([{"name":"集成测试料酒","quantity":10,"unit":"毫升"}])");
 
     auto result = recipeRepo.findRecommendedRecipes(uid, 1, 100);
 
     const gocook::models::RecommendedRecipe* mine = nullptr;
     for (const auto& rec : result.data) {
-        if (rec.id == recipeId) { mine = &rec; break; }
+        if (rec.id == recipeId) {
+            mine = &rec;
+            break;
+        }
     }
     ASSERT_NE(mine, nullptr) << "测试菜谱应出现在推荐候选里（approved + 有食材）";
     // 若 inv_names 不去重：1 个食材 join 2 行库存 → available_json 两条、match_count=2 → match_score=2.0
@@ -660,7 +654,7 @@ TEST_F(InventoryDbTest, 关键字过滤仅返回匹配行且total同步) {
     repo.upsertInventory(uid, makeReq("集成测试料酒", 100, "克"));
     repo.upsertInventory(uid, makeReq("集成测试料酒", 15, "毫升"));
     repo.upsertInventory(uid, makeReq("集成测试料酒", 1, "瓶"));
-    repo.upsertInventory(uid, makeReq("集成测试鸡蛋", 6, "个"));   // 干扰行：不含"料酒"
+    repo.upsertInventory(uid, makeReq("集成测试鸡蛋", 6, "个")); // 干扰行：不含"料酒"
 
     auto paged = repo.findInventoryFiltered(uid, 1, 50, "料酒");
 
@@ -676,7 +670,7 @@ TEST_F(InventoryDbTest, 关键字无匹配返回空结果) {
     PgInventoryRepository repo(testPool());
 
     repo.upsertInventory(uid, makeReq("集成测试鸡蛋", 6, "个"));
-    repo.upsertInventory(uid, makeReq("集成测试_蛋", 6, "个"));   // 含字面下划线的行：验证 _ 按字面匹配
+    repo.upsertInventory(uid, makeReq("集成测试_蛋", 6, "个")); // 含字面下划线的行：验证 _ 按字面匹配
 
     auto paged = repo.findInventoryFiltered(uid, 1, 50, "不存在的食材XYZ");
     EXPECT_EQ(paged.pagination.total, 0);
@@ -690,8 +684,7 @@ TEST_F(InventoryDbTest, 关键字无匹配返回空结果) {
         << "输入 _ 必须按字面匹配：只命中含字面下划线的行（转义失效时会作单字符通配符全命中）";
     EXPECT_EQ(pagedUnd.data[0].ingredient_name, "集成测试_蛋");
     auto pagedBsl = repo.findInventoryFiltered(uid, 1, 50, "\\");
-    EXPECT_EQ(pagedBsl.pagination.total, 0)
-        << "输入 \\ 必须按字面匹配（转义失效会触发 ESCAPE 解析异常或全命中）";
+    EXPECT_EQ(pagedBsl.pagination.total, 0) << "输入 \\ 必须按字面匹配（转义失效会触发 ESCAPE 解析异常或全命中）";
     // 对照：普通子串命中两行，证明带下划线行确实参与过滤（上一断言不是因数据缺失而通过）
     auto pagedEgg = repo.findInventoryFiltered(uid, 1, 50, "蛋");
     EXPECT_EQ(pagedEgg.pagination.total, 2);

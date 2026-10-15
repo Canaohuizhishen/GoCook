@@ -8,10 +8,8 @@ namespace {
 // 快照兜底的本地过滤：近似服务端 ingredient_name ILIKE '%kw%'（子串匹配、忽略大小写）语义。
 // 仅用于断网兜底展示（服务端不参与），恢复联网/重试成功后由服务端结果替换。
 // 快照条目为 DataMapper camelCase map，名称键为 "ingredientName"；空词返回全量。
-QVariantList filterSnapshotByKeyword(const QVariantList& items, const QString& keyword)
-{
-    if (keyword.isEmpty())
-        return items;
+QVariantList filterSnapshotByKeyword(const QVariantList& items, const QString& keyword) {
+    if (keyword.isEmpty()) return items;
     QVariantList filtered;
     for (const QVariant& item : items) {
         if (item.toMap().value("ingredientName").toString().contains(keyword, Qt::CaseInsensitive))
@@ -21,11 +19,10 @@ QVariantList filterSnapshotByKeyword(const QVariantList& items, const QString& k
 }
 } // namespace
 
-InventoryViewModel::InventoryViewModel(IGoCookApi *api, QObject *parent, LocalDatabase *db)
-    : QObject(parent)
-    , m_api(api)
-    , m_db(db ? db : LocalDatabase::instance())
-{
+InventoryViewModel::InventoryViewModel(IGoCookApi* api, QObject* parent, LocalDatabase* db)
+    : QObject(parent),
+      m_api(api),
+      m_db(db ? db : LocalDatabase::instance()) {
     // 退避重试：单次触发，tick 里重拉首页；成功/clearAll/登出时停表（见各分支）
     m_retryTimer.setSingleShot(true);
     connect(&m_retryTimer, &QTimer::timeout, this, &InventoryViewModel::onRetryTick);
@@ -36,26 +33,34 @@ InventoryViewModel::InventoryViewModel(IGoCookApi *api, QObject *parent, LocalDa
     connect(this, &InventoryViewModel::loadFailedChanged, this, &InventoryViewModel::viewStateChanged);
 }
 
-QVariantList InventoryViewModel::items() const { return m_items; }
-bool InventoryViewModel::isLoading() const { return m_isLoading; }
-bool InventoryViewModel::hasMore() const { return m_hasMore; }
-QString InventoryViewModel::filterText() const { return m_filterText; }
-bool InventoryViewModel::loadFailed() const { return m_loadFailed; }
-QString InventoryViewModel::loadFailedMessage() const { return m_loadFailedMessage; }
+QVariantList InventoryViewModel::items() const {
+    return m_items;
+}
+bool InventoryViewModel::isLoading() const {
+    return m_isLoading;
+}
+bool InventoryViewModel::hasMore() const {
+    return m_hasMore;
+}
+QString InventoryViewModel::filterText() const {
+    return m_filterText;
+}
+bool InventoryViewModel::loadFailed() const {
+    return m_loadFailed;
+}
+QString InventoryViewModel::loadFailedMessage() const {
+    return m_loadFailedMessage;
+}
 
-InventoryViewModel::ViewState InventoryViewModel::viewState() const
-{
+InventoryViewModel::ViewState InventoryViewModel::viewState() const {
     // 判定顺序与页面原组合表达式一一对应（见 h 中枚举注释）：
     //   失败且无数据（优先——重试在途时离线视图保持稳定不闪烁）→ 空白加载中 → 空态 → 有数据
-    if (m_loadFailed && m_items.isEmpty())
-        return ViewState::Offline;
-    if (m_items.isEmpty())
-        return m_isLoading ? ViewState::InitialLoading : ViewState::Empty;
+    if (m_loadFailed && m_items.isEmpty()) return ViewState::Offline;
+    if (m_items.isEmpty()) return m_isLoading ? ViewState::InitialLoading : ViewState::Empty;
     return ViewState::Content;
 }
 
-void InventoryViewModel::setFilterText(const QString& text)
-{
+void InventoryViewModel::setFilterText(const QString& text) {
     const QString trimmed = text.trimmed();
     if (trimmed == m_filterText) return;
     m_filterText = trimmed;
@@ -65,8 +70,7 @@ void InventoryViewModel::setFilterText(const QString& text)
     loadInventory(1, m_pageSize);
 }
 
-void InventoryViewModel::refresh()
-{
+void InventoryViewModel::refresh() {
     m_currentPage = 1;
     m_items.clear();
     emit itemsChanged();
@@ -75,14 +79,13 @@ void InventoryViewModel::refresh()
     loadInventory(1, m_pageSize);
 }
 
-void InventoryViewModel::clearAll()
-{
+void InventoryViewModel::clearAll() {
     m_items.clear();
     m_hasMore = false;
     m_currentPage = 1;
     m_totalPages = 0;
     m_isLoading = false;
-    m_epoch.invalidate();  // 作废在途响应：旧账号/旧轮次的回调到达时票据已失效，静默退出
+    m_epoch.invalidate(); // 作废在途响应：旧账号/旧轮次的回调到达时票据已失效，静默退出
     m_filterText.clear();
     m_lastLoadFailed = false;
     m_itemsFromSnapshotFallback = false;
@@ -94,14 +97,12 @@ void InventoryViewModel::clearAll()
     emit isLoadingChanged();
 }
 
-void InventoryViewModel::loadNextPage()
-{
+void InventoryViewModel::loadNextPage() {
     if (m_isLoading || !m_hasMore) return;
     loadInventory(m_currentPage + 1, m_pageSize);
 }
 
-void InventoryViewModel::loadInventory(int page, int size)
-{
+void InventoryViewModel::loadInventory(int page, int size) {
     // 翻页（page>1）是当前轮次的延续：仅当无在途请求时才发出，防止翻页请求堆叠。
     // 首屏/换词/刷新（page<=1）= 开启新一轮：begin 取票据并作废全部在途、立即发送，不被在途请求阻塞——
     // 旧响应到达时票据已失效，由回调侧静默丢弃（见下），无需此处等待或事后补发
@@ -115,10 +116,11 @@ void InventoryViewModel::loadInventory(int page, int size)
     // 该在途响应属于旧账号——静默丢弃，避免旧账号数据串入当前界面；会话未变但票据已失效（在途期间
     // 换词/刷新/clearAll），本响应已被更新的请求取代——同样静默丢弃（数据由最新请求填充，避免旧词结果闪回）
     const auto session = SessionSnapshot::capture(m_api);
-    m_api->getInventory(page, size, m_filterText.toStdString(),
-                        [self = QPointer<InventoryViewModel>(this), page, session, epochAtSend](bool success,
-                              const gocook::models::PagedInventory& data,
-                              const std::string& error) {
+    m_api->getInventory(page,
+                        size,
+                        m_filterText.toStdString(),
+                        [self = QPointer<InventoryViewModel>(this), page, session, epochAtSend](
+                            bool success, const gocook::models::PagedInventory& data, const std::string& error) {
                             if (!self) return;
                             // 会话已切换：过期响应作废。仅当本响应仍属最新轮次（无新请求接管、
                             // clearAll 未执行）时复位加载标记防页面卡死；否则状态由新请求/clearAll 管理
@@ -160,8 +162,7 @@ void InventoryViewModel::loadInventory(int page, int size)
                                 return;
                             }
 
-                            if (page == 1)
-                                self->m_items.clear();
+                            if (page == 1) self->m_items.clear();
 
                             for (const auto& item : data.data)
                                 self->m_items.append(DataMapper::toMap(item));
@@ -188,40 +189,36 @@ void InventoryViewModel::loadInventory(int page, int size)
                         });
 }
 
-void InventoryViewModel::addItem(const QString& name, double quantity,
-                                  const QString& unit, const QString& expiryDate)
-{
+void InventoryViewModel::addItem(const QString& name, double quantity, const QString& unit, const QString& expiryDate) {
     gocook::models::UpsertInventoryRequest req;
     req.ingredient_name = name.toStdString();
     req.quantity = quantity;
     req.unit = unit.toStdString();
-    if (!expiryDate.isEmpty())
-        req.expiry_date = expiryDate.toStdString();
+    if (!expiryDate.isEmpty()) req.expiry_date = expiryDate.toStdString();
 
-    m_api->upsertInventory(req, [self = QPointer<InventoryViewModel>(this)](bool success, int id, const std::string& error) {
-        if (!self) return;
-        if (success) {
-            self->refresh();
-        } else {
-            emit self->errorOccurred(QString::fromStdString(error));
-        }
-    });
+    m_api->upsertInventory(req,
+                           [self = QPointer<InventoryViewModel>(this)](bool success, int id, const std::string& error) {
+                               if (!self) return;
+                               if (success) {
+                                   self->refresh();
+                               } else {
+                                   emit self->errorOccurred(QString::fromStdString(error));
+                               }
+                           });
 }
 
-void InventoryViewModel::updateItem(int itemId, const QString& name, double quantity,
-                                     const QString& unit, const QString& expiryDate)
-{
+void InventoryViewModel::updateItem(
+    int itemId, const QString& name, double quantity, const QString& unit, const QString& expiryDate) {
     gocook::models::UpsertInventoryRequest req;
     req.ingredient_name = name.toStdString();
     req.quantity = quantity;
     req.unit = unit.toStdString();
-    if (!expiryDate.isEmpty())
-        req.expiry_date = expiryDate.toStdString();
+    if (!expiryDate.isEmpty()) req.expiry_date = expiryDate.toStdString();
 
     // 编辑 = 按 id 整行替换（PUT /api/inventory/:id）：改名/改单位/改数量均为替换而非累加
     // （决策 2026-09-04：添加页走 POST 累加，编辑入口走 PUT 替换）
-    m_api->updateInventoryItem(itemId, req,
-        [self = QPointer<InventoryViewModel>(this)](bool success, const std::string& error) {
+    m_api->updateInventoryItem(
+        itemId, req, [self = QPointer<InventoryViewModel>(this)](bool success, const std::string& error) {
             if (!self) return;
             if (success) {
                 self->refresh();
@@ -231,8 +228,7 @@ void InventoryViewModel::updateItem(int itemId, const QString& name, double quan
         });
 }
 
-void InventoryViewModel::deleteItem(int itemId)
-{
+void InventoryViewModel::deleteItem(int itemId) {
     // 乐观删除：保存旧列表用于回滚
     QVariantList oldItems = m_items;
 
@@ -252,44 +248,37 @@ void InventoryViewModel::deleteItem(int itemId)
 
     // 2. 发 API 请求
     m_api->deleteInventoryItem(itemId,
-        [self = QPointer<InventoryViewModel>(this), itemId, oldItems, removedName, removedUnit]
-        (bool success, const std::string& error) {
-            if (!self) return;
-            if (!success) {
-                // 失败 → 回滚（快照本未改动，无需同步）
-                self->m_items = oldItems;
-                emit self->itemsChanged();
-                emit self->errorOccurred(QString::fromStdString(error));
-                return;
-            }
-            // 成功 → 快照行同步移除（防"删除后断网离线兜底复活已删项"）。
-            // 行级删除按复合键（ingredient_name + unit）定位，过滤/分页/快照兜底显示态下均精确成立；
-            // 行不在快照中时为 no-op（DB 层保证）
-            self->m_db->removeInventoryCacheItem(removedName, removedUnit);
-        });
+                               [self = QPointer<InventoryViewModel>(this), itemId, oldItems, removedName, removedUnit](
+                                   bool success, const std::string& error) {
+                                   if (!self) return;
+                                   if (!success) {
+                                       // 失败 → 回滚（快照本未改动，无需同步）
+                                       self->m_items = oldItems;
+                                       emit self->itemsChanged();
+                                       emit self->errorOccurred(QString::fromStdString(error));
+                                       return;
+                                   }
+                                   // 成功 → 快照行同步移除（防"删除后断网离线兜底复活已删项"）。
+                                   // 行级删除按复合键（ingredient_name + unit）定位，过滤/分页/快照兜底显示态下均精确成立；
+                                   // 行不在快照中时为 no-op（DB 层保证）
+                                   self->m_db->removeInventoryCacheItem(removedName, removedUnit);
+                               });
 }
 
-void InventoryViewModel::onNetworkRestored()
-{
+void InventoryViewModel::onNetworkRestored() {
     // 联网即同步：仅当数据可能过期（上次首页失败 / 没任何数据可显示）时重拉；
     // 健康数据不打扰——避免用户浏览时列表无谓跳动
-    if (m_api->authToken().empty())
-        return; // 未登录：无数据可同步
-    if (m_isLoading)
-        return; // 已有在途请求，其结果即最新
-    if (!m_lastLoadFailed && !m_items.isEmpty())
-        return;
+    if (m_api->authToken().empty()) return; // 未登录：无数据可同步
+    if (m_isLoading) return;                // 已有在途请求，其结果即最新
+    if (!m_lastLoadFailed && !m_items.isEmpty()) return;
     loadInventory(1, m_pageSize);
 }
 
-void InventoryViewModel::setRetryDelaysMs(const QList<int>& delays)
-{
-    if (!delays.isEmpty())
-        m_retryDelays = delays;
+void InventoryViewModel::setRetryDelaysMs(const QList<int>& delays) {
+    if (!delays.isEmpty()) m_retryDelays = delays;
 }
 
-void InventoryViewModel::handleFirstPageFailure(const QString& error)
-{
+void InventoryViewModel::handleFirstPageFailure(const QString& error) {
     // 首页加载失败：有内存数据 → 静默保留（与联网无异）；无内存数据 → 快照兜底；
     // 快照也不存在 → 置 loadFailed（页面离线视图呈现）
     m_lastLoadFailed = true;
@@ -323,8 +312,8 @@ void InventoryViewModel::handleFirstPageFailure(const QString& error)
     //  瞬时故障（网络层错误 / 服务器繁忙 503）→ 静默 + 退避重试（重试即反馈，不打扰）；
     //  非瞬时故障且列表原样保留（有数据非快照态）→ 页内提示——该路径不会自动重试，
     //   用户手动触发后必须知道失败（快照兜底/离线视图场景由对应呈现负责，保持静默）
-    const bool transient = (error == HttpGoCookApi::kNetworkErrorMessage ||
-                            error == HttpGoCookApi::kServerBusyErrorMessage);
+    const bool transient =
+        (error == HttpGoCookApi::kNetworkErrorMessage || error == HttpGoCookApi::kServerBusyErrorMessage);
     if (transient) {
         scheduleRetry();
     } else if (!m_items.isEmpty() && !m_itemsFromSnapshotFallback) {
@@ -332,33 +321,27 @@ void InventoryViewModel::handleFirstPageFailure(const QString& error)
     }
 }
 
-void InventoryViewModel::scheduleRetry()
-{
-    if (m_retryDelays.isEmpty())
-        return;
+void InventoryViewModel::scheduleRetry() {
+    if (m_retryDelays.isEmpty()) return;
     const int idx = qMin(m_retryAttempt, m_retryDelays.size() - 1);
     ++m_retryAttempt;
     m_retryTimer.start(m_retryDelays.at(idx));
 }
 
-void InventoryViewModel::stopRetry()
-{
+void InventoryViewModel::stopRetry() {
     m_retryTimer.stop();
     m_retryAttempt = 0;
 }
 
-void InventoryViewModel::clearLoadFailed()
-{
-    if (!m_loadFailed && m_loadFailedMessage.isEmpty())
-        return;
+void InventoryViewModel::clearLoadFailed() {
+    if (!m_loadFailed && m_loadFailedMessage.isEmpty()) return;
     m_loadFailed = false;
     m_loadFailedMessage.clear();
     emit loadFailedChanged();
     emit loadFailedMessageChanged();
 }
 
-void InventoryViewModel::onRetryTick()
-{
+void InventoryViewModel::onRetryTick() {
     // 登出后不再重试；否则重拉首页（成功会经回调停表，失败会再排下一档）
     if (m_api->authToken().empty()) {
         stopRetry();

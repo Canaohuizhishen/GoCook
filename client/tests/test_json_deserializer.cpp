@@ -35,8 +35,7 @@ QJsonObject objFromJson(const char* text) {
 
 // ==================== parsePagination ====================
 
-TEST(JsonDeserializerTest, 分页元信息解析与缺省)
-{
+TEST(JsonDeserializerTest, 分页元信息解析与缺省) {
     const auto root = objFromJson(R"({"pagination":{"page":2,"size":20,"total":45,"total_pages":3}})");
     const Pagination p = JsonDeserializer::parsePagination(root);
     EXPECT_EQ(p.page, 2);
@@ -53,8 +52,7 @@ TEST(JsonDeserializerTest, 分页元信息解析与缺省)
 
 // ==================== parseRecipeSummary ====================
 
-TEST(JsonDeserializerTest, 菜谱摘要全字段填充)
-{
+TEST(JsonDeserializerTest, 菜谱摘要全字段填充) {
     const auto obj = objFromJson(R"({
         "id": 7,
         "name": "红烧肉",
@@ -92,8 +90,7 @@ TEST(JsonDeserializerTest, 菜谱摘要全字段填充)
     EXPECT_EQ(r.tags[1], "宴客");
 }
 
-TEST(JsonDeserializerTest, 菜谱摘要缺字段与类型不符回退默认值)
-{
+TEST(JsonDeserializerTest, 菜谱摘要缺字段与类型不符回退默认值) {
     // 缺字段 + tags 非数组 + 数值字段收到字符串：宽容回退（0 / 空串 / 空列表），不抛异常
     const auto obj = objFromJson(R"({"id":"1","name":null,"calories":"高","avg_rating":"4.5","tags":"不是数组"})");
     const RecipeSummary r = JsonDeserializer::parseRecipeSummary(obj);
@@ -110,8 +107,7 @@ TEST(JsonDeserializerTest, 菜谱摘要缺字段与类型不符回退默认值)
 
 // ==================== parseRecipeDetail ====================
 
-TEST(JsonDeserializerTest, 菜谱详情嵌套解析与步骤可选字段)
-{
+TEST(JsonDeserializerTest, 菜谱详情嵌套解析与步骤可选字段) {
     const auto obj = objFromJson(R"({
         "id": 9,
         "name": "番茄炒蛋",
@@ -150,8 +146,7 @@ TEST(JsonDeserializerTest, 菜谱详情嵌套解析与步骤可选字段)
     EXPECT_FALSE(d.nutrition.has_data) << "缺 nutrition 块 → has_data=false";
 }
 
-TEST(JsonDeserializerTest, 详情营养has_data新旧服务端双分支)
-{
+TEST(JsonDeserializerTest, 详情营养has_data新旧服务端双分支) {
     // 新服务端：has_data=false 为权威判定（即使四项值非 0）
     const auto modern = objFromJson(R"({
         "id": 1,
@@ -176,8 +171,7 @@ TEST(JsonDeserializerTest, 详情营养has_data新旧服务端双分支)
 
 // ==================== parseRecommendedRecipe ====================
 
-TEST(JsonDeserializerTest, 推荐项公共字段同源且扩展字段解析)
-{
+TEST(JsonDeserializerTest, 推荐项公共字段同源且扩展字段解析) {
     const auto obj = objFromJson(R"({
         "id": 11,
         "name": "清蒸鲈鱼",
@@ -214,8 +208,7 @@ TEST(JsonDeserializerTest, 推荐项公共字段同源且扩展字段解析)
     EXPECT_EQ(rec.match_status.missing_ingredients[0].unit, "根");
 }
 
-TEST(JsonDeserializerTest, 推荐项缺match_status回退空列表)
-{
+TEST(JsonDeserializerTest, 推荐项缺match_status回退空列表) {
     const RecommendedRecipe rec = JsonDeserializer::parseRecommendedRecipe(objFromJson(R"({"id":2})"));
     EXPECT_EQ(rec.id, 2);
     EXPECT_TRUE(rec.match_status.available_ingredients.empty());
@@ -226,8 +219,7 @@ TEST(JsonDeserializerTest, 推荐项缺match_status回退空列表)
 
 // ==================== 基础小 DTO ====================
 
-TEST(JsonDeserializerTest, 视频评分投稿响应基础解析)
-{
+TEST(JsonDeserializerTest, 视频评分投稿响应基础解析) {
     const RecipeVideo v = JsonDeserializer::parseRecipeVideo(objFromJson(R"({
         "id": 3, "title": "教程", "platform": "bilibili", "url": "https://b23.tv/x",
         "thumbnail_url": "/t.png", "duration_seconds": 300
@@ -248,16 +240,15 @@ TEST(JsonDeserializerTest, 视频评分投稿响应基础解析)
     EXPECT_EQ(r.comment, "好吃");
     EXPECT_EQ(r.created_at, "2026-09-10");
 
-    const SubmitRecipeResponse s = JsonDeserializer::parseSubmitRecipeResponse(
-        objFromJson(R"({"id": 42, "status": "pending"})"));
+    const SubmitRecipeResponse s =
+        JsonDeserializer::parseSubmitRecipeResponse(objFromJson(R"({"id": 42, "status": "pending"})"));
     EXPECT_EQ(s.id, 42);
     EXPECT_EQ(s.status, "pending");
 }
 
 // ==================== parseMyRecipeStatus（经分页组合） ====================
 
-TEST(JsonDeserializerTest, 我的投稿reject_reason空值语义)
-{
+TEST(JsonDeserializerTest, 我的投稿reject_reason空值语义) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":20,"total":3,"total_pages":1},
         "data": [
@@ -278,8 +269,7 @@ TEST(JsonDeserializerTest, 我的投稿reject_reason空值语义)
 
 // ==================== parseNutritionReport ====================
 
-TEST(JsonDeserializerTest, 营养报告解析与has_data双分支)
-{
+TEST(JsonDeserializerTest, 营养报告解析与has_data双分支) {
     const auto obj = objFromJson(R"({
         "recipe_id": 8,
         "recipe_name": "水煮鱼片",
@@ -315,8 +305,7 @@ TEST(JsonDeserializerTest, 营养报告解析与has_data双分支)
 
 // ==================== 分页组合 ====================
 
-TEST(JsonDeserializerTest, 分页菜谱与推荐列表组合解析)
-{
+TEST(JsonDeserializerTest, 分页菜谱与推荐列表组合解析) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":20,"total":1,"total_pages":1},
         "data": [{"id":1,"name":"A","calories":100}]
@@ -346,8 +335,7 @@ TEST(JsonDeserializerTest, 分页菜谱与推荐列表组合解析)
     EXPECT_TRUE(recDefault.data.empty());
 }
 
-TEST(JsonDeserializerTest, 分页评分解析)
-{
+TEST(JsonDeserializerTest, 分页评分解析) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":10,"total":2,"total_pages":1},
         "data": [
@@ -364,10 +352,9 @@ TEST(JsonDeserializerTest, 分页评分解析)
 
 // ==================== parseLoginResponse / parseUserProfile ====================
 
-TEST(JsonDeserializerTest, 登录响应与用户资料解析)
-{
-    const LoginResponse lr = JsonDeserializer::parseLoginResponse(
-        objFromJson(R"({"token":"jwt.x","user_id":12,"username":"u1"})"));
+TEST(JsonDeserializerTest, 登录响应与用户资料解析) {
+    const LoginResponse lr =
+        JsonDeserializer::parseLoginResponse(objFromJson(R"({"token":"jwt.x","user_id":12,"username":"u1"})"));
     EXPECT_EQ(lr.token, "jwt.x");
     EXPECT_EQ(lr.user_id, 12);
     EXPECT_EQ(lr.username, "u1");
@@ -392,8 +379,7 @@ TEST(JsonDeserializerTest, 登录响应与用户资料解析)
 
 // ==================== parseUserPreferences ====================
 
-TEST(JsonDeserializerTest, 饮食偏好解析与缺省)
-{
+TEST(JsonDeserializerTest, 饮食偏好解析与缺省) {
     const UserPreferences prefs = JsonDeserializer::parseUserPreferences(objFromJson(R"({
         "likes": ["辣", "海鲜"], "dislikes": ["香菜"], "health_goal": "减脂"
     })"));
@@ -411,8 +397,7 @@ TEST(JsonDeserializerTest, 饮食偏好解析与缺省)
 
 // ==================== parseHealthProfileResponse / parseAvatarUploadResponse ====================
 
-TEST(JsonDeserializerTest, 健康指标响应全字段与增量响应)
-{
+TEST(JsonDeserializerTest, 健康指标响应全字段与增量响应) {
     // GET 全字段
     const HealthProfileResponse full = JsonDeserializer::parseHealthProfileResponse(objFromJson(R"({
         "height_cm": 180, "weight_kg": 75.5,
@@ -439,10 +424,9 @@ TEST(JsonDeserializerTest, 健康指标响应全字段与增量响应)
     EXPECT_EQ(inc.suggested_avoidances[0].reason, "血糖");
 }
 
-TEST(JsonDeserializerTest, 头像上传响应与缺失url)
-{
-    const AvatarUploadResponse ok = JsonDeserializer::parseAvatarUploadResponse(
-        objFromJson(R"({"avatar_url":"/uploads/tmp/u1.jpg"})"));
+TEST(JsonDeserializerTest, 头像上传响应与缺失url) {
+    const AvatarUploadResponse ok =
+        JsonDeserializer::parseAvatarUploadResponse(objFromJson(R"({"avatar_url":"/uploads/tmp/u1.jpg"})"));
     EXPECT_EQ(ok.avatar_url, "/uploads/tmp/u1.jpg");
 
     // 缺字段 → 空串（调用点据此判"无效的响应格式"）
@@ -452,8 +436,7 @@ TEST(JsonDeserializerTest, 头像上传响应与缺失url)
 
 // ==================== 收藏 / 通知 / 公告 ====================
 
-TEST(JsonDeserializerTest, 收藏项与分组解析)
-{
+TEST(JsonDeserializerTest, 收藏项与分组解析) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":20,"total":1,"total_pages":1},
         "data": [{
@@ -470,16 +453,15 @@ TEST(JsonDeserializerTest, 收藏项与分组解析)
     EXPECT_TRUE(paged.data[0].is_public);
     EXPECT_EQ(paged.data[0].favorited_at, "2026-09-01");
 
-    const FavoriteGroup g = JsonDeserializer::parseFavoriteGroup(
-        objFromJson(R"({"id":2,"name":"家常","sort_order":1,"count":5})"));
+    const FavoriteGroup g =
+        JsonDeserializer::parseFavoriteGroup(objFromJson(R"({"id":2,"name":"家常","sort_order":1,"count":5})"));
     EXPECT_EQ(g.id, 2);
     EXPECT_EQ(g.name, "家常");
     EXPECT_EQ(g.sort_order, 1);
     EXPECT_EQ(g.count, 5);
 }
 
-TEST(JsonDeserializerTest, 通知项可选字段空值语义与未读汇总映射)
-{
+TEST(JsonDeserializerTest, 通知项可选字段空值语义与未读汇总映射) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":20,"total":2,"total_pages":1},
         "data": [
@@ -499,8 +481,8 @@ TEST(JsonDeserializerTest, 通知项可选字段空值语义与未读汇总映�
     EXPECT_EQ(paged.data[1].trigger_user_name.value(), "小明");
     EXPECT_TRUE(paged.data[1].is_read);
 
-    const NotificationUnreadSummary s = JsonDeserializer::parseNotificationUnreadSummary(
-        objFromJson(R"({"review":3,"interaction":2,"system":true})"));
+    const NotificationUnreadSummary s =
+        JsonDeserializer::parseNotificationUnreadSummary(objFromJson(R"({"review":3,"interaction":2,"system":true})"));
     EXPECT_EQ(s.unread_review, 3);
     EXPECT_EQ(s.unread_interaction, 2);
     EXPECT_TRUE(s.has_new_announcement);
@@ -511,8 +493,7 @@ TEST(JsonDeserializerTest, 通知项可选字段空值语义与未读汇总映�
     EXPECT_FALSE(empty.has_new_announcement);
 }
 
-TEST(JsonDeserializerTest, 公告分页解析)
-{
+TEST(JsonDeserializerTest, 公告分页解析) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":10,"total":1,"total_pages":1},
         "data": [{"id":9,"title":"维护通知","content":"今晚维护","created_at":"2026-09-20"}]
@@ -526,8 +507,7 @@ TEST(JsonDeserializerTest, 公告分页解析)
 
 // ==================== 库存 / 购物清单 ====================
 
-TEST(JsonDeserializerTest, 库存项expiry空值语义与分页解析)
-{
+TEST(JsonDeserializerTest, 库存项expiry空值语义与分页解析) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":20,"total":2,"total_pages":1},
         "data": [
@@ -542,14 +522,13 @@ TEST(JsonDeserializerTest, 库存项expiry空值语义与分页解析)
     EXPECT_DOUBLE_EQ(paged.data[0].quantity, 5.0);
     EXPECT_EQ(paged.data[0].unit, "千克");
 
-    const InventoryItem withDate = JsonDeserializer::parseInventoryItem(
-        objFromJson(R"({"id":3,"expiry_date":"2026-10-01"})"));
+    const InventoryItem withDate =
+        JsonDeserializer::parseInventoryItem(objFromJson(R"({"id":3,"expiry_date":"2026-10-01"})"));
     ASSERT_TRUE(withDate.expiry_date.has_value());
     EXPECT_EQ(withDate.expiry_date.value(), "2026-10-01");
 }
 
-TEST(JsonDeserializerTest, 购物清单与批量响应解析)
-{
+TEST(JsonDeserializerTest, 购物清单与批量响应解析) {
     const ShoppingList list = JsonDeserializer::parseShoppingList(objFromJson(R"({
         "id": 4, "name": "周末采购",
         "items": [
@@ -585,8 +564,7 @@ TEST(JsonDeserializerTest, 购物清单与批量响应解析)
 
 // ==================== 我的评论（UserRatingItem） ====================
 
-TEST(JsonDeserializerTest, 我的评论分页解析与分页缺省口径)
-{
+TEST(JsonDeserializerTest, 我的评论分页解析与分页缺省口径) {
     const auto root = objFromJson(R"({
         "pagination": {"page":1,"size":10,"total":1,"total_pages":1},
         "data": [{"rating_id":5,"recipe_id":7,"recipe_name":"红烧肉","rating":4,"comment":"好吃","created_at":"t1","updated_at":"t2"}]

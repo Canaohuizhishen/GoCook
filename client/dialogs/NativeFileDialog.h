@@ -13,17 +13,15 @@
  * 用法（QML）：
  *   NativeFileDialog { onFileSelected: path => doUpload(path) }
  */
-class NativeFileDialog : public QObject
-{
+class NativeFileDialog : public QObject {
     Q_OBJECT
     // 声明式注册（qt_add_qml_module 模块内 → qmltypes/qmldir 单一来源，qmllint 可静态解析）
     QML_ELEMENT
 public:
-    explicit NativeFileDialog(QObject *parent = nullptr);
+    explicit NativeFileDialog(QObject* parent = nullptr);
 
     Q_INVOKABLE void open();
-    Q_INVOKABLE void openWithFilter(const QString& title,
-                                    const QString& filter);
+    Q_INVOKABLE void openWithFilter(const QString& title, const QString& filter);
 
 signals:
     /// 用户选择了文件

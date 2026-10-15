@@ -1,13 +1,11 @@
 #pragma once
 #include <httplib/httplib.h>
-#include <gocook/IServices.h>   // 只依赖抽象
+#include <gocook/IServices.h> // 只依赖抽象
 #include "../middleware/auth_middleware.h"
 
-class RecipeHandler
-{
+class RecipeHandler {
 public:
-    explicit RecipeHandler(gocook::services::IRecipeService& service,
-                           AuthMiddleware& auth);
+    explicit RecipeHandler(gocook::services::IRecipeService& service, AuthMiddleware& auth);
 
     // 公开菜谱列表
     void getRecipesPublic(const httplib::Request& req, httplib::Response& res);

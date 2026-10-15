@@ -17,7 +17,8 @@
  * @param res   HTTP 响应（验证失败时会被写入 401 错误体）
  * @return      解析后的 TokenInfo，valid 为 true 表示认证通过
  */
-inline gocook::models::TokenInfo requireAuth(AuthMiddleware& auth, const httplib::Request& req, httplib::Response& res) {
+inline gocook::models::TokenInfo
+requireAuth(AuthMiddleware& auth, const httplib::Request& req, httplib::Response& res) {
     auto info = auth.authenticate(req.get_header_value("Authorization"));
     if (!info.valid) {
         setErrorResponse(res, 401, "无效的访问令牌");

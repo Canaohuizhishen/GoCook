@@ -78,8 +78,7 @@ json toJson(const NotificationResponse& resp);
 
 // ======================== 分页包装（模板，必须在头文件） ========================
 
-template<typename PagedType, typename Func>
-inline json pagedToJson(const PagedType& paged, Func&& itemMapper) {
+template <typename PagedType, typename Func> inline json pagedToJson(const PagedType& paged, Func&& itemMapper) {
     json result;
     result["data"] = json::array();
     for (const auto& item : paged.data)

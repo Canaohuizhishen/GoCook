@@ -37,15 +37,12 @@
 namespace {
 
 // 轮询事件循环直到条件满足或超时（QNetworkAccessManager 是异步的，需要事件循环推进）
-template <typename Fn>
-bool waitUntil(const Fn& fn, int timeoutMs = 5000)
-{
+template <typename Fn> bool waitUntil(const Fn& fn, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!fn()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
@@ -57,17 +54,16 @@ class UsersMeStubServer {
 public:
     std::atomic<int> mode{0};
     std::atomic<int> reqCount{0};
-    std::atomic<int> avatarUploadReqCount{0};     // A5/A6：POST 头像暂存计数
-    std::atomic<int> profilePutReqCount{0};       // A5：PUT 资料计数
-    std::atomic<bool> profilePutHasAvatarUrl{false}; // A5：PUT 体携带暂存 avatar_url
-    std::atomic<int> discardAvatarReqCount{0};    // A6：DELETE 暂存头像计数
-    std::atomic<int> avatarUploadSeq{0};          // A7：上传序号（每次成功上传返回唯一 URL）
-    std::atomic<bool> avatarUploadFail{false};    // A7：模拟上传失败
+    std::atomic<int> avatarUploadReqCount{0};         // A5/A6：POST 头像暂存计数
+    std::atomic<int> profilePutReqCount{0};           // A5：PUT 资料计数
+    std::atomic<bool> profilePutHasAvatarUrl{false};  // A5：PUT 体携带暂存 avatar_url
+    std::atomic<int> discardAvatarReqCount{0};        // A6：DELETE 暂存头像计数
+    std::atomic<int> avatarUploadSeq{0};              // A7：上传序号（每次成功上传返回唯一 URL）
+    std::atomic<bool> avatarUploadFail{false};        // A7：模拟上传失败
     std::atomic<bool> discardBodyHasFirstUrl{false};  // A7：删除体含首个暂存 URL（黏性）
     std::atomic<bool> discardBodyHasSecondUrl{false}; // A7：删除体含第二次暂存 URL（黏性）
 
-    UsersMeStubServer()
-    {
+    UsersMeStubServer() {
         svr.Get("/api/users/me", [this](const httplib::Request&, httplib::Response& res) {
             reqCount++;
             switch (mode.load()) {
@@ -98,18 +94,16 @@ public:
                 return;
             }
             const int n = ++avatarUploadSeq;
-            const std::string url = n == 1
-                ? "/uploads/avatars/user_1_777.jpg"
-                : "/uploads/avatars/user_1_777_" + std::to_string(n) + ".jpg";
+            const std::string url = n == 1 ? "/uploads/avatars/user_1_777.jpg"
+                                           : "/uploads/avatars/user_1_777_" + std::to_string(n) + ".jpg";
             res.status = 200;
             res.set_content("{\"avatar_url\":\"" + url + "\"}", "application/json");
         });
         // A5 用：保存资料（断言 PUT 体携带 avatar_url；响应回显绑定后的资料）
         svr.Put("/api/users/me/profile", [this](const httplib::Request& req, httplib::Response& res) {
             profilePutReqCount++;
-            profilePutHasAvatarUrl =
-                req.body.find("avatar_url") != std::string::npos &&
-                req.body.find("/uploads/avatars/user_1_777.jpg") != std::string::npos;
+            profilePutHasAvatarUrl = req.body.find("avatar_url") != std::string::npos &&
+                                     req.body.find("/uploads/avatars/user_1_777.jpg") != std::string::npos;
             res.status = 200;
             res.set_content(R"({"id":1,"username":"tester","display_name":"测试","email":"t@test.com",)"
                             R"("phone":"13800000000","avatar_url":"/uploads/avatars/user_1_777.jpg",)"
@@ -119,34 +113,28 @@ public:
         // A6/A7 用：放弃暂存头像（黏性记录删除体指向哪个暂存 URL）
         svr.Delete("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
             discardAvatarReqCount++;
-            if (req.body.find("/uploads/avatars/user_1_777.jpg") != std::string::npos)
-                discardBodyHasFirstUrl = true;
-            if (req.body.find("user_1_777_2") != std::string::npos)
-                discardBodyHasSecondUrl = true;
+            if (req.body.find("/uploads/avatars/user_1_777.jpg") != std::string::npos) discardBodyHasFirstUrl = true;
+            if (req.body.find("user_1_777_2") != std::string::npos) discardBodyHasSecondUrl = true;
             res.status = 200;
             res.set_content(R"({"message":"已放弃未保存的头像"})", "application/json");
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
-        if (port <= 0)
-            throw std::runtime_error("UsersMeStubServer: bind_to_any_port failed");
+        if (port <= 0) throw std::runtime_error("UsersMeStubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
 
         // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running()
         // 显式暴露启动失败；同时消除"端口已绑定但尚未开始监听"的竞态窗口
         for (int i = 0; i < 200; ++i) {
-            if (svr.is_running())
-                return;
+            if (svr.is_running()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         throw std::runtime_error("UsersMeStubServer: failed to start");
     }
 
-    ~UsersMeStubServer()
-    {
+    ~UsersMeStubServer() {
         svr.stop();
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
     }
 
     std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
@@ -159,8 +147,7 @@ private:
 
 class AuthVmTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         // 独立内存库注入（不触生产数据路径）；预置上次会话：user 行 + 库存快照
         connName = QStringLiteral("gocook_authtest_%1").arg(s_counter++);
         testDb = LocalDatabase::createForTesting(QStringLiteral(":memory:"), connName);
@@ -172,15 +159,14 @@ protected:
         ASSERT_TRUE(testDb->saveInventoryCache(snapshot));
     }
 
-    void TearDown() override
-    {
+    void TearDown() override {
         delete testDb;
         testDb = nullptr;
         QSqlDatabase::removeDatabase(connName);
     }
 
     HttpGoCookApi api;
-    LocalDatabase *testDb = nullptr;
+    LocalDatabase* testDb = nullptr;
     QString connName;
     static int s_counter;
 };
@@ -188,8 +174,7 @@ protected:
 int AuthVmTest::s_counter = 0;
 
 // ==================== A1：瞬时失败（网络层错误）→ 保留凭证+快照，乐观登录 ====================
-TEST_F(AuthVmTest, 断网启动保留凭证快照并乐观登录)
-{
+TEST_F(AuthVmTest, 断网启动保留凭证快照并乐观登录) {
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1")); // 无监听：连接拒绝 → 网络层错误
 
     AuthViewModel vm(&api, nullptr, testDb);
@@ -205,8 +190,7 @@ TEST_F(AuthVmTest, 断网启动保留凭证快照并乐观登录)
 }
 
 // ==================== A2：瞬时失败（503）→ 同上 ====================
-TEST_F(AuthVmTest, 服务器繁忙启动保留凭证快照并乐观登录)
-{
+TEST_F(AuthVmTest, 服务器繁忙启动保留凭证快照并乐观登录) {
     UsersMeStubServer stub;
     stub.mode = 2; // 503 服务器繁忙
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -222,8 +206,7 @@ TEST_F(AuthVmTest, 服务器繁忙启动保留凭证快照并乐观登录)
 }
 
 // ==================== A3：服务端明确拒绝（401）→ 清理凭证与快照 ====================
-TEST_F(AuthVmTest, 令牌被拒启动清理凭证与快照)
-{
+TEST_F(AuthVmTest, 令牌被拒启动清理凭证与快照) {
     UsersMeStubServer stub;
     stub.mode = 1; // 401 无效令牌
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -240,8 +223,7 @@ TEST_F(AuthVmTest, 令牌被拒启动清理凭证与快照)
 }
 
 // ==================== A4：成功路径基线 ====================
-TEST_F(AuthVmTest, 校验成功进入登录态并填充资料)
-{
+TEST_F(AuthVmTest, 校验成功进入登录态并填充资料) {
     UsersMeStubServer stub;
     stub.mode = 0; // 200
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -260,8 +242,7 @@ TEST_F(AuthVmTest, 校验成功进入登录态并填充资料)
 }
 
 // ==================== A5：上传仅暂存，保存才绑定 ====================
-TEST_F(AuthVmTest, 上传暂存保存后绑定生效)
-{
+TEST_F(AuthVmTest, 上传暂存保存后绑定生效) {
     UsersMeStubServer stub;
     stub.mode = 0;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -299,8 +280,7 @@ TEST_F(AuthVmTest, 上传暂存保存后绑定生效)
 }
 
 // ==================== A6：上传暂存，返回放弃即回滚 ====================
-TEST_F(AuthVmTest, 返回放弃暂存回滚且删除送达)
-{
+TEST_F(AuthVmTest, 返回放弃暂存回滚且删除送达) {
     UsersMeStubServer stub;
     stub.mode = 0;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -324,13 +304,11 @@ TEST_F(AuthVmTest, 返回放弃暂存回滚且删除送达)
     vm.discardPendingAvatar();
     EXPECT_FALSE(vm.hasPendingAvatar()) << "放弃必须本地立即生效（UI 先回滚）";
     EXPECT_EQ(vm.profileAvatarUrl(), QStringLiteral("/uploads/a.png")) << "已保存资料不受影响";
-    ASSERT_TRUE(waitUntil([&]() { return stub.discardAvatarReqCount.load() == 1; }))
-        << "放弃请求应送达服务端";
+    ASSERT_TRUE(waitUntil([&]() { return stub.discardAvatarReqCount.load() == 1; })) << "放弃请求应送达服务端";
 }
 
 // ==================== A7：重传失败不丢旧暂存，新上传成功才丢弃 ====================
-TEST_F(AuthVmTest, 重传失败保留旧暂存成功后才丢弃)
-{
+TEST_F(AuthVmTest, 重传失败保留旧暂存成功后才丢弃) {
     UsersMeStubServer stub;
     stub.mode = 0;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -367,8 +345,7 @@ TEST_F(AuthVmTest, 重传失败保留旧暂存成功后才丢弃)
     // 重传 C 成功：此刻才丢弃旧暂存 A，pending 切换为新 URL
     stub.avatarUploadFail = false;
     vm.uploadAvatar(img.fileName());
-    ASSERT_TRUE(waitUntil([&]() { return stub.discardAvatarReqCount.load() == 1; }))
-        << "新上传成功后应丢弃旧暂存";
+    ASSERT_TRUE(waitUntil([&]() { return stub.discardAvatarReqCount.load() == 1; })) << "新上传成功后应丢弃旧暂存";
     EXPECT_TRUE(stub.discardBodyHasFirstUrl.load()) << "被丢弃的应是首个暂存 URL";
     EXPECT_FALSE(stub.discardBodyHasSecondUrl.load()) << "新暂存不得被误丢";
     EXPECT_EQ(vm.profileAvatarUrl(), QStringLiteral("/uploads/a.png")) << "绑定仍待保存";
@@ -381,8 +358,7 @@ TEST_F(AuthVmTest, 重传失败保留旧暂存成功后才丢弃)
 }
 
 // ==================== A8：sessionEnded —— 会话结束的统一出口 ====================
-TEST_F(AuthVmTest, 会话结束信号登出恰一次游客与重复登出不再发)
-{
+TEST_F(AuthVmTest, 会话结束信号登出恰一次游客与重复登出不再发) {
     UsersMeStubServer stub;
     stub.mode = 0; // 200
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));

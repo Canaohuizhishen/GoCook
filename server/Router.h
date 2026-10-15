@@ -40,15 +40,15 @@ public:
     void setupRoutes(httplib::Server& svr);
 
 private:
-    ConnectionPool& db_;                        ///< 数据库连接池
-    RecipeHandler& recipeHandler_;              ///< 菜谱处理器
-    UserHandler& userHandler_;                  ///< 用户处理器
-    InventoryHandler& inventoryHandler_;        ///< 库存处理器
-    MealPlanHandler& mealPlanHandler_;          ///< 膳食计划处理器
-    AnnouncementHandler& announcementHandler_;  ///< 公告处理器
-    AdminHandler& adminHandler_;                ///< 管理员处理器
+    ConnectionPool& db_;                       ///< 数据库连接池
+    RecipeHandler& recipeHandler_;             ///< 菜谱处理器
+    UserHandler& userHandler_;                 ///< 用户处理器
+    InventoryHandler& inventoryHandler_;       ///< 库存处理器
+    MealPlanHandler& mealPlanHandler_;         ///< 膳食计划处理器
+    AnnouncementHandler& announcementHandler_; ///< 公告处理器
+    AdminHandler& adminHandler_;               ///< 管理员处理器
 
-    RateLimiter rateLimiter_;                   ///< 全局限流器
+    RateLimiter rateLimiter_; ///< 全局限流器
 
     // 构建全局限流规则（按路径前缀匹配）
     static std::vector<RateLimiter::Rule> createRateLimiterRules();

@@ -12,10 +12,14 @@ enum class LogLevel { Debug, Info, Warn, Error };
 // 日志级别转定宽字符串（如 "INFO "），用于日志前缀
 inline const char* logLevelName(LogLevel lv) {
     switch (lv) {
-        case LogLevel::Debug: return "DEBUG";
-        case LogLevel::Info:  return "INFO ";
-        case LogLevel::Warn:  return "WARN ";
-        case LogLevel::Error: return "ERROR";
+    case LogLevel::Debug:
+        return "DEBUG";
+    case LogLevel::Info:
+        return "INFO ";
+    case LogLevel::Warn:
+        return "WARN ";
+    case LogLevel::Error:
+        return "ERROR";
     }
     return "?????";
 }
@@ -23,7 +27,7 @@ inline const char* logLevelName(LogLevel lv) {
 // 字符串转日志级别（未知值回退为 Info）
 inline LogLevel logLevelFromStr(const std::string& s) {
     if (s == "debug") return LogLevel::Debug;
-    if (s == "warn")  return LogLevel::Warn;
+    if (s == "warn") return LogLevel::Warn;
     if (s == "error") return LogLevel::Error;
     return LogLevel::Info;
 }
@@ -44,8 +48,7 @@ inline void logWrite(LogLevel lv, const char* file, int line, const std::string&
 
     auto now = std::chrono::system_clock::now();
     auto time = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     char timeBuf[32];
     std::strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", std::localtime(&time));
@@ -56,16 +59,20 @@ inline void logWrite(LogLevel lv, const char* file, int line, const std::string&
         if (*p == '/' || *p == '\\') lastSlash = p + 1;
 
     std::lock_guard lock(gLogMutex);
-    fprintf(stderr, "[%s.%03d] [%s] %s:%d  %s\n",
-            timeBuf, static_cast<int>(ms.count()),
-            logLevelName(lv), lastSlash, line, msg.c_str());
+    fprintf(stderr,
+            "[%s.%03d] [%s] %s:%d  %s\n",
+            timeBuf,
+            static_cast<int>(ms.count()),
+            logLevelName(lv),
+            lastSlash,
+            line,
+            msg.c_str());
     fflush(stderr);
 }
 
 // printf 风格格式化后写日志（消息缓冲上限 2048 字节）
-template<typename... Args>
-inline void logWriteF(LogLevel lv, const char* file, int line,
-                      const char* fmt, Args&&... args) {
+template <typename... Args>
+inline void logWriteF(LogLevel lv, const char* file, int line, const char* fmt, Args&&... args) {
     char buf[2048];
     int n = snprintf(buf, sizeof(buf), fmt, std::forward<Args>(args)...);
     if (n < 0) return;
@@ -75,8 +82,8 @@ inline void logWriteF(LogLevel lv, const char* file, int line,
 // 输出 Debug 级别日志
 #define LOG_DEBUG(...) logWriteF(LogLevel::Debug, __FILE__, __LINE__, __VA_ARGS__)
 // 输出 Info 级别日志
-#define LOG_INFO(...)  logWriteF(LogLevel::Info,  __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_INFO(...) logWriteF(LogLevel::Info, __FILE__, __LINE__, __VA_ARGS__)
 // 输出 Warn 级别日志
-#define LOG_WARN(...)  logWriteF(LogLevel::Warn,  __FILE__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) logWriteF(LogLevel::Warn, __FILE__, __LINE__, __VA_ARGS__)
 // 输出 Error 级别日志
 #define LOG_ERROR(...) logWriteF(LogLevel::Error, __FILE__, __LINE__, __VA_ARGS__)

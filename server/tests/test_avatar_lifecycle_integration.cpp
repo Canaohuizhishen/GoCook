@@ -28,8 +28,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -55,9 +54,9 @@ bool dbAvailable() {
 // 环境变量守卫：用例内 set，析构时恢复原值（与 test_upload_paths.cpp 同一模式）
 class EnvGuard {
 public:
-    explicit EnvGuard(const char* name) : name_(name) {
-        if (const char* v = std::getenv(name); v != nullptr)
-            saved_ = std::string(v);
+    explicit EnvGuard(const char* name)
+        : name_(name) {
+        if (const char* v = std::getenv(name); v != nullptr) saved_ = std::string(v);
     }
     ~EnvGuard() {
         if (saved_)
@@ -79,13 +78,11 @@ constexpr const char* kTestUsername = "集成测试头像用户";
 class AvatarLifecycleDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         dbOk_ = true;
 
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-        base_ = std::filesystem::temp_directory_path()
-              / (std::string("gocook_avatar_it_") + info->name());
+        base_ = std::filesystem::temp_directory_path() / (std::string("gocook_avatar_it_") + info->name());
         std::error_code ec;
         std::filesystem::remove_all(base_, ec);
         std::filesystem::create_directories(base_ / "avatars");
@@ -114,26 +111,23 @@ protected:
     static int ensureUser() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
-            " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
-            " RETURNING id",
-            pqxx::params{kTestUsername});
+        pqxx::result r = ntxn.exec("INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
+                                   " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                                   " RETURNING id",
+                                   pqxx::params{kTestUsername});
         return r[0][0].as<int>();
     }
 
     static void setAvatarUrl(int userId, const std::string& url) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        ntxn.exec("UPDATE users SET avatar_url = $1 WHERE id = $2",
-                  pqxx::params{url, userId});
+        ntxn.exec("UPDATE users SET avatar_url = $1 WHERE id = $2", pqxx::params{url, userId});
     }
 
     static std::string getAvatarUrl(int userId) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec("SELECT avatar_url FROM users WHERE id = $1",
-                                   pqxx::params{userId});
+        pqxx::result r = ntxn.exec("SELECT avatar_url FROM users WHERE id = $1", pqxx::params{userId});
         return r.empty() ? std::string() : r[0]["avatar_url"].as<std::string>("");
     }
 
@@ -142,9 +136,7 @@ protected:
         ofs << "x";
     }
 
-    bool avatarFileExists(const std::string& filename) {
-        return std::filesystem::exists(base_ / "avatars" / filename);
-    }
+    bool avatarFileExists(const std::string& filename) { return std::filesystem::exists(base_ / "avatars" / filename); }
 
     /// 该用户命名空间下的托管文件名（如 user_<id>_1610000001.jpg）
     static std::string avatarName(int userId, long ts) {
@@ -195,8 +187,8 @@ TEST_F(AvatarLifecycleDbTest, 换绑回收被顶替文件) {
     repo.updateProfile(userId, profile);
 
     EXPECT_EQ(getAvatarUrl(userId), "/uploads/avatars/" + nameB);
-    EXPECT_FALSE(avatarFileExists(nameA));  // 被顶替的旧文件已回收
-    EXPECT_TRUE(avatarFileExists(nameB));   // 新绑定文件保留
+    EXPECT_FALSE(avatarFileExists(nameA)); // 被顶替的旧文件已回收
+    EXPECT_TRUE(avatarFileExists(nameB));  // 新绑定文件保留
 }
 
 TEST_F(AvatarLifecycleDbTest, 绑定值与旧值相同不删文件) {
@@ -207,7 +199,7 @@ TEST_F(AvatarLifecycleDbTest, 绑定值与旧值相同不删文件) {
 
     PgUserRepository repo(testPool());
     gocook::models::UpdateProfileRequest profile;
-    profile.avatar_url = "/uploads/avatars/" + name;  // 相同值：不应误删
+    profile.avatar_url = "/uploads/avatars/" + name; // 相同值：不应误删
     repo.updateProfile(userId, profile);
 
     EXPECT_TRUE(avatarFileExists(name));
@@ -222,6 +214,6 @@ TEST_F(AvatarLifecycleDbTest, 注销回收头像文件) {
     PgUserRepository repo(testPool());
     repo.deleteAccount(userId);
 
-    EXPECT_FALSE(avatarFileExists(name));  // 注销后头像文件已回收
-    EXPECT_EQ(getAvatarUrl(userId), "");   // 用户行已删除
+    EXPECT_FALSE(avatarFileExists(name)); // 注销后头像文件已回收
+    EXPECT_EQ(getAvatarUrl(userId), "");  // 用户行已删除
 }

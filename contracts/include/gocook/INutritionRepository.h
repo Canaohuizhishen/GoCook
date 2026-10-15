@@ -42,8 +42,7 @@ public:
      *         未匹配返回 nullopt。实现必须保持顺序（一次批量查询：VALUES 行号
      *         对齐 + LATERAL 去重，无 N+1，每个入参至多一行、规范名优先）。
      */
-    virtual std::vector<std::optional<IngredientNutrition>> findByNames(
-        const std::vector<std::string>& names) = 0;
+    virtual std::vector<std::optional<IngredientNutrition>> findByNames(const std::vector<std::string>& names) = 0;
 };
 
 } // namespace gocook::repository

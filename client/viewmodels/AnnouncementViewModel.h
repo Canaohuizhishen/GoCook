@@ -16,18 +16,20 @@
  *   - 消息页预览：loadPreview() 静默拉取最新一条公告（标题/时间）供消息页三横条展示；
  *     刻意不触发已读语义（不发 announcementsSeen、不上报水位）——红点只在真正进入本页时熄灭。
  */
-class AnnouncementViewModel : public QObject
-{
+class AnnouncementViewModel : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList announcements READ announcements NOTIFY announcementsChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)
     Q_PROPERTY(bool isRefreshing READ isRefreshing NOTIFY isRefreshingChanged)
-    Q_PROPERTY(QString previewTitle READ previewTitle NOTIFY previewChanged)          ///< 预览：最新公告标题（loadPreview 拉取；失败保留旧值）
-    Q_PROPERTY(QString previewCreatedAt READ previewCreatedAt NOTIFY previewChanged)  ///< 预览：最新公告时间（原始串，QML 做相对格式化）
+    Q_PROPERTY(QString previewTitle READ previewTitle NOTIFY
+                   previewChanged) ///< 预览：最新公告标题（loadPreview 拉取；失败保留旧值）
+    Q_PROPERTY(QString previewCreatedAt READ previewCreatedAt NOTIFY
+                   previewChanged) ///< 预览：最新公告时间（原始串，QML 做相对格式化）
 
 public:
-    explicit AnnouncementViewModel(IGoCookApi *api, QObject *parent = nullptr);   ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
+    explicit AnnouncementViewModel(IGoCookApi* api,
+                                   QObject* parent = nullptr); ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
 
     QVariantList announcements() const;
     bool isLoading() const;
@@ -68,15 +70,15 @@ signals:
     void previewChanged();
 
 private:
-    IGoCookApi *m_api;                ///< API 门面（构造注入）
-    QVariantList m_announcements;     ///< 已加载公告（page 递增追加）
-    bool m_isLoading = false;         ///< 加载请求在途
-    bool m_hasMore = false;           ///< 还有下一页
-    bool m_isRefreshing = false;      ///< 刷新态（refresh 置真；完成回调置假）
-    int m_currentPage = 1;            ///< 已加载到第几页
-    int m_totalPages = 0;             ///< 服务端总页数
-    int m_reportedWatermark = 0;      ///< 本会话已成功上报的水位（防重复；clearAll 重置）
-    QString m_previewTitle;           ///< 预览：最新公告标题（loadPreview 拉取）
-    QString m_previewCreatedAt;       ///< 预览：最新公告时间（原始串）
-    QSet<int> m_hiddenIds;            ///< 会话级隐藏的公告 id（"删除"按钮；clearAll 清空）
+    IGoCookApi* m_api;            ///< API 门面（构造注入）
+    QVariantList m_announcements; ///< 已加载公告（page 递增追加）
+    bool m_isLoading = false;     ///< 加载请求在途
+    bool m_hasMore = false;       ///< 还有下一页
+    bool m_isRefreshing = false;  ///< 刷新态（refresh 置真；完成回调置假）
+    int m_currentPage = 1;        ///< 已加载到第几页
+    int m_totalPages = 0;         ///< 服务端总页数
+    int m_reportedWatermark = 0;  ///< 本会话已成功上报的水位（防重复；clearAll 重置）
+    QString m_previewTitle;       ///< 预览：最新公告标题（loadPreview 拉取）
+    QString m_previewCreatedAt;   ///< 预览：最新公告时间（原始串）
+    QSet<int> m_hiddenIds;        ///< 会话级隐藏的公告 id（"删除"按钮；clearAll 清空）
 };

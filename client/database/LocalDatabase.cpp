@@ -15,12 +15,11 @@ namespace {
 //   v1 = 库存快照复合主键结构首版（详情表遗留旧结构未修复）
 //   v2 = 当前：修复"明细列"老结构详情表 + 清理已拆功能的死表（recipes_cache / pending_operations）
 constexpr int kSchemaVersion = 2;
-}
+} // namespace
 
 LocalDatabase* LocalDatabase::m_instance = nullptr;
 
-LocalDatabase* LocalDatabase::instance()
-{
+LocalDatabase* LocalDatabase::instance() {
     // call_once：并发首次调用只构造一个实例。单例有意不析构（进程级对象，
     // 避免静态析构阶段触碰已销毁的 Qt 运行时）
     static std::once_flag once;
@@ -28,24 +27,21 @@ LocalDatabase* LocalDatabase::instance()
     return m_instance;
 }
 
-LocalDatabase::LocalDatabase(QObject *parent) : QObject(parent)
-{
+LocalDatabase::LocalDatabase(QObject* parent)
+    : QObject(parent) {
     initialize();
 }
 
-LocalDatabase* LocalDatabase::createForTesting(const QString& dbPath, const QString& connectionName)
-{
+LocalDatabase* LocalDatabase::createForTesting(const QString& dbPath, const QString& connectionName) {
     return new LocalDatabase(dbPath, connectionName);
 }
 
-LocalDatabase::LocalDatabase(const QString& dbPath, const QString& connectionName, QObject *parent)
-    : QObject(parent)
-{
+LocalDatabase::LocalDatabase(const QString& dbPath, const QString& connectionName, QObject* parent)
+    : QObject(parent) {
     initialize(dbPath, connectionName);
 }
 
-bool LocalDatabase::initialize(const QString& dbPath, const QString& connectionName)
-{
+bool LocalDatabase::initialize(const QString& dbPath, const QString& connectionName) {
     QMutexLocker locker(&m_mutex);
 
     m_db = QSqlDatabase::addDatabase("QSQLITE", connectionName);
@@ -58,21 +54,18 @@ bool LocalDatabase::initialize(const QString& dbPath, const QString& connectionN
     return createTables();
 }
 
-bool LocalDatabase::initialize()
-{
+bool LocalDatabase::initialize() {
     QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dataPath);
     return initialize(dataPath + "/gocook.db", QString());
 }
 
-bool LocalDatabase::isOpen() const
-{
+bool LocalDatabase::isOpen() const {
     QMutexLocker locker(&m_mutex);
     return m_db.isOpen();
 }
 
-bool LocalDatabase::createTables()
-{
+bool LocalDatabase::createTables() {
     QSqlQuery query(m_db);
 
     // 读取库结构版本（PRAGMA user_version；未设置过为 0）。
@@ -87,8 +80,8 @@ bool LocalDatabase::createTables()
             schemaVersion = versionQuery.value(0).toInt();
     }
     if (schemaVersion > kSchemaVersion) {
-        qWarning() << "[LocalDatabase] 库结构版本高于程序支持（库=" << schemaVersion
-                   << "，程序=" << kSchemaVersion << "），继续按当前版本运行";
+        qWarning() << "[LocalDatabase] 库结构版本高于程序支持（库=" << schemaVersion << "，程序=" << kSchemaVersion
+                   << "），继续按当前版本运行";
     }
     if (schemaVersion < 1) {
         // v0→v1 步骤：丢弃旧版单主键库存表，由下方统一建表重建为复合主键结构
@@ -158,8 +151,7 @@ bool LocalDatabase::createTables()
     return true;
 }
 
-bool LocalDatabase::saveUser(int userId, const QString &username, const QString &token)
-{
+bool LocalDatabase::saveUser(int userId, const QString& username, const QString& token) {
     QMutexLocker locker(&m_mutex);
     // 单行不变量：整体替换（清空后插入），保证 getUser 的 LIMIT 1 无歧义——
     // 换号/重登绝不残留旧账号行（旧实现 INSERT OR REPLACE 按 id 行级替换、不清理其它行）
@@ -207,8 +199,7 @@ bool LocalDatabase::saveUser(int userId, const QString &username, const QString 
     return true;
 }
 
-QVariantMap LocalDatabase::getUser() const
-{
+QVariantMap LocalDatabase::getUser() const {
     QMutexLocker locker(&m_mutex);
     QVariantMap user;
     QSqlQuery query(m_db);
@@ -224,8 +215,7 @@ QVariantMap LocalDatabase::getUser() const
     return user;
 }
 
-bool LocalDatabase::clearUser()
-{
+bool LocalDatabase::clearUser() {
     QMutexLocker locker(&m_mutex);
     // 登出/换号的唯一清理点：凭证与库存快照一并清除（快照按用户隔离，防换号后残留串台）；
     // 三步放同一事务，避免清一半留下不一致状态
@@ -234,8 +224,7 @@ bool LocalDatabase::clearUser()
         return false;
     }
     QSqlQuery query(m_db);
-    if (!query.exec("DELETE FROM user") ||
-        !query.exec("DELETE FROM inventory_cache") ||
+    if (!query.exec("DELETE FROM user") || !query.exec("DELETE FROM inventory_cache") ||
         !query.exec("DELETE FROM inventory_cache_meta")) {
         qWarning() << "[LocalDatabase] 清理用户数据失败:" << query.lastError().text();
         m_db.rollback();
@@ -249,8 +238,7 @@ bool LocalDatabase::clearUser()
     return true;
 }
 
-bool LocalDatabase::saveInventoryCache(const QVariantList &items)
-{
+bool LocalDatabase::saveInventoryCache(const QVariantList& items) {
     QMutexLocker locker(&m_mutex);
     // 快照归属"当前登录用户"（user 表为唯一事实源）；未登录拒绝写入，防无主数据
     const int userId = currentUserIdLocked();
@@ -281,7 +269,7 @@ bool LocalDatabase::saveInventoryCache(const QVariantList &items)
                 "(user_id, ingredient_name, unit, ordinal, data, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f','now'))");
     int ordinal = 0;
-    for (const QVariant &itemVar : items) {
+    for (const QVariant& itemVar : items) {
         const QVariantMap item = itemVar.toMap();
         const QString name = item.value("ingredientName").toString();
         const QString unit = item.value("unit").toString();
@@ -330,13 +318,11 @@ bool LocalDatabase::saveInventoryCache(const QVariantList &items)
     return true;
 }
 
-QVariantList LocalDatabase::getInventoryCache() const
-{
+QVariantList LocalDatabase::getInventoryCache() const {
     QMutexLocker locker(&m_mutex);
     QVariantList list;
     const int userId = currentUserIdLocked();
-    if (userId <= 0)
-        return list;
+    if (userId <= 0) return list;
 
     QSqlQuery query(m_db);
     query.prepare("SELECT data FROM inventory_cache WHERE user_id = ? ORDER BY ordinal");
@@ -351,12 +337,10 @@ QVariantList LocalDatabase::getInventoryCache() const
     return list;
 }
 
-bool LocalDatabase::hasInventoryCache() const
-{
+bool LocalDatabase::hasInventoryCache() const {
     QMutexLocker locker(&m_mutex);
     const int userId = currentUserIdLocked();
-    if (userId <= 0)
-        return false;
+    if (userId <= 0) return false;
 
     QSqlQuery query(m_db);
     query.prepare("SELECT 1 FROM inventory_cache_meta WHERE user_id = ?");
@@ -368,8 +352,7 @@ bool LocalDatabase::hasInventoryCache() const
     return query.next();
 }
 
-bool LocalDatabase::removeInventoryCacheItem(const QString &ingredientName, const QString &unit)
-{
+bool LocalDatabase::removeInventoryCacheItem(const QString& ingredientName, const QString& unit) {
     QMutexLocker locker(&m_mutex);
     const int userId = currentUserIdLocked();
     if (userId <= 0) {
@@ -377,8 +360,7 @@ bool LocalDatabase::removeInventoryCacheItem(const QString &ingredientName, cons
         return false;
     }
     // 复合键不完整无法定位行（防御：调用方应传服务端契约字段值）
-    if (ingredientName.isEmpty() || unit.isEmpty())
-        return false;
+    if (ingredientName.isEmpty() || unit.isEmpty()) return false;
 
     QSqlQuery query(m_db);
     query.prepare("DELETE FROM inventory_cache WHERE user_id = ? AND ingredient_name = ? AND unit = ?");
@@ -386,25 +368,21 @@ bool LocalDatabase::removeInventoryCacheItem(const QString &ingredientName, cons
     query.addBindValue(ingredientName);
     query.addBindValue(unit);
     if (!query.exec()) {
-        qWarning() << "[LocalDatabase] 移除库存快照行失败（" << ingredientName << unit << "）:"
-                   << query.lastError().text();
+        qWarning() << "[LocalDatabase] 移除库存快照行失败（" << ingredientName << unit
+                   << "）:" << query.lastError().text();
         return false;
     }
     return true;
 }
 
-int LocalDatabase::currentUserIdLocked() const
-{
+int LocalDatabase::currentUserIdLocked() const {
     QSqlQuery query(m_db);
-    if (!query.exec("SELECT id FROM user LIMIT 1"))
-        return 0;
-    if (query.next())
-        return query.value(0).toInt();
+    if (!query.exec("SELECT id FROM user LIMIT 1")) return 0;
+    if (query.next()) return query.value(0).toInt();
     return 0;
 }
 
-bool LocalDatabase::saveRecipeDetailCache(int recipeId, const QVariantMap &detail)
-{
+bool LocalDatabase::saveRecipeDetailCache(int recipeId, const QVariantMap& detail) {
     QMutexLocker locker(&m_mutex);
     // 整份 detail map 以 JSON 存储：键名与页面读取的 DataMapper camelCase 字段天然一致
     // 写入与上限裁剪放进同一事务：任一失败整体回滚，避免缓存与实际状态不一致
@@ -442,8 +420,7 @@ bool LocalDatabase::saveRecipeDetailCache(int recipeId, const QVariantMap &detai
     return true;
 }
 
-QVariantMap LocalDatabase::getRecipeDetailCache(int recipeId) const
-{
+QVariantMap LocalDatabase::getRecipeDetailCache(int recipeId) const {
     QMutexLocker locker(&m_mutex);
     QSqlQuery query(m_db);
     query.prepare("SELECT data FROM recipe_detail_cache WHERE id = ?");

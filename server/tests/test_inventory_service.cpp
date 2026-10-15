@@ -16,19 +16,19 @@ using namespace gocook::services;
 using namespace gocook::repository;
 
 namespace {
-    PagedInventory makePagedInventory(int count = 2) {
-        PagedInventory result;
-        for (int i = 1; i <= count; ++i)
-            result.data.push_back({i, "Ingredient " + std::to_string(i),
-                                   1.0 * i, "kg", std::nullopt, "2026-01-0" + std::to_string(i)});
-        result.pagination = {1, count, 5, 1};
-        return result;
-    }
-
-    UpsertInventoryRequest makeUpsertReq() {
-        return {"Tomato", 3.0, "个", std::nullopt};
-    }
+PagedInventory makePagedInventory(int count = 2) {
+    PagedInventory result;
+    for (int i = 1; i <= count; ++i)
+        result.data.push_back(
+            {i, "Ingredient " + std::to_string(i), 1.0 * i, "kg", std::nullopt, "2026-01-0" + std::to_string(i)});
+    result.pagination = {1, count, 5, 1};
+    return result;
 }
+
+UpsertInventoryRequest makeUpsertReq() {
+    return {"Tomato", 3.0, "个", std::nullopt};
+}
+} // namespace
 
 // ==================== 已实现的方法 ====================
 
@@ -51,8 +51,7 @@ TEST(InventoryServiceTest, 库存分页参数透传) {
     auto* repo = mock.get();
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(*repo, findInventoryFiltered(2, 3, 10, ""))
-        .WillOnce(Return(PagedInventory{}));
+    EXPECT_CALL(*repo, findInventoryFiltered(2, 3, 10, "")).WillOnce(Return(PagedInventory{}));
 
     auto result = service.getInventory(2, 3, 10);
     EXPECT_TRUE(result.data.empty());
@@ -64,8 +63,7 @@ TEST(InventoryServiceTest, 库存关键字过滤透传) {
     InventoryServiceImpl service(std::move(mock));
 
     // 过滤词必须原样透传给仓库层（库存页过滤框场景）
-    EXPECT_CALL(*repo, findInventoryFiltered(1, 1, 20, "料酒"))
-        .WillOnce(Return(PagedInventory{}));
+    EXPECT_CALL(*repo, findInventoryFiltered(1, 1, 20, "料酒")).WillOnce(Return(PagedInventory{}));
 
     auto result = service.getInventory(1, 1, 20, "料酒");
     EXPECT_TRUE(result.data.empty());
@@ -78,8 +76,9 @@ TEST(InventoryServiceTest, 更新库存正确委派) {
 
     auto req = makeUpsertReq();
     EXPECT_CALL(*repo, upsertInventory(1, Truly([](const auto& r) {
-        return r.ingredient_name == "Tomato" && r.quantity == 3.0;
-    }))).WillOnce(Return(42));
+                                           return r.ingredient_name == "Tomato" && r.quantity == 3.0;
+                                       })))
+        .WillOnce(Return(42));
 
     int id = service.upsertInventory(1, req);
     EXPECT_EQ(id, 42);
@@ -230,8 +229,9 @@ TEST(InventoryServiceTest, 过期日期闰年2月29日正常委派) {
     req.expiry_date = "2024-02-29";
 
     EXPECT_CALL(*repo, upsertInventory(1, Truly([](const auto& r) {
-        return r.expiry_date.has_value() && r.expiry_date.value() == "2024-02-29";
-    }))).WillOnce(Return(42));
+                                           return r.expiry_date.has_value() && r.expiry_date.value() == "2024-02-29";
+                                       })))
+        .WillOnce(Return(42));
 
     EXPECT_EQ(service.upsertInventory(1, req), 42);
 }
@@ -248,8 +248,9 @@ TEST(InventoryServiceTest, 过期日期合法正常委派) {
     req.expiry_date = "2026-05-10";
 
     EXPECT_CALL(*repo, upsertInventory(1, Truly([](const auto& r) {
-        return r.expiry_date.has_value() && r.expiry_date.value() == "2026-05-10";
-    }))).WillOnce(Return(42));
+                                           return r.expiry_date.has_value() && r.expiry_date.value() == "2026-05-10";
+                                       })))
+        .WillOnce(Return(42));
 
     EXPECT_EQ(service.upsertInventory(1, req), 42);
 }
@@ -278,9 +279,8 @@ TEST(InventoryServiceTest, 创建购物清单正确委派) {
 
     gocook::models::CreateShoppingListRequest req;
     req.name = "周末采购";
-    EXPECT_CALL(*repo, createShoppingList(1, Truly([](const auto& r) {
-        return r.name == "周末采购";
-    }))).WillOnce(Return(42));
+    EXPECT_CALL(*repo, createShoppingList(1, Truly([](const auto& r) { return r.name == "周末采购"; })))
+        .WillOnce(Return(42));
 
     int id = service.createShoppingList(1, req);
     EXPECT_EQ(id, 42);
@@ -298,8 +298,10 @@ TEST(InventoryServiceTest, 编辑库存项正确委派) {
 
     // 按 id 替换语义：原样透传给仓库层
     EXPECT_CALL(*repo, updateInventoryItem(1, 7, Truly([](const auto& r) {
-        return r.ingredient_name == "料酒" && r.quantity == 45.0 && r.unit == "毫升";
-    }))).Times(1);
+                                               return r.ingredient_name == "料酒" && r.quantity == 45.0 &&
+                                                      r.unit == "毫升";
+                                           })))
+        .Times(1);
 
     service.updateInventoryItem(1, 7, req);
 }
@@ -333,8 +335,7 @@ TEST(InventoryServiceTest, 购物清单详情正确委派) {
     gocook::models::ShoppingList expected;
     expected.id = 42;
     expected.name = "周末采购";
-    EXPECT_CALL(*repo, findShoppingListDetail(1, 42))
-        .WillOnce(Return(expected));
+    EXPECT_CALL(*repo, findShoppingListDetail(1, 42)).WillOnce(Return(expected));
 
     auto result = service.getShoppingListDetail(1, 42);
     EXPECT_EQ(result.id, 42);
@@ -346,8 +347,7 @@ TEST(InventoryServiceTest, 删除清单正确委派Repositories) {
     auto& repo = *mock;
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(repo, deleteShoppingList(1, 42))
-        .Times(1);
+    EXPECT_CALL(repo, deleteShoppingList(1, 42)).Times(1);
 
     service.deleteShoppingList(1, 42);
 }
@@ -360,8 +360,7 @@ TEST(InventoryServiceTest, 更新清单项正确委派Repositories) {
     UpdateShoppingItemRequest req;
     req.checked = true;
 
-    EXPECT_CALL(repo, updateShoppingListItem(1, 42, 7, _))
-        .Times(1);
+    EXPECT_CALL(repo, updateShoppingListItem(1, 42, 7, _)).Times(1);
 
     service.updateShoppingListItem(1, 42, 7, req);
 }
@@ -371,8 +370,7 @@ TEST(InventoryServiceTest, 删除清单项正确委派Repositories) {
     auto& repo = *mock;
     InventoryServiceImpl service(std::move(mock));
 
-    EXPECT_CALL(repo, deleteShoppingListItem(1, 42, 7))
-        .Times(1);
+    EXPECT_CALL(repo, deleteShoppingListItem(1, 42, 7)).Times(1);
 
     service.deleteShoppingListItem(1, 42, 7);
 }
@@ -385,8 +383,7 @@ TEST(InventoryServiceTest, 批量添加清单正确委派Repositories) {
     std::vector<BatchShoppingItem> items;
     items.push_back({"盐", 1.0, "袋"});
 
-    EXPECT_CALL(repo, batchAddShoppingItems(1, 42, _))
-        .WillOnce(Return(BatchShoppingResponse{}));
+    EXPECT_CALL(repo, batchAddShoppingItems(1, 42, _)).WillOnce(Return(BatchShoppingResponse{}));
 
     auto result = service.batchAddShoppingItems(1, 42, items);
     EXPECT_EQ(result.message, "");
@@ -420,10 +417,9 @@ TEST(InventoryServiceTest, 单位白名单与客户端QML逐项一致) {
             break;
         }
     }
-    ASSERT_FALSE(qmlPath.empty())
-        << "找不到客户端白名单源文件 client/qml/pages/InventoryPage.qml"
-        << "（已从 " << std::filesystem::path(__FILE__).parent_path()
-        << " 向上搜索 8 层；源码布局变更需同步本用例的定位逻辑）";
+    ASSERT_FALSE(qmlPath.empty()) << "找不到客户端白名单源文件 client/qml/pages/InventoryPage.qml"
+                                  << "（已从 " << std::filesystem::path(__FILE__).parent_path()
+                                  << " 向上搜索 8 层；源码布局变更需同步本用例的定位逻辑）";
 
     std::ifstream in(qmlPath);
     std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -449,9 +445,7 @@ TEST(InventoryServiceTest, 单位白名单与客户端QML逐项一致) {
         if (!serverUnits.count(u)) onlyInQml << u << " ";
     for (const auto& u : serverUnits)
         if (!qmlUnits.count(u)) onlyInServer << u << " ";
-    EXPECT_TRUE(onlyInQml.str().empty())
-        << "以下单位仅存在于客户端 QML（服务端缺，须两侧同步）: " << onlyInQml.str();
-    EXPECT_TRUE(onlyInServer.str().empty())
-        << "以下单位仅存在于服务端（客户端缺，须两侧同步）: " << onlyInServer.str();
+    EXPECT_TRUE(onlyInQml.str().empty()) << "以下单位仅存在于客户端 QML（服务端缺，须两侧同步）: " << onlyInQml.str();
+    EXPECT_TRUE(onlyInServer.str().empty()) << "以下单位仅存在于服务端（客户端缺，须两侧同步）: " << onlyInServer.str();
     EXPECT_EQ(serverUnits.size(), qmlUnits.size()) << "两侧单位数量不一致";
 }

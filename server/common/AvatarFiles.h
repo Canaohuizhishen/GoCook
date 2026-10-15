@@ -63,15 +63,14 @@ inline bool removeFile(const std::string& url) {
     const std::string path = UploadPaths::urlToPath(url, "avatars");
     if (path.empty()) return false;
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec)) return true;  // 幂等：已不存在
+    if (!std::filesystem::exists(path, ec)) return true; // 幂等：已不存在
     if (!std::filesystem::is_regular_file(path, ec)) {
         LOG_WARN("拒绝回收非常规文件（目录/特殊文件不动）：%s", path.c_str());
         return false;
     }
     std::filesystem::remove(path, ec);
     if (ec) {
-        LOG_WARN("回收头像文件失败（后台 GC 将在其后兜底）：%s - %s",
-                 path.c_str(), ec.message().c_str());
+        LOG_WARN("回收头像文件失败（后台 GC 将在其后兜底）：%s - %s", path.c_str(), ec.message().c_str());
         return false;
     }
     return true;

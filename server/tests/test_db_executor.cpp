@@ -29,16 +29,16 @@ namespace {
 // 借连接即抛业务异常：模拟连接池"满 + 超时"（ConnectionPool.cpp 的 503 语义）
 struct TimeoutPool {
     // [[noreturn]]：函数恒抛异常、永不返回——避免"非 void 函数无 return"的 -Wreturn-type 警告
-    [[noreturn]] ConnectionPool::ConnectionGuard getConnection(
-        std::chrono::milliseconds = std::chrono::milliseconds(5000)) {
+    [[noreturn]] ConnectionPool::ConnectionGuard
+    getConnection(std::chrono::milliseconds = std::chrono::milliseconds(5000)) {
         throw gocook::services::ServiceException("系统繁忙，请稍后重试", 503);
     }
 };
 
 // 借连接即抛普通异常：模拟数据库连不上等非业务故障
 struct BrokenPool {
-    [[noreturn]] ConnectionPool::ConnectionGuard getConnection(
-        std::chrono::milliseconds = std::chrono::milliseconds(5000)) {
+    [[noreturn]] ConnectionPool::ConnectionGuard
+    getConnection(std::chrono::milliseconds = std::chrono::milliseconds(5000)) {
         throw std::runtime_error("无法连接数据库");
     }
 };
@@ -66,13 +66,11 @@ TEST(DbExecutorTest, BorrowStdExceptionPropagatesUntranslated) {
 
 // ---- 编译期：void / 值返回 lambda 的分支推导（锁定 if constexpr 行为）----
 
-static_assert(std::is_void_v<decltype(executeDb(std::declval<TimeoutPool&>(),
-                                                [](pqxx::work&) {},
-                                                "数据库操作失败"))>,
+static_assert(std::is_void_v<decltype(executeDb(
+                  std::declval<TimeoutPool&>(), [](pqxx::work&) {}, "数据库操作失败"))>,
               "void lambda 应使 executeDb 返回 void");
-static_assert(std::is_same_v<decltype(executeDb(std::declval<TimeoutPool&>(),
-                                                [](pqxx::work&) -> int { return 1; },
-                                                "数据库操作失败")),
+static_assert(std::is_same_v<decltype(executeDb(
+                                 std::declval<TimeoutPool&>(), [](pqxx::work&) -> int { return 1; }, "数据库操作失败")),
                              int>,
               "值返回 lambda 应使 executeDb 返回相同值类型");
 
@@ -83,8 +81,7 @@ static_assert(std::is_same_v<decltype(executeDb(std::declval<TimeoutPool&>(),
 namespace {
 
 // 默认连本地开发库（凭据与 .env / docker-compose.yml 一致，非秘密）
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -114,18 +111,20 @@ bool dbAvailable() {
 class DbExecutorDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
     }
 };
 
 // 核心翻译路径：lambda 抛 std::exception → ServiceException(errorMsg)，状态码默认 500
 TEST_F(DbExecutorDbTest, StdExceptionTranslatedToServiceException) {
     try {
-        executeDb(testPool(), [](pqxx::work& txn) {
-            txn.exec("SELECT 1");                     // 让事务真正可用
-            throw std::runtime_error("boom");         // 模拟解析/文件系统/意外 DB 错误
-        }, "自定义业务文案");
+        executeDb(
+            testPool(),
+            [](pqxx::work& txn) {
+                txn.exec("SELECT 1");             // 让事务真正可用
+                throw std::runtime_error("boom"); // 模拟解析/文件系统/意外 DB 错误
+            },
+            "自定义业务文案");
         FAIL() << "expected ServiceException";
     } catch (const gocook::services::ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 500);
@@ -136,10 +135,13 @@ TEST_F(DbExecutorDbTest, StdExceptionTranslatedToServiceException) {
 // 业务异常原样上抛：404/409 等状态码不丢
 TEST_F(DbExecutorDbTest, ServiceExceptionRethrownUnchanged) {
     try {
-        executeDb(testPool(), [](pqxx::work& txn) {
-            txn.exec("SELECT 1");
-            throw gocook::services::ServiceException("分组名已存在", 409);
-        }, "数据库操作失败");
+        executeDb(
+            testPool(),
+            [](pqxx::work& txn) {
+                txn.exec("SELECT 1");
+                throw gocook::services::ServiceException("分组名已存在", 409);
+            },
+            "数据库操作失败");
         FAIL() << "expected ServiceException(409)";
     } catch (const gocook::services::ServiceException& e) {
         EXPECT_EQ(e.statusCode(), 409);
@@ -150,38 +152,49 @@ TEST_F(DbExecutorDbTest, ServiceExceptionRethrownUnchanged) {
 // void 分支：写操作提交生效（第二个事务能读到第一个事务的写入）
 TEST_F(DbExecutorDbTest, SuccessfulWriteIsCommitted) {
     auto& pool = testPool();
-    executeDb(pool, [](pqxx::work& txn) {
-        txn.exec("CREATE TEMP TABLE IF NOT EXISTS exec_commit_t (v int)");
-        txn.exec("DELETE FROM exec_commit_t");
-        txn.exec("INSERT INTO exec_commit_t VALUES (7)");
-    }, "数据库操作失败");
-    int cnt = executeDb(pool, [](pqxx::work& txn) {
-        return txn.exec("SELECT COUNT(*) FROM exec_commit_t")[0][0].as<int>();
-    }, "数据库操作失败");
+    executeDb(
+        pool,
+        [](pqxx::work& txn) {
+            txn.exec("CREATE TEMP TABLE IF NOT EXISTS exec_commit_t (v int)");
+            txn.exec("DELETE FROM exec_commit_t");
+            txn.exec("INSERT INTO exec_commit_t VALUES (7)");
+        },
+        "数据库操作失败");
+    int cnt = executeDb(
+        pool,
+        [](pqxx::work& txn) { return txn.exec("SELECT COUNT(*) FROM exec_commit_t")[0][0].as<int>(); },
+        "数据库操作失败");
     EXPECT_EQ(cnt, 1);
 }
 
 // 值返回分支：映射结果正确返回
 TEST_F(DbExecutorDbTest, ValueLambdaReturnsResult) {
-    int v = executeDb(testPool(), [](pqxx::work& txn) {
-        return txn.exec("SELECT 42")[0][0].as<int>();
-    }, "数据库操作失败");
+    int v =
+        executeDb(testPool(), [](pqxx::work& txn) { return txn.exec("SELECT 42")[0][0].as<int>(); }, "数据库操作失败");
     EXPECT_EQ(v, 42);
 }
 
 // 异常时回滚：写操作 + 抛异常 → 数据不落库
 TEST_F(DbExecutorDbTest, ExceptionRollsBackWrite) {
     auto& pool = testPool();
-    executeDb(pool, [](pqxx::work& txn) {
-        txn.exec("CREATE TEMP TABLE IF NOT EXISTS exec_rollback_t (v int)");
-        txn.exec("DELETE FROM exec_rollback_t");
-    }, "数据库操作失败");
-    EXPECT_THROW(executeDb(pool, [](pqxx::work& txn) {
-        txn.exec("INSERT INTO exec_rollback_t VALUES (1)");
-        throw std::runtime_error("boom");
-    }, "数据库操作失败"), gocook::services::ServiceException);
-    int cnt = executeDb(pool, [](pqxx::work& txn) {
-        return txn.exec("SELECT COUNT(*) FROM exec_rollback_t")[0][0].as<int>();
-    }, "数据库操作失败");
+    executeDb(
+        pool,
+        [](pqxx::work& txn) {
+            txn.exec("CREATE TEMP TABLE IF NOT EXISTS exec_rollback_t (v int)");
+            txn.exec("DELETE FROM exec_rollback_t");
+        },
+        "数据库操作失败");
+    EXPECT_THROW(executeDb(
+                     pool,
+                     [](pqxx::work& txn) {
+                         txn.exec("INSERT INTO exec_rollback_t VALUES (1)");
+                         throw std::runtime_error("boom");
+                     },
+                     "数据库操作失败"),
+                 gocook::services::ServiceException);
+    int cnt = executeDb(
+        pool,
+        [](pqxx::work& txn) { return txn.exec("SELECT COUNT(*) FROM exec_rollback_t")[0][0].as<int>(); },
+        "数据库操作失败");
     EXPECT_EQ(cnt, 0);
 }

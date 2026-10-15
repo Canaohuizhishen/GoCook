@@ -54,20 +54,22 @@ struct Config {
 
         // 读取环境变量（无或类型转换(std::stoi)失败使用默认值）
         Config cfg;
-        cfg.host         = getEnv("GOCOOK_HOST",          "0.0.0.0");
-        cfg.port         = getEnvInt("GOCOOK_PORT",        8080);
+        cfg.host = getEnv("GOCOOK_HOST", "0.0.0.0");
+        cfg.port = getEnvInt("GOCOOK_PORT", 8080);
         cfg.dbConnString = getEnv("GOCOOK_DB_CONN_STRING", "");
-        cfg.jwtSecret    = getEnv("GOCOOK_JWT_SECRET",     "");
-        cfg.tlsCertPath  = getEnv("GOCOOK_TLS_CERT",       "");
-        cfg.tlsKeyPath   = getEnv("GOCOOK_TLS_KEY",        "");
-        cfg.dbPoolSize   = getEnvInt("GOCOOK_DB_POOL_SIZE", 10);
-        cfg.logLevel     = getEnv("GOCOOK_LOG_LEVEL",      "info");
+        cfg.jwtSecret = getEnv("GOCOOK_JWT_SECRET", "");
+        cfg.tlsCertPath = getEnv("GOCOOK_TLS_CERT", "");
+        cfg.tlsKeyPath = getEnv("GOCOOK_TLS_KEY", "");
+        cfg.dbPoolSize = getEnvInt("GOCOOK_DB_POOL_SIZE", 10);
+        cfg.logLevel = getEnv("GOCOOK_LOG_LEVEL", "info");
 
         if (cfg.jwtSecret.empty()) {
-            throw std::runtime_error("缺少 GOCOOK_JWT_SECRET：请通过环境变量或 .env 文件设置（或运行 server/setup.sh）");
+            throw std::runtime_error(
+                "缺少 GOCOOK_JWT_SECRET：请通过环境变量或 .env 文件设置（或运行 server/setup.sh）");
         }
         if (cfg.dbConnString.empty()) {
-            throw std::runtime_error("缺少 GOCOOK_DB_CONN_STRING：请通过环境变量或 .env 文件设置（或运行 server/setup.sh）");
+            throw std::runtime_error(
+                "缺少 GOCOOK_DB_CONN_STRING：请通过环境变量或 .env 文件设置（或运行 server/setup.sh）");
         }
         return cfg;
     }
@@ -89,31 +91,35 @@ private:
     static int getEnvInt(const std::string& key, int defaultValue) {
         const char* val = std::getenv(key.c_str());
         if (!val) return defaultValue;
-        try { return std::stoi(val); } catch (...) { return defaultValue; }
+        try {
+            return std::stoi(val);
+        } catch (...) {
+            return defaultValue;
+        }
     }
 
     // 加载 .env 文件（KEY=VALUE，支持引号）并写入进程环境变量
     static void loadEnvFile(const std::string& path) {
         std::ifstream file(path);
-        if (!file.is_open()) return;           // 文件不存在就算了，允许用系统环境变量
+        if (!file.is_open()) return; // 文件不存在就算了，允许用系统环境变量
 
         std::string line;
         while (std::getline(file, line)) {
             auto trimmed = trim(line);
-            if (trimmed.empty() || trimmed[0] == '#') continue;  // 跳过空行和注释
+            if (trimmed.empty() || trimmed[0] == '#') continue; // 跳过空行和注释
 
             auto eq = trimmed.find('=');
-            if (eq == std::string::npos) continue;               // 没等号就不是合法配置行
+            if (eq == std::string::npos) continue; // 没等号就不是合法配置行
 
-            auto key = trim(trimmed.substr(0, eq));              // 取键名
-            auto value = trim(trimmed.substr(eq + 1));           // 取值
+            auto key = trim(trimmed.substr(0, eq));    // 取键名
+            auto value = trim(trimmed.substr(eq + 1)); // 取值
 
             // 如果值被引号包着，去掉首尾引号
             if (!value.empty() && (value.front() == '"' || value.front() == '\'')) {
                 value = value.substr(1, value.size() - 2);
             }
 
-            setenv(key.c_str(), value.c_str(), 1);               // 写入环境变量（覆盖同名的）
+            setenv(key.c_str(), value.c_str(), 1); // 写入环境变量（覆盖同名的）
         }
     }
 

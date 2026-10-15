@@ -36,10 +36,10 @@
 #include "MockRecipeRepository.h"
 #include "MockUserRepository.h"
 
+using gocook::services::ServiceException;
 using ::testing::_;
 using ::testing::NiceMock;
 using ::testing::Return;
-using gocook::services::ServiceException;
 
 namespace {
 
@@ -69,23 +69,19 @@ const std::string kPngBytes = std::string("\x89PNG\r\n\x1a\n", 8) + "fake-png";
 class HandlerTestServer {
 public:
     explicit HandlerTestServer(RecipeHandler& handler) {
-        svr_.Post(R"(/api/recipes/(\d+)/image)",
-                  [&handler](const httplib::Request& req, httplib::Response& res) {
-                      handler.uploadRecipeImage(req, res);
-                  });
-        svr_.Post(R"(/api/recipes/(\d+)/steps/(\d+)/image)",
-                  [&handler](const httplib::Request& req, httplib::Response& res) {
-                      handler.uploadStepImage(req, res);
-                  });
+        svr_.Post(R"(/api/recipes/(\d+)/image)", [&handler](const httplib::Request& req, httplib::Response& res) {
+            handler.uploadRecipeImage(req, res);
+        });
+        svr_.Post(
+            R"(/api/recipes/(\d+)/steps/(\d+)/image)",
+            [&handler](const httplib::Request& req, httplib::Response& res) { handler.uploadStepImage(req, res); });
         port_ = svr_.bind_to_any_port("127.0.0.1");
-        if (port_ <= 0)
-            throw std::runtime_error("HandlerTestServer: bind_to_any_port failed");
+        if (port_ <= 0) throw std::runtime_error("HandlerTestServer: bind_to_any_port failed");
         thread_ = std::thread([this] { svr_.listen_after_bind(); });
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (!svr_.is_running() && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if (!svr_.is_running())
-            throw std::runtime_error("HandlerTestServer: failed to start");
+        if (!svr_.is_running()) throw std::runtime_error("HandlerTestServer: failed to start");
     }
 
     ~HandlerTestServer() {
@@ -122,7 +118,7 @@ protected:
 
     NiceMock<MockRecipeRepository>* repo_ = nullptr;
     std::unique_ptr<RecipeServiceImpl> service_;
-    std::unique_ptr<NiceMock<MockUserRepository>> userRepoOwn_;  ///< 中间件版本校验用（先于 auth_ 声明 → 后于其析构）
+    std::unique_ptr<NiceMock<MockUserRepository>> userRepoOwn_; ///< 中间件版本校验用（先于 auth_ 声明 → 后于其析构）
     std::unique_ptr<AuthMiddleware> auth_;
     std::unique_ptr<RecipeHandler> handler_;
     std::unique_ptr<HandlerTestServer> srv_;
@@ -139,8 +135,8 @@ TEST_F(RecipeImageHandlerTest, 未认证与坏令牌返回401) {
     EXPECT_EQ(401, noAuth->status);
     EXPECT_THAT(noAuth->body, testing::HasSubstr("无效的访问令牌"));
 
-    auto badAuth = srv_->client().Post("/api/recipes/42/image",
-        httplib::Headers{{"Authorization", "Bearer not-a-jwt"}}, kJpegBytes, "image/jpeg");
+    auto badAuth = srv_->client().Post(
+        "/api/recipes/42/image", httplib::Headers{{"Authorization", "Bearer not-a-jwt"}}, kJpegBytes, "image/jpeg");
     ASSERT_TRUE(badAuth != nullptr);
     EXPECT_EQ(401, badAuth->status);
 }
@@ -164,7 +160,7 @@ TEST_F(RecipeImageHandlerTest, 空体与分类失败返回统一文案) {
     ASSERT_TRUE(webp != nullptr);
     EXPECT_EQ(400, webp->status);
     EXPECT_THAT(webp->body,
-        testing::HasSubstr("不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）"));
+                testing::HasSubstr("不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）"));
 
     // 伪装格式（声明合法、内容不可识别）→ 内容不符文案
     auto bad = srv_->client().Post("/api/recipes/1/image", authHeaders(), "not-an-image", "image/png");
@@ -185,11 +181,10 @@ TEST_F(RecipeImageHandlerTest, 超限返回5MB文案) {
 
 TEST_F(RecipeImageHandlerTest, 封面成功透传用户与菜谱并返回URL) {
     std::string capturedPath;
-    EXPECT_CALL(*repo_, updateRecipeImage(kUserId, 42, _))
-        .WillOnce([&](int, int, const std::string& p) {
-            capturedPath = p;
-            return std::string("/uploads/recipes/recipe_42_123.jpg");
-        });
+    EXPECT_CALL(*repo_, updateRecipeImage(kUserId, 42, _)).WillOnce([&](int, int, const std::string& p) {
+        capturedPath = p;
+        return std::string("/uploads/recipes/recipe_42_123.jpg");
+    });
 
     auto res = srv_->client().Post("/api/recipes/42/image", authHeaders(), kJpegBytes, "image/jpeg");
     ASSERT_TRUE(res != nullptr);
@@ -205,11 +200,10 @@ TEST_F(RecipeImageHandlerTest, 封面成功透传用户与菜谱并返回URL) {
 
 TEST_F(RecipeImageHandlerTest, 步骤图成功解析索引并返回URL与消息) {
     std::string capturedPath;
-    EXPECT_CALL(*repo_, updateStepImage(kUserId, 42, 2, _))
-        .WillOnce([&](int, int, int, const std::string& p) {
-            capturedPath = p;
-            return std::string("/uploads/recipes/recipe_42_step_2_123.jpg");
-        });
+    EXPECT_CALL(*repo_, updateStepImage(kUserId, 42, 2, _)).WillOnce([&](int, int, int, const std::string& p) {
+        capturedPath = p;
+        return std::string("/uploads/recipes/recipe_42_step_2_123.jpg");
+    });
 
     auto res = srv_->client().Post("/api/recipes/42/steps/2/image", authHeaders(), kPngBytes, "image/png");
     ASSERT_TRUE(res != nullptr);
@@ -227,11 +221,10 @@ TEST_F(RecipeImageHandlerTest, 步骤图成功解析索引并返回URL与消息)
 
 TEST_F(RecipeImageHandlerTest, 仓库拒绝映射为403与404) {
     std::string forbiddenPath;
-    EXPECT_CALL(*repo_, updateRecipeImage(kUserId, 42, _))
-        .WillOnce([&](int, int, const std::string& p) -> std::string {
-            forbiddenPath = p;
-            throw ServiceException("仅可编辑自己投稿的菜谱", 403);
-        });
+    EXPECT_CALL(*repo_, updateRecipeImage(kUserId, 42, _)).WillOnce([&](int, int, const std::string& p) -> std::string {
+        forbiddenPath = p;
+        throw ServiceException("仅可编辑自己投稿的菜谱", 403);
+    });
     auto res = srv_->client().Post("/api/recipes/42/image", authHeaders(), kJpegBytes, "image/jpeg");
     ASSERT_TRUE(res != nullptr);
     EXPECT_EQ(403, res->status);
@@ -246,7 +239,7 @@ TEST_F(RecipeImageHandlerTest, 仓库拒绝映射为403与404) {
     auto res2 = srv_->client().Post("/api/recipes/99/steps/0/image", authHeaders(), kJpegBytes, "image/jpeg");
     ASSERT_TRUE(res2 != nullptr);
     EXPECT_EQ(404, res2->status);
-    EXPECT_THAT(res2->body, testing::HasSubstr("请求的资源不存在"));  // ErrorHelper 404 统一文案
+    EXPECT_THAT(res2->body, testing::HasSubstr("请求的资源不存在")); // ErrorHelper 404 统一文案
 
     // 生产链路中临时文件由仓库层清理（Mock 不清理）：用例负责收尾，防残留
     std::error_code ec;

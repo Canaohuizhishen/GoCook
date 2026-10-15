@@ -33,8 +33,7 @@ class LocalDatabase;
  *   - 网络恢复（onNetworkRestored）或退避重试到点时，若"上次加载失败 / 无数据"则自动重拉；
  *     退避重试仅覆盖瞬时故障（网络层错误 / 服务器繁忙 503）。
  */
-class InventoryViewModel : public QObject
-{
+class InventoryViewModel : public QObject {
     Q_OBJECT
     // 声明式注册（不可实例化）：供 QML 访问 ViewState 枚举（如 InventoryViewModel.Offline）
     QML_ELEMENT
@@ -60,7 +59,7 @@ public:
 
 public:
     /// db：本地快照存储。生产传 nullptr（使用单例 LocalDatabase::instance()）；测试注入独立内存库
-    explicit InventoryViewModel(IGoCookApi *api, QObject *parent = nullptr, LocalDatabase *db = nullptr);
+    explicit InventoryViewModel(IGoCookApi* api, QObject* parent = nullptr, LocalDatabase* db = nullptr);
 
     // getter 组：返回同名 Q_PROPERTY 的值（语义见属性行）；仅特殊实现单独注明。
     QVariantList items() const;
@@ -85,13 +84,12 @@ public:
     /// 加载下一页（加载中或 !hasMore 时忽略）
     Q_INVOKABLE void loadNextPage();
     /// 添加库存项（expiryDate 为空=无保质期；成功后重载列表）
-    Q_INVOKABLE void addItem(const QString& name, double quantity, const QString& unit,
-                             const QString& expiryDate = "");
+    Q_INVOKABLE void addItem(const QString& name, double quantity, const QString& unit, const QString& expiryDate = "");
     /// 删除库存项（乐观移除并回滚；成功后同步删除快照行，防离线兜底复活）
     Q_INVOKABLE void deleteItem(int itemId);
     /// 更新库存项（PUT 整行替换，非累加）
-    Q_INVOKABLE void updateItem(int itemId, const QString& name, double quantity,
-                                const QString& unit, const QString& expiryDate = "");
+    Q_INVOKABLE void
+    updateItem(int itemId, const QString& name, double quantity, const QString& unit, const QString& expiryDate = "");
     /// 重载列表（回到第一页并清空当前数据）
     Q_INVOKABLE void refresh();
     /// 清空全部数据与加载状态（登出/账号切换时调用，杜绝上一账号残留数据串台）
@@ -130,22 +128,22 @@ private:
     /// 重试定时器到点：无 token 即停；有在途补排当前档（防重试链断）；否则重拉首页
     void onRetryTick();
 
-    IGoCookApi *m_api;         ///< API 门面（经 HTTP 实现）
-    LocalDatabase *m_db;       ///< 本地快照存储（测试注入独立库；生产为单例）
-    QVariantList m_items;      ///< 当前页库存数据
-    QString m_filterText;      ///< 过滤词（空 = 不过滤）
-    bool m_isLoading = false;  ///< 是否正在加载
-    bool m_hasMore = false;    ///< 是否还有下一页
-    bool m_loadFailed = false; ///< 首页加载失败且无任何可显示数据（页面离线视图）
-    QString m_loadFailedMessage; ///< 离线视图文案（失败类型透传；退出离线态清空）
-    bool m_lastLoadFailed = false; ///< 最近一次首页尝试失败过（可能仍显示旧数据/快照，供自动重拉判定）
+    IGoCookApi* m_api;                        ///< API 门面（经 HTTP 实现）
+    LocalDatabase* m_db;                      ///< 本地快照存储（测试注入独立库；生产为单例）
+    QVariantList m_items;                     ///< 当前页库存数据
+    QString m_filterText;                     ///< 过滤词（空 = 不过滤）
+    bool m_isLoading = false;                 ///< 是否正在加载
+    bool m_hasMore = false;                   ///< 是否还有下一页
+    bool m_loadFailed = false;                ///< 首页加载失败且无任何可显示数据（页面离线视图）
+    QString m_loadFailedMessage;              ///< 离线视图文案（失败类型透传；退出离线态清空）
+    bool m_lastLoadFailed = false;            ///< 最近一次首页尝试失败过（可能仍显示旧数据/快照，供自动重拉判定）
     bool m_itemsFromSnapshotFallback = false; ///< 当前列表来自快照兜底（过滤词变化/清空时需从快照重新派生）
-    int m_currentPage = 1;     ///< 当前页码
-    int m_pageSize = kPageSize;    ///< 每页数量
-    int m_totalPages = 0;      ///< 总页数
-    QTimer m_retryTimer;       ///< 退避重试定时器（仅失败态运行）
+    int m_currentPage = 1;                    ///< 当前页码
+    int m_pageSize = kPageSize;               ///< 每页数量
+    int m_totalPages = 0;                     ///< 总页数
+    QTimer m_retryTimer;                      ///< 退避重试定时器（仅失败态运行）
     QList<int> m_retryDelays = {5000, 10000, 20000, 30000}; ///< 退避序列（到末尾后按末尾间隔继续）
-    int m_retryAttempt = 0;    ///< 当前退避档位（成功/复位时归零）
+    int m_retryAttempt = 0;                                 ///< 当前退避档位（成功/复位时归零）
     /// 请求代次（RequestGuards.h::RequestEpoch）：新一轮首屏请求（换词/刷新）begin 取票据；
     /// 响应带回票据，到达时已失效即属过期（被更新的请求取代），静默丢弃不落数据不改状态
     RequestEpoch m_epoch;

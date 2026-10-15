@@ -32,9 +32,9 @@ constexpr const char* kUploadsDirEnv = "GOCOOK_UPLOADS_DIR";
 // 环境变量守卫：用例内 set/clear 修改，析构时恢复原值（原值不存在则清除）
 class EnvGuard {
 public:
-    explicit EnvGuard(const char* name) : name_(name) {
-        if (const char* v = std::getenv(name); v != nullptr)
-            saved_ = std::string(v);
+    explicit EnvGuard(const char* name)
+        : name_(name) {
+        if (const char* v = std::getenv(name); v != nullptr) saved_ = std::string(v);
     }
     ~EnvGuard() {
         if (saved_)
@@ -55,22 +55,17 @@ private:
 class TestFileServer {
 public:
     ~TestFileServer() {
-        if (svr_.is_running())
-            svr_.stop();
-        if (thread_.joinable())
-            thread_.join();
+        if (svr_.is_running()) svr_.stop();
+        if (thread_.joinable()) thread_.join();
     }
 
     // @param payloadCap HTTP 层请求体上限（0 = 不设，httplib 默认无上限）
     // @return 监听是否就绪
-    bool start(const std::string& subdir, const std::string& label = {},
-               size_t payloadCap = 0) {
-        if (payloadCap > 0)
-            svr_.set_payload_max_length(payloadCap);
+    bool start(const std::string& subdir, const std::string& label = {}, size_t payloadCap = 0) {
+        if (payloadCap > 0) svr_.set_payload_max_length(payloadCap);
         UploadFileServer::registerUploadRoutes(svr_, subdir, label);
         port_ = svr_.bind_to_any_port("127.0.0.1");
-        if (port_ <= 0)
-            return false;
+        if (port_ <= 0) return false;
         thread_ = std::thread([this] { svr_.listen_after_bind(); });
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (!svr_.is_running() && std::chrono::steady_clock::now() < deadline)
@@ -88,26 +83,23 @@ private:
 
 // 常见图片文件的魔数片段（服务端按字节原样返回，不解析内容，此处仅作数据）
 const std::string kJpegBytes = "\xFF\xD8\xFF\xE0\x00\x10JFIF...fake-jpeg";
-const std::string kPngBytes  = "\x89PNG\r\n\x1a\n...fake-png";
+const std::string kPngBytes = "\x89PNG\r\n\x1a\n...fake-png";
 
 class UploadFileServerTest : public ::testing::Test {
 protected:
     void SetUp() override {
         static int counter = 0;
-        base_ = std::filesystem::temp_directory_path()
-              / ("gocook_ufs_" + std::to_string(::getpid()) + "_" + std::to_string(counter++));
+        base_ = std::filesystem::temp_directory_path() /
+                ("gocook_ufs_" + std::to_string(::getpid()) + "_" + std::to_string(counter++));
         std::filesystem::remove_all(base_);
         std::filesystem::create_directories(base_);
         env_.set(base_.c_str());
     }
 
-    void TearDown() override {
-        std::filesystem::remove_all(base_);
-    }
+    void TearDown() override { std::filesystem::remove_all(base_); }
 
     // 在上传根目录 <subdir>/ 下写入 <name> 文件
-    void createUploadFile(const std::string& subdir, const std::string& name,
-                          const std::string& data) {
+    void createUploadFile(const std::string& subdir, const std::string& name, const std::string& data) {
         const auto dir = base_ / subdir;
         std::filesystem::create_directories(dir);
         std::ofstream ofs(dir / name, std::ios::binary);
@@ -148,11 +140,11 @@ TEST_F(UploadFileServerTest, 路径穿越含点号或斜杠返回400) {
     TestFileServer srv;
     ASSERT_TRUE(srv.start("avatars"));
 
-    auto res = srv.client().Get("/uploads/avatars/../secret.jpg");  // 含 '/'
+    auto res = srv.client().Get("/uploads/avatars/../secret.jpg"); // 含 '/'
     ASSERT_TRUE(res != nullptr);
     EXPECT_EQ(400, res->status);
 
-    auto res2 = srv.client().Get("/uploads/avatars/..");            // 含 ".."
+    auto res2 = srv.client().Get("/uploads/avatars/.."); // 含 ".."
     ASSERT_TRUE(res2 != nullptr);
     EXPECT_EQ(400, res2->status);
 }
@@ -165,8 +157,7 @@ TEST_F(UploadFileServerTest, 符号链接指向目录外被第二层防御拦截
         ofs << "top-secret";
     }
     try {
-        std::filesystem::create_symlink(base_ / "outside_secret.jpg",
-                                        base_ / "avatars" / "link.jpg");
+        std::filesystem::create_symlink(base_ / "outside_secret.jpg", base_ / "avatars" / "link.jpg");
     } catch (const std::exception&) {
         GTEST_SKIP() << "当前环境不支持创建符号链接，跳过第二层防御用例";
     }
@@ -176,7 +167,7 @@ TEST_F(UploadFileServerTest, 符号链接指向目录外被第二层防御拦截
 
     auto res = srv.client().Get("/uploads/avatars/link.jpg");
     ASSERT_TRUE(res != nullptr);
-    EXPECT_EQ(400, res->status);  // 链接逃逸允许目录 → 拦截
+    EXPECT_EQ(400, res->status); // 链接逃逸允许目录 → 拦截
 }
 
 TEST_F(UploadFileServerTest, 符号链接指向同前缀兄弟目录被组件边界拦截) {
@@ -185,8 +176,7 @@ TEST_F(UploadFileServerTest, 符号链接指向同前缀兄弟目录被组件边
     createUploadFile("avatars", "real.jpg", kJpegBytes);
     createUploadFile("avatars_evil", "secret.jpg", "top-secret-prefix-leak");
     try {
-        std::filesystem::create_symlink(base_ / "avatars_evil" / "secret.jpg",
-                                        base_ / "avatars" / "link.jpg");
+        std::filesystem::create_symlink(base_ / "avatars_evil" / "secret.jpg", base_ / "avatars" / "link.jpg");
     } catch (const std::exception&) {
         GTEST_SKIP() << "当前环境不支持创建符号链接，跳过第二层防御用例";
     }
@@ -196,7 +186,7 @@ TEST_F(UploadFileServerTest, 符号链接指向同前缀兄弟目录被组件边
 
     auto res = srv.client().Get("/uploads/avatars/link.jpg");
     ASSERT_TRUE(res != nullptr);
-    EXPECT_EQ(400, res->status);  // 链接逃逸到同前缀兄弟目录 → 组件边界拦截
+    EXPECT_EQ(400, res->status); // 链接逃逸到同前缀兄弟目录 → 组件边界拦截
 }
 
 TEST_F(UploadFileServerTest, 不存在的文件返回404) {

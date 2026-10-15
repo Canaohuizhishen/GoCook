@@ -36,29 +36,24 @@
 
 namespace {
 
-bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
-{
+bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!done.load()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     return true;
 }
 
-template <typename Fn>
-bool waitUntil(const Fn& fn, int timeoutMs = 5000)
-{
+template <typename Fn> bool waitUntil(const Fn& fn, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!fn()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
@@ -66,8 +61,7 @@ bool waitUntil(const Fn& fn, int timeoutMs = 5000)
 }
 
 // 负向断言用：驱动事件循环一小段时间（验证"不该发生的事没发生"）
-void pumpEvents(int ms)
-{
+void pumpEvents(int ms) {
     QElapsedTimer timer;
     timer.start();
     while (timer.elapsed() < ms) {
@@ -89,14 +83,12 @@ public:
     std::atomic<int> readStateReqCount{0};
     std::atomic<int> deleteReqCount{0};
 
-    std::vector<std::pair<std::string, int>> readStatesCopy()
-    {
+    std::vector<std::pair<std::string, int>> readStatesCopy() {
         std::lock_guard<std::mutex> lk(reqMx);
         return readStates;
     }
 
-    NotificationStubServer()
-    {
+    NotificationStubServer() {
         svr.Get("/api/users/me/notifications", [this](const httplib::Request& req, httplib::Response& res) {
             listReqCount++;
             const int page = std::stoi(req.get_param_value("page"));
@@ -115,21 +107,17 @@ public:
             std::string arr = "[";
             for (int i = from; i < to; ++i) {
                 if (i > from) arr += ",";
-                const int id = base + total - i;   // i=0 → 最大 id
-                arr += R"({"id":)" + std::to_string(id)
-                     + R"(,"title":"通知)" + std::to_string(id)
-                     + R"(","content":"内容","type":")" + type
-                     + R"(","sub_type":null,"is_read":false,"created_at":"2026-09-01T00:00:00Z"})";
+                const int id = base + total - i; // i=0 → 最大 id
+                arr += R"({"id":)" + std::to_string(id) + R"(,"title":"通知)" + std::to_string(id) +
+                       R"(","content":"内容","type":")" + type +
+                       R"(","sub_type":null,"is_read":false,"created_at":"2026-09-01T00:00:00Z"})";
             }
             arr += "]";
             res.status = 200;
-            res.set_content(
-                R"({"pagination":{"page":)" + std::to_string(page)
-                + R"(,"size":)" + std::to_string(size)
-                + R"(,"total":)" + std::to_string(total)
-                + R"(,"total_pages":)" + std::to_string(totalPages)
-                + R"(},"data":)" + arr + "}",
-                "application/json");
+            res.set_content(R"({"pagination":{"page":)" + std::to_string(page) + R"(,"size":)" + std::to_string(size) +
+                                R"(,"total":)" + std::to_string(total) + R"(,"total_pages":)" +
+                                std::to_string(totalPages) + R"(},"data":)" + arr + "}",
+                            "application/json");
         });
 
         svr.Get("/api/users/me/notifications/unread-summary", [this](const httplib::Request&, httplib::Response& res) {
@@ -140,21 +128,18 @@ public:
                 return;
             }
             res.status = 200;
-            res.set_content(
-                std::string("{\"review\":") + std::to_string(summaryReview.load())
-                + ",\"interaction\":" + std::to_string(summaryInteraction.load())
-                + ",\"system\":" + (summarySystem.load() ? "true" : "false") + "}",
-                "application/json");
+            res.set_content(std::string("{\"review\":") + std::to_string(summaryReview.load()) +
+                                ",\"interaction\":" + std::to_string(summaryInteraction.load()) +
+                                ",\"system\":" + (summarySystem.load() ? "true" : "false") + "}",
+                            "application/json");
         });
 
         svr.Put("/api/users/me/notifications/read-state", [this](const httplib::Request& req, httplib::Response& res) {
             readStateReqCount++;
-            const QJsonObject obj = QJsonDocument::fromJson(
-                QByteArray::fromStdString(req.body)).object();
+            const QJsonObject obj = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
             {
                 std::lock_guard<std::mutex> lk(reqMx);
-                readStates.emplace_back(obj["type"].toString().toStdString(),
-                                        obj["last_seen_id"].toInt());
+                readStates.emplace_back(obj["type"].toString().toStdString(), obj["last_seen_id"].toInt());
             }
             res.status = 200;
             res.set_content(R"({"message":"已读水位已更新"})", "application/json");
@@ -167,47 +152,40 @@ public:
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
-        if (port <= 0)
-            throw std::runtime_error("NotificationStubServer: bind_to_any_port failed");
+        if (port <= 0) throw std::runtime_error("NotificationStubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
 
         // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running() 显式暴露启动失败
         for (int i = 0; i < 200; ++i) {
-            if (svr.is_running())
-                return;
+            if (svr.is_running()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         throw std::runtime_error("NotificationStubServer: failed to start");
     }
 
-    ~NotificationStubServer()
-    {
+    ~NotificationStubServer() {
         svr.stop();
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
     }
 
     std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
 
 private:
-    void sleepIfNeeded(const std::atomic<int>& ms)
-    {
+    void sleepIfNeeded(const std::atomic<int>& ms) {
         const int delay = ms.load();
-        if (delay > 0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+        if (delay > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay));
     }
 
     httplib::Server svr;
     int port = 0;
     std::thread th;
-    std::mutex reqMx;   // 保护 readStates（服务端线程写 / 测试线程读）
-    std::vector<std::pair<std::string, int>> readStates;   // (type, last_seen_id) 按到达顺序
+    std::mutex reqMx;                                    // 保护 readStates（服务端线程写 / 测试线程读）
+    std::vector<std::pair<std::string, int>> readStates; // (type, last_seen_id) 按到达顺序
 };
 
 class NotificationVmTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         api.setMaxRetries(0);
         api.setToken(QStringLiteral("token-A"));
     }
@@ -216,8 +194,7 @@ protected:
 };
 
 // ==================== T1：汇总拉取与失败静默 ====================
-TEST_F(NotificationVmTest, 汇总拉取与失败静默保留旧值)
-{
+TEST_F(NotificationVmTest, 汇总拉取与失败静默保留旧值) {
     NotificationStubServer stub;
     stub.summaryReview = 3;
     stub.summaryInteraction = 1;
@@ -247,8 +224,7 @@ TEST_F(NotificationVmTest, 汇总拉取与失败静默保留旧值)
 }
 
 // ==================== T2：进入分类即已读 ====================
-TEST_F(NotificationVmTest, 进入分类即已读上报水位并本地清零)
-{
+TEST_F(NotificationVmTest, 进入分类即已读上报水位并本地清零) {
     NotificationStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -260,9 +236,8 @@ TEST_F(NotificationVmTest, 进入分类即已读上报水位并本地清零)
 
     // 进入页面（refresh）：加载 review 第一页
     vm.refresh();
-    ASSERT_TRUE(waitUntil([&]() {
-        return vm.notifications().size() == 20 && !vm.isLoading();
-    })) << "分类第一页加载超时";
+    ASSERT_TRUE(waitUntil([&]() { return vm.notifications().size() == 20 && !vm.isLoading(); }))
+        << "分类第一页加载超时";
 
     // 水位上报：type=review, last_seen_id=322（第一页最大 id）
     // （上报为 fire-and-forget：等桩收到，不能用 VM 状态推断）
@@ -281,36 +256,34 @@ TEST_F(NotificationVmTest, 进入分类即已读上报水位并本地清零)
 }
 
 // ==================== T3：双分类独立（缓存 + 过期重拉） ====================
-TEST_F(NotificationVmTest, 双分类独立切换不重拉刷新后重拉)
-{
+TEST_F(NotificationVmTest, 双分类独立切换不重拉刷新后重拉) {
     NotificationStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
     NotificationViewModel vm(&api);
 
-    vm.refresh();   // review 第一页（第 1 个请求）
+    vm.refresh(); // review 第一页（第 1 个请求）
     ASSERT_TRUE(waitUntil([&]() { return vm.notifications().size() == 20 && !vm.isLoading(); }));
     EXPECT_EQ(vm.notifications().first().toMap()["id"].toInt(), 322);
 
-    vm.setCurrentType(QStringLiteral("interaction"));   // 惰性加载（第 2 个请求）
+    vm.setCurrentType(QStringLiteral("interaction")); // 惰性加载（第 2 个请求）
     ASSERT_TRUE(waitUntil([&]() { return vm.notifications().size() == 20 && !vm.isLoading(); }));
     EXPECT_EQ(vm.notifications().first().toMap()["id"].toInt(), 422);
     EXPECT_EQ(stub.listReqCount.load(), 2);
 
-    vm.setCurrentType(QStringLiteral("review"));   // 切回：命中缓存，不重拉
+    vm.setCurrentType(QStringLiteral("review")); // 切回：命中缓存，不重拉
     pumpEvents(150);
     EXPECT_EQ(stub.listReqCount.load(), 2) << "切回已加载分类不得重拉";
     EXPECT_EQ(vm.notifications().size(), 20);
     EXPECT_EQ(vm.notifications().first().toMap()["id"].toInt(), 322);
 
-    vm.refresh();   // 重进/刷新：两类过期，当前分类重拉（第 3 个请求）
+    vm.refresh(); // 重进/刷新：两类过期，当前分类重拉（第 3 个请求）
     ASSERT_TRUE(waitUntil([&]() { return stub.listReqCount.load() == 3 && !vm.isLoading(); }));
     EXPECT_EQ(vm.notifications().size(), 20);
 }
 
 // ==================== T4：续页追加、hasMore 收敛、不重报水位 ====================
-TEST_F(NotificationVmTest, 续页追加且不重报水位)
-{
+TEST_F(NotificationVmTest, 续页追加且不重报水位) {
     NotificationStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -321,30 +294,29 @@ TEST_F(NotificationVmTest, 续页追加且不重报水位)
     ASSERT_TRUE(waitUntil([&]() { return stub.readStateReqCount.load() == 1; })) << "水位上报未到达";
 
     vm.loadNextPage();
-    ASSERT_TRUE(waitUntil([&]() {
-        return vm.notifications().size() == 22 && !vm.isLoading();
-    })) << "续页超时";
+    ASSERT_TRUE(waitUntil([&]() { return vm.notifications().size() == 22 && !vm.isLoading(); })) << "续页超时";
     EXPECT_FALSE(vm.hasMore());
     EXPECT_EQ(stub.readStateReqCount.load(), 1) << "续页不得重报水位";
     EXPECT_EQ(vm.notifications().last().toMap()["id"].toInt(), 301);
 }
 
 // ==================== T5：删除已读条目（计数不变） ====================
-TEST_F(NotificationVmTest, 删除已读条目本地移除且计数不变)
-{
+TEST_F(NotificationVmTest, 删除已读条目本地移除且计数不变) {
     NotificationStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
     NotificationViewModel vm(&api);
 
-    vm.refresh();   // 进入分类 → 全部视为已读
+    vm.refresh(); // 进入分类 → 全部视为已读
     ASSERT_TRUE(waitUntil([&]() { return vm.notifications().size() == 20 && !vm.isLoading(); }));
     ASSERT_EQ(vm.reviewUnread(), 0);
 
     std::atomic<bool> deleted{false};
     int gotId = -1;
-    QObject::connect(&vm, &NotificationViewModel::deleteSuccess,
-                     [&](int id) { gotId = id; deleted = true; });
+    QObject::connect(&vm, &NotificationViewModel::deleteSuccess, [&](int id) {
+        gotId = id;
+        deleted = true;
+    });
 
     vm.deleteNotification(305);
     ASSERT_TRUE(waitUntil(deleted)) << "删除成功信号超时";
@@ -357,8 +329,7 @@ TEST_F(NotificationVmTest, 删除已读条目本地移除且计数不变)
 }
 
 // ==================== T6：删除未读条目计数 -1 ====================
-TEST_F(NotificationVmTest, 删除未读条目计数减一)
-{
+TEST_F(NotificationVmTest, 删除未读条目计数减一) {
     NotificationStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -383,14 +354,13 @@ TEST_F(NotificationVmTest, 删除未读条目计数减一)
 
     std::atomic<bool> deleted{false};
     QObject::connect(&vm, &NotificationViewModel::deleteSuccess, [&](int) { deleted = true; });
-    vm.deleteNotification(401);   // 第二页未读条目
+    vm.deleteNotification(401); // 第二页未读条目
     ASSERT_TRUE(waitUntil(deleted)) << "删除成功信号超时";
     EXPECT_EQ(vm.interactionUnread(), 1) << "删除未读条目：该分类计数 -1";
 }
 
 // ==================== T7：会话切换在途作废 + clearAll 归零 ====================
-TEST_F(NotificationVmTest, 会话切换在途作废与clearAll归零)
-{
+TEST_F(NotificationVmTest, 会话切换在途作废与clearAll归零) {
     NotificationStubServer stub;
     stub.listDelayMs = 300;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -400,7 +370,7 @@ TEST_F(NotificationVmTest, 会话切换在途作废与clearAll归零)
     vm.loadNotifications(1, 20);
     ASSERT_TRUE(vm.isLoading()) << "列表请求应在途";
 
-    api.setToken(QStringLiteral("token-B"));   // 登出/换号
+    api.setToken(QStringLiteral("token-B")); // 登出/换号
 
     ASSERT_TRUE(waitUntil([&]() { return !vm.isLoading(); })) << "过期响应后计数未配平";
     pumpEvents(100);

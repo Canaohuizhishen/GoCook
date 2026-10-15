@@ -31,8 +31,7 @@ using gocook::services::ServiceException;
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -58,9 +57,9 @@ bool dbAvailable() {
 // 环境变量守卫：用例内 set，析构时恢复原值（与 test_upload_paths.cpp 同一模式）
 class EnvGuard {
 public:
-    explicit EnvGuard(const char* name) : name_(name) {
-        if (const char* v = std::getenv(name); v != nullptr)
-            saved_ = std::string(v);
+    explicit EnvGuard(const char* name)
+        : name_(name) {
+        if (const char* v = std::getenv(name); v != nullptr) saved_ = std::string(v);
     }
     ~EnvGuard() {
         if (saved_)
@@ -82,13 +81,11 @@ constexpr const char* kTestUsername = "集成测试菜谱图用户";
 class RecipeImageLifecycleDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         dbOk_ = true;
 
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-        base_ = std::filesystem::temp_directory_path()
-              / (std::string("gocook_recipe_it_") + info->name());
+        base_ = std::filesystem::temp_directory_path() / (std::string("gocook_recipe_it_") + info->name());
         std::error_code ec;
         std::filesystem::remove_all(base_, ec);
         std::filesystem::create_directories(base_ / "recipes");
@@ -121,11 +118,10 @@ protected:
     static int ensureUser() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
-            " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
-            " RETURNING id",
-            pqxx::params{kTestUsername});
+        pqxx::result r = ntxn.exec("INSERT INTO users (username, password_hash) VALUES ($1, 'x')"
+                                   " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                                   " RETURNING id",
+                                   pqxx::params{kTestUsername});
         return r[0][0].as<int>();
     }
 
@@ -133,33 +129,29 @@ protected:
     static int createRecipe(int authorId, const std::string& stepsJson) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO recipes (name, author_id, steps)"
-            " VALUES ('集成测试菜谱图', $1, $2::jsonb) RETURNING id",
-            pqxx::params{authorId, stepsJson});
+        pqxx::result r = ntxn.exec("INSERT INTO recipes (name, author_id, steps)"
+                                   " VALUES ('集成测试菜谱图', $1, $2::jsonb) RETURNING id",
+                                   pqxx::params{authorId, stepsJson});
         return r[0][0].as<int>();
     }
 
     static std::string getImageUrl(int recipeId) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec("SELECT image_url FROM recipes WHERE id = $1",
-                                   pqxx::params{recipeId});
+        pqxx::result r = ntxn.exec("SELECT image_url FROM recipes WHERE id = $1", pqxx::params{recipeId});
         return r.empty() ? std::string() : r[0]["image_url"].as<std::string>("");
     }
 
     static std::string getStepsJson(int recipeId) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec("SELECT steps FROM recipes WHERE id = $1",
-                                   pqxx::params{recipeId});
+        pqxx::result r = ntxn.exec("SELECT steps FROM recipes WHERE id = $1", pqxx::params{recipeId});
         return r.empty() ? std::string("[]") : r[0]["steps"].as<std::string>("[]");
     }
 
     /// 写一个临时源文件（模拟 handler 写出的 /tmp 文件），返回其路径
     std::string writeTempSource(const std::string& tag) {
-        const auto p = std::filesystem::temp_directory_path()
-                     / ("gocook_recipe_it_src_" + tag + ".jpg");
+        const auto p = std::filesystem::temp_directory_path() / ("gocook_recipe_it_src_" + tag + ".jpg");
         std::ofstream ofs(p, std::ios::binary);
         ofs << "fake-image";
         return p.string();
@@ -192,13 +184,12 @@ TEST_F(RecipeImageLifecycleDbTest, 封面上传落盘更新DB并清理临时源)
     EXPECT_EQ(prefix, url.substr(0, prefix.size()));
     EXPECT_TRUE(std::filesystem::exists(UploadPaths::urlToPath(url, "recipes")));
     EXPECT_EQ(url, getImageUrl(recipeId));
-    EXPECT_FALSE(std::filesystem::exists(src));  // 临时源文件已清理
+    EXPECT_FALSE(std::filesystem::exists(src)); // 临时源文件已清理
 }
 
 TEST_F(RecipeImageLifecycleDbTest, 步骤图写入对应步骤并落盘清理) {
     const int userId = ensureUser();
-    const int recipeId = createRecipe(userId,
-        R"([{"order":1,"description":"a"},{"order":2,"description":"b"}])");
+    const int recipeId = createRecipe(userId, R"([{"order":1,"description":"a"},{"order":2,"description":"b"}])");
     const std::string src = writeTempSource("step");
 
     PgRecipeRepository repo(testPool());
@@ -211,8 +202,8 @@ TEST_F(RecipeImageLifecycleDbTest, 步骤图写入对应步骤并落盘清理) {
     const auto steps = nlohmann::json::parse(getStepsJson(recipeId));
     ASSERT_EQ(2u, steps.size());
     EXPECT_EQ(url, steps[1]["image_url"].get<std::string>());
-    EXPECT_FALSE(steps[0].contains("image_url"));  // 只写目标步骤
-    EXPECT_FALSE(std::filesystem::exists(src));    // 临时源文件已清理
+    EXPECT_FALSE(steps[0].contains("image_url")); // 只写目标步骤
+    EXPECT_FALSE(std::filesystem::exists(src));   // 临时源文件已清理
 }
 
 TEST_F(RecipeImageLifecycleDbTest, 越权返回403且无文件残留) {
@@ -222,13 +213,13 @@ TEST_F(RecipeImageLifecycleDbTest, 越权返回403且无文件残留) {
 
     PgRecipeRepository repo(testPool());
     try {
-        repo.updateRecipeImage(userId + 100000, recipeId, src);  // 非作者
+        repo.updateRecipeImage(userId + 100000, recipeId, src); // 非作者
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
         EXPECT_EQ(403, e.statusCode());
     }
-    EXPECT_FALSE(std::filesystem::exists(src));  // 临时源文件已清理
-    EXPECT_EQ(0u, countUploadsWithPrefix("recipe_" + std::to_string(recipeId) + "_"));  // 未落盘
+    EXPECT_FALSE(std::filesystem::exists(src));                                        // 临时源文件已清理
+    EXPECT_EQ(0u, countUploadsWithPrefix("recipe_" + std::to_string(recipeId) + "_")); // 未落盘
 }
 
 TEST_F(RecipeImageLifecycleDbTest, 菜谱不存在返回404且无文件残留) {
@@ -242,7 +233,7 @@ TEST_F(RecipeImageLifecycleDbTest, 菜谱不存在返回404且无文件残留) {
     } catch (const ServiceException& e) {
         EXPECT_EQ(404, e.statusCode());
     }
-    EXPECT_FALSE(std::filesystem::exists(src));  // 复制前失败，临时源文件已清理
+    EXPECT_FALSE(std::filesystem::exists(src)); // 复制前失败，临时源文件已清理
 }
 
 TEST_F(RecipeImageLifecycleDbTest, 步骤索引越界返回400且无文件残留) {
@@ -252,11 +243,11 @@ TEST_F(RecipeImageLifecycleDbTest, 步骤索引越界返回400且无文件残留
 
     PgRecipeRepository repo(testPool());
     try {
-        repo.updateStepImage(userId, recipeId, 5, src);  // 越界
+        repo.updateStepImage(userId, recipeId, 5, src); // 越界
         FAIL() << "Expected ServiceException";
     } catch (const ServiceException& e) {
         EXPECT_EQ(400, e.statusCode());
     }
-    EXPECT_FALSE(std::filesystem::exists(src));  // 校验先于复制，临时源文件已清理
+    EXPECT_FALSE(std::filesystem::exists(src)); // 校验先于复制，临时源文件已清理
     EXPECT_EQ(0u, countUploadsWithPrefix("recipe_" + std::to_string(recipeId) + "_"));
 }

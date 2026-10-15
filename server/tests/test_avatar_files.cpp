@@ -25,9 +25,9 @@ constexpr const char* kUploadsDirEnv = "GOCOOK_UPLOADS_DIR";
 // 环境变量守卫：用例内 set/clear 修改，析构时恢复原值（原值不存在则清除）
 class EnvGuard {
 public:
-    explicit EnvGuard(const char* name) : name_(name) {
-        if (const char* v = std::getenv(name); v != nullptr)
-            saved_ = std::string(v);
+    explicit EnvGuard(const char* name)
+        : name_(name) {
+        if (const char* v = std::getenv(name); v != nullptr) saved_ = std::string(v);
     }
     ~EnvGuard() {
         if (saved_)
@@ -48,8 +48,7 @@ class AvatarFilesTest : public ::testing::Test {
 protected:
     void SetUp() override {
         const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
-        base_ = std::filesystem::temp_directory_path()
-              / (std::string("gocook_avatar_files_") + info->name());
+        base_ = std::filesystem::temp_directory_path() / (std::string("gocook_avatar_files_") + info->name());
         std::error_code ec;
         std::filesystem::remove_all(base_, ec);
         std::filesystem::create_directories(base_ / "avatars");
@@ -58,7 +57,7 @@ protected:
     }
 
     void TearDown() override {
-        guard_.reset();  // 先恢复环境变量
+        guard_.reset(); // 先恢复环境变量
         std::error_code ec;
         std::filesystem::remove_all(base_, ec);
     }
@@ -106,9 +105,9 @@ TEST_F(AvatarFilesTest, 归属判定_穿越与他人路径拒绝) {
 TEST_F(AvatarFilesTest, 存在性_常规文件为真目录为假) {
     writeAvatar("user_1_100.jpg");
     EXPECT_TRUE(AvatarFiles::fileExists("/uploads/avatars/user_1_100.jpg"));
-    EXPECT_FALSE(AvatarFiles::fileExists("/uploads/avatars/user_1_999.jpg"));  // 不存在
+    EXPECT_FALSE(AvatarFiles::fileExists("/uploads/avatars/user_1_999.jpg")); // 不存在
     std::filesystem::create_directories(base_ / "avatars" / "user_1_200.jpg");
-    EXPECT_FALSE(AvatarFiles::fileExists("/uploads/avatars/user_1_200.jpg"));  // 目录
+    EXPECT_FALSE(AvatarFiles::fileExists("/uploads/avatars/user_1_200.jpg")); // 目录
 }
 
 // ==================== 回收 ====================

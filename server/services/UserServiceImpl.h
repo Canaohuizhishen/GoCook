@@ -20,7 +20,8 @@ public:
      */
     explicit UserServiceImpl(std::unique_ptr<gocook::repository::IUserRepository> userRepo,
                              const std::string& jwtSecret)
-        : userRepo_(std::move(userRepo)), jwt_secret_(jwtSecret) {}
+        : userRepo_(std::move(userRepo)),
+          jwt_secret_(jwtSecret) {}
 
     // 用户注册（两段式第一步：写入待验证记录并发送验证码邮件）
     void registerUser(const gocook::models::RegisterRequest& request) override;
@@ -30,59 +31,48 @@ public:
     gocook::models::LoginResponse login(const gocook::models::LoginRequest& request) override;
 
     // 请求密码重置：发送重置邮件；SMTP 未配置（开发模式）时经 [DEV MAIL] 打印到服务端日志
-    void requestPasswordReset(const std::string& username,
-                              const std::string& email) override;
+    void requestPasswordReset(const std::string& username, const std::string& email) override;
     // 使用重置令牌设置新密码
-    void resetPassword(const std::string& token,
-                       const std::string& newPassword) override;
+    void resetPassword(const std::string& token, const std::string& newPassword) override;
     // 获取当前用户资料
     gocook::models::UserProfile getCurrentUser(int userId) override;
     // 更新当前用户个人资料，返回更新后的资料
-    gocook::models::UserProfile updateProfile(int userId,
-                                               const gocook::models::UpdateProfileRequest& profile) override;
+    gocook::models::UserProfile updateProfile(int userId, const gocook::models::UpdateProfileRequest& profile) override;
     // 修改密码（需验证原密码）
-    void changePassword(int userId,
-                        const std::string& currentPassword,
-                        const std::string& newPassword) override;
+    void changePassword(int userId, const std::string& currentPassword, const std::string& newPassword) override;
     // 注销账户
     void deleteAccount(int userId) override;
     // 上传头像（仅暂存，保存资料时通过 avatar_url 绑定生效）
-    gocook::models::AvatarUploadResponse uploadAvatar(int userId,
-                                                       const std::string& filePath) override;
+    gocook::models::AvatarUploadResponse uploadAvatar(int userId, const std::string& filePath) override;
     // 放弃未保存的暂存头像（幂等删除）
     void discardPendingAvatar(int userId, const std::string& avatarUrl) override;
     // 获取用户饮食偏好
     gocook::models::UserPreferences getPreferences(int userId) override;
     // 更新用户饮食偏好
-    void updatePreferences(int userId,
-                           const gocook::models::UserPreferences& prefs) override;
+    void updatePreferences(int userId, const gocook::models::UserPreferences& prefs) override;
     // 录入/更新健康指标
-    gocook::models::HealthProfileResponse updateHealthProfile(
-        int userId, const gocook::models::HealthProfileRequest& healthProfile) override;
+    gocook::models::HealthProfileResponse
+    updateHealthProfile(int userId, const gocook::models::HealthProfileRequest& healthProfile) override;
     // 获取健康指标（含忌口建议）
     gocook::models::HealthProfileResponse getHealthProfile(int userId) override;
     // 获取收藏列表（分页，可按分组筛选）
-    gocook::models::PagedFavorites getFavorites(int userId, int page, int size,
-                                                const std::string& group = "") override;
+    gocook::models::PagedFavorites getFavorites(int userId, int page, int size, const std::string& group = "") override;
     // 获取收藏分组列表
     std::vector<gocook::models::FavoriteGroup> getFavoriteGroups(int userId) override;
     // 创建收藏分组，返回创建的分组对象
     gocook::models::FavoriteGroup createFavoriteGroup(int userId,
-                                                       const gocook::models::CreateGroupRequest& request) override;
+                                                      const gocook::models::CreateGroupRequest& request) override;
     // 更新收藏分组
-    void updateFavoriteGroup(int userId, int groupId,
-                             const gocook::models::UpdateGroupRequest& request) override;
+    void updateFavoriteGroup(int userId, int groupId, const gocook::models::UpdateGroupRequest& request) override;
     // 删除收藏分组
     void deleteFavoriteGroup(int userId, int groupId) override;
     // 批量更新收藏项属性（移动分组/可见性，单条=单元素列表）
-    void batchUpdateFavorites(int userId,
-                              const gocook::models::BatchUpdateFavoritesRequest& request) override;
+    void batchUpdateFavorites(int userId, const gocook::models::BatchUpdateFavoritesRequest& request) override;
     // 批量删除收藏
-    void batchDeleteFavorites(int userId,
-                              const gocook::models::BatchDeleteFavoritesRequest& request) override;
+    void batchDeleteFavorites(int userId, const gocook::models::BatchDeleteFavoritesRequest& request) override;
     // 获取通知列表（分页，可按类型筛选）
-    gocook::models::PagedNotifications getNotifications(int userId, int page, int size,
-                                                        const std::string& type = "") override;
+    gocook::models::PagedNotifications
+    getNotifications(int userId, int page, int size, const std::string& type = "") override;
     // 获取未读汇总（消息中心角标：各分类未读数 + 有无新公告）
     gocook::models::NotificationUnreadSummary getUnreadSummary(int userId) override;
     // 上报通知类已读水位（type ∈ review/interaction；幂等）

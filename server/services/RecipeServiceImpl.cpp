@@ -22,351 +22,360 @@ using namespace gocook::services;
 // ============================================================
 namespace {
 
-    // 候选池上限（安全阀）：池 = 全库已发布菜谱，超上限时由 SQL 排序截断。
-    // 不随 size 缩放——固定池（曾为 size×3）会让「换一批」的候选范围不随库增长
-    // （库 > 池后只能在前池名内轮转）；300 覆盖合法 size 上限（100）的 3× 余量，
-    // 项目规模下即全库。
-    constexpr int CANDIDATE_POOL_CAP = 300;
+// 候选池上限（安全阀）：池 = 全库已发布菜谱，超上限时由 SQL 排序截断。
+// 不随 size 缩放——固定池（曾为 size×3）会让「换一批」的候选范围不随库增长
+// （库 > 池后只能在前池名内轮转）；300 覆盖合法 size 上限（100）的 3× 余量，
+// 项目规模下即全库。
+constexpr int CANDIDATE_POOL_CAP = 300;
 
-    // 「换一批」加权随机序参数：权重 = (复合分 + FLOOR)^EXPONENT，键 = u^(1/权重) 降序。
-    // 高分菜出镜频率显著更高（质量地板从"硬截断"改为"软偏置"），低分菜概率极低
-    // 但非零——候选范围随库规模增长；EXPONENT 调大更头部化、调小更均匀。
-    constexpr double SHUFFLE_WEIGHT_EXPONENT = 2.0;
-    constexpr double SHUFFLE_WEIGHT_FLOOR    = 0.1;
+// 「换一批」加权随机序参数：权重 = (复合分 + FLOOR)^EXPONENT，键 = u^(1/权重) 降序。
+// 高分菜出镜频率显著更高（质量地板从"硬截断"改为"软偏置"），低分菜概率极低
+// 但非零——候选范围随库规模增长；EXPONENT 调大更头部化、调小更均匀。
+constexpr double SHUFFLE_WEIGHT_EXPONENT = 2.0;
+constexpr double SHUFFLE_WEIGHT_FLOOR = 0.1;
 
-    // 最终评分权重
-    constexpr double WEIGHT_INVENTORY    = 0.50;  // 库存（已有食材占菜谱总食材的比例）
-    constexpr double WEIGHT_PREFERENCE   = 0.25;  // 偏好（喜欢/厌恶）
-    constexpr double WEIGHT_POPULARITY   = 0.10;  // 流行度（平均评分）
-    constexpr double WEIGHT_RECENCY      = 0.05;  // 新鲜度（近期投稿）
-    constexpr double WEIGHT_NUTRITION    = 0.10;  // 营养适配（健康目标）
+// 最终评分权重
+constexpr double WEIGHT_INVENTORY = 0.50;  // 库存（已有食材占菜谱总食材的比例）
+constexpr double WEIGHT_PREFERENCE = 0.25; // 偏好（喜欢/厌恶）
+constexpr double WEIGHT_POPULARITY = 0.10; // 流行度（平均评分）
+constexpr double WEIGHT_RECENCY = 0.05;    // 新鲜度（近期投稿）
+constexpr double WEIGHT_NUTRITION = 0.10;  // 营养适配（健康目标）
 
-    // 偏好加分/减分
-    constexpr double BOOST_LIKE_FLAVOR     = 0.15;  // 菜谱风味命中用户“喜欢”列表时加的分数
-    constexpr double BOOST_LIKE_TAG        = 0.10;  // 菜谱标签命中用户“喜欢”列表时加的分数
-    constexpr double PENALTY_DISLIKE       = 0.50;  // 菜谱含用户“厌恶”食材时的惩罚值，厌食惩罚足够强，能翻转排名
-    constexpr double PENALTY_SOFT_HEALTH   = 0.03;  // 软档健康食材（盐/酱油/糖等可少放食材）的轻微降权值：仅提示不剔除，降权力度弱于厌恶惩罚
+// 偏好加分/减分
+constexpr double BOOST_LIKE_FLAVOR = 0.15; // 菜谱风味命中用户“喜欢”列表时加的分数
+constexpr double BOOST_LIKE_TAG = 0.10;    // 菜谱标签命中用户“喜欢”列表时加的分数
+constexpr double PENALTY_DISLIKE = 0.50;   // 菜谱含用户“厌恶”食材时的惩罚值，厌食惩罚足够强，能翻转排名
+constexpr double PENALTY_SOFT_HEALTH =
+    0.03; // 软档健康食材（盐/酱油/糖等可少放食材）的轻微降权值：仅提示不剔除，降权力度弱于厌恶惩罚
 
-    // 流行度加分
-    constexpr double BOOST_RATING_HIGH     = 0.08;  // 菜谱平均评分 >= 4.5时加的分数
-    constexpr double BOOST_RATING_MED      = 0.05;  // 菜谱平均评分 >= 4.0时加的分数
+// 流行度加分
+constexpr double BOOST_RATING_HIGH = 0.08; // 菜谱平均评分 >= 4.5时加的分数
+constexpr double BOOST_RATING_MED = 0.05;  // 菜谱平均评分 >= 4.0时加的分数
 
-    // 新鲜度加分
-    constexpr double BOOST_RECENT          = 0.05;  // 投稿时间在 RECENT_DAYS 天内的菜谱加的分数
-    constexpr int    RECENT_DAYS           = 7;     // 时间窗口
+// 新鲜度加分
+constexpr double BOOST_RECENT = 0.05; // 投稿时间在 RECENT_DAYS 天内的菜谱加的分数
+constexpr int RECENT_DAYS = 7;        // 时间窗口
 
-    // 营养适配加分
-    constexpr double BOOST_HEALTH_GOAL     = 0.10;  // 当菜谱的营养指标（蛋白、热量、脂肪）与用户的健康目标（高蛋白/低卡/减脂/增肌）匹配时加的分数
+// 营养适配加分
+constexpr double BOOST_HEALTH_GOAL =
+    0.10; // 当菜谱的营养指标（蛋白、热量、脂肪）与用户的健康目标（高蛋白/低卡/减脂/增肌）匹配时加的分数
 
-    // 多样化约束
-    constexpr int MAX_PER_FLAVOR    = 2;  // 同一风味（如“麻辣”）最多出现的菜谱数量
-    constexpr int MAX_PER_METHOD    = 3;  // 同一烹饪方法（如“炒”）最多出现的菜谱数量
+// 多样化约束
+constexpr int MAX_PER_FLAVOR = 2; // 同一风味（如“麻辣”）最多出现的菜谱数量
+constexpr int MAX_PER_METHOD = 3; // 同一烹饪方法（如“炒”）最多出现的菜谱数量
 
-    // ── 健康条件 → 禁忌食材映射（两档）── 名单唯一事实源：HealthConditionLists.h ──
-    // 硬档（HARD）：食材出现即整道菜剔除——高盐/高糖加工品或公认高风险食材，剔除有明确依据；
-    // 软档（SOFT）：常见调味料/调味糖源——做菜时可少放或不放，不剔除，仅提示 + 评分轻微降权。
-    // 注意：假设数据库健康条件使用中文 locale。UserService 忌口建议与 api-spec 4.2 名单
-    // 均以该头文件为准（spec 为文档快照）——改名单只动一处，勿在此地另起炉灶。
-    const std::unordered_map<std::string, std::vector<std::string>>& CONDITION_HARD_EXCLUDED =
-        gocook::health::hardExclusions();
-    const std::unordered_map<std::string, std::vector<std::string>>& CONDITION_SOFT_ADVISED =
-        gocook::health::softAdvisories();
+// ── 健康条件 → 禁忌食材映射（两档）── 名单唯一事实源：HealthConditionLists.h ──
+// 硬档（HARD）：食材出现即整道菜剔除——高盐/高糖加工品或公认高风险食材，剔除有明确依据；
+// 软档（SOFT）：常见调味料/调味糖源——做菜时可少放或不放，不剔除，仅提示 + 评分轻微降权。
+// 注意：假设数据库健康条件使用中文 locale。UserService 忌口建议与 api-spec 4.2 名单
+// 均以该头文件为准（spec 为文档快照）——改名单只动一处，勿在此地另起炉灶。
+const std::unordered_map<std::string, std::vector<std::string>>& CONDITION_HARD_EXCLUDED =
+    gocook::health::hardExclusions();
+const std::unordered_map<std::string, std::vector<std::string>>& CONDITION_SOFT_ADVISED =
+    gocook::health::softAdvisories();
 
-    /// 将 conditions 按某档映射表展开为禁忌食材集合（小写）
-    std::unordered_set<std::string> computeTierAvoidances(
-        const std::unordered_map<std::string, std::vector<std::string>>& tier,
-        const std::vector<std::string>& conditions)
-    {
-        std::unordered_set<std::string> result;
-        for (const auto& cond : conditions) {
-            auto it = tier.find(cond);
-            if (it != tier.end()) {
-                for (const auto& ing : it->second) {
-                    std::string lower;
-                    lower.reserve(ing.size());
-                    for (char c : ing) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                    result.insert(std::move(lower));
-                }
-            }
-        }
-        return result;
-    }
-
-    /// 检查菜谱的食材中是否包含任何禁忌食材
-    bool hasAvoidedIngredient(const RecommendedRecipe& rec,
-                              const std::unordered_set<std::string>& avoidances)
-    {
-        if (avoidances.empty()) return false;
-        for (const auto& ing : rec.match_status.available_ingredients) {
-            std::string lower;
-            for (char c : ing.name) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (avoidances.count(lower)) return true;
-        }
-        for (const auto& ing : rec.match_status.missing_ingredients) {
-            std::string lower;
-            for (char c : ing.name) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (avoidances.count(lower)) return true;
-        }
-        return false;
-    }
-
-    /// 菜谱食材名集合（小写）
-    std::unordered_set<std::string> ingredientNames(const RecommendedRecipe& rec) {
-        std::unordered_set<std::string> names;
-        for (const auto& ing : rec.match_status.available_ingredients) {
-            std::string lower;
-            for (char c : ing.name) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            names.insert(std::move(lower));
-        }
-        for (const auto& ing : rec.match_status.missing_ingredients) {
-            std::string lower;
-            for (char c : ing.name) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            names.insert(std::move(lower));
-        }
-        return names;
-    }
-
-    /// 构建健康提示（整改 N3：软档食材命中 + 钠阈值按量分级）：
-    /// ① 命中软档食材（盐/酱油/糖/蜂蜜等）→ 按条件分组文案（如"含盐、酱油，高血压人群建议少盐清淡"）；
-    /// ② 高血压用户遇整道钠 ≥800mg 的菜谱，即使软档名单未命中也附钠提示（按量分级真正接入推荐；
-    ///    有盐/酱油等软命中时不再重复——提示已覆盖"少盐"语义，避免"含盐…；钠含量较高…"冗余）。
-    /// 未命中或无条件 → 返回空串（前端不展示；评分阶段据此空串跳过轻微降权）。
-    std::string buildHealthNotice(const RecommendedRecipe& rec,
-                                 const std::vector<std::string>& conditions)
-    {
-        if (conditions.empty()) return "";
-        const auto names = ingredientNames(rec);
-        // 条件 → 提示文案模板（%s 处填充命中食材名；措辞保守：少放/按需，不做绝对禁止）
-        // 模板与名单同源 HealthConditionLists.h（数组序 = 多条件命中时的文案拼接序）
-        std::string notice;
-        bool highBpSoftHit = false;  // 高血压软档是否已给出提示（决定钠阈值提示是否补充）
-        for (const auto& tmpl : gocook::health::softNoticeTemplates()) {
-            if (std::find(conditions.begin(), conditions.end(), tmpl.first) == conditions.end())
-                continue;
-            auto it = CONDITION_SOFT_ADVISED.find(tmpl.first);
-            if (it == CONDITION_SOFT_ADVISED.end()) continue;
-            std::vector<std::string> hits;
+/// 将 conditions 按某档映射表展开为禁忌食材集合（小写）
+std::unordered_set<std::string>
+computeTierAvoidances(const std::unordered_map<std::string, std::vector<std::string>>& tier,
+                      const std::vector<std::string>& conditions) {
+    std::unordered_set<std::string> result;
+    for (const auto& cond : conditions) {
+        auto it = tier.find(cond);
+        if (it != tier.end()) {
             for (const auto& ing : it->second) {
                 std::string lower;
-                for (char c : ing) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                if (names.count(lower)) hits.push_back(ing);
-            }
-            if (hits.empty()) continue;
-            if (tmpl.first == "高血压") highBpSoftHit = true;
-            std::string joined;
-            for (size_t i = 0; i < hits.size(); ++i) {
-                if (i) joined += "、";
-                joined += hits[i];
-            }
-            char buf[160];
-            snprintf(buf, sizeof(buf), tmpl.second.c_str(), joined.c_str());
-            if (!notice.empty()) notice += "；";
-            notice += buf;
-        }
-        // 钠阈值补充（高血压专属；per_serving 当前语义为整道菜营养合计，文案不带"单份"字样）
-        if (!highBpSoftHit && rec.sodium_mg >= 800.0 &&
-            std::find(conditions.begin(), conditions.end(), "高血压") != conditions.end()) {
-            if (!notice.empty()) notice += "；";
-            notice += "钠含量较高，高血压人群建议少盐清淡";
-        }
-        return notice;
-    }
-
-    /// 将 ISO 日期字符串转为 time_t
-    time_t parseISODate(const std::string& iso) {
-        std::tm tm = {};
-        std::stringstream ss(iso);
-        ss >> std::get_time(&tm, "%Y-%m-%d");
-        if (ss.fail()) {
-            // 尝试带时间的格式
-            ss.clear();
-            ss.str(iso);
-            ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
-        }
-        if (ss.fail()) return 0;
-#ifdef _WIN32
-        return _mkgmtime(&tm);
-#else
-        return timegm(&tm);
-#endif
-    }
-
-    /// 判断 time_t 是否在最近 N 天内
-    bool isRecent(time_t ts, int days) {
-        if (ts == 0) return false;
-        time_t now = std::time(nullptr);
-        return (now - ts) <= days * 86400;
-    }
-
-    /// 检查菜谱风味是否命中用户“喜欢”列表（命中 → BOOST_LIKE_FLAVOR）
-    bool matchesLikeFlavor(const RecommendedRecipe& rec,
-                           const std::vector<std::string>& likes)
-    {
-        if (likes.empty() || rec.flavor.empty()) return false;
-        std::string lowerFlavor;
-        for (char c : rec.flavor) lowerFlavor += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        for (const auto& like : likes) {
-            std::string lowerLike;
-            for (char c : like) lowerLike += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (lowerFlavor == lowerLike) return true;
-        }
-        return false;
-    }
-
-    /// 检查菜谱标签是否命中用户“喜欢”列表（命中 → BOOST_LIKE_TAG）
-    bool matchesLikeTag(const RecommendedRecipe& rec,
-                        const std::vector<std::string>& likes)
-    {
-        if (likes.empty() || rec.tags.empty()) return false;
-        for (const auto& like : likes) {
-            std::string lowerLike;
-            for (char c : like) lowerLike += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            for (const auto& tag : rec.tags) {
-                std::string lowerTag;
-                for (char c : tag) lowerTag += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                if (lowerTag == lowerLike) return true;
+                lower.reserve(ing.size());
+                for (char c : ing)
+                    lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                result.insert(std::move(lower));
             }
         }
-        return false;
     }
+    return result;
+}
 
-    /// 检查菜谱是否包含任何厌恶食材
-    bool hasDislikedIngredient(const RecommendedRecipe& rec,
-                               const std::vector<std::string>& dislikes)
-    {
-        if (dislikes.empty()) return false;
-        auto names = ingredientNames(rec);
-        for (const auto& d : dislikes) {
+/// 检查菜谱的食材中是否包含任何禁忌食材
+bool hasAvoidedIngredient(const RecommendedRecipe& rec, const std::unordered_set<std::string>& avoidances) {
+    if (avoidances.empty()) return false;
+    for (const auto& ing : rec.match_status.available_ingredients) {
+        std::string lower;
+        for (char c : ing.name)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (avoidances.count(lower)) return true;
+    }
+    for (const auto& ing : rec.match_status.missing_ingredients) {
+        std::string lower;
+        for (char c : ing.name)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (avoidances.count(lower)) return true;
+    }
+    return false;
+}
+
+/// 菜谱食材名集合（小写）
+std::unordered_set<std::string> ingredientNames(const RecommendedRecipe& rec) {
+    std::unordered_set<std::string> names;
+    for (const auto& ing : rec.match_status.available_ingredients) {
+        std::string lower;
+        for (char c : ing.name)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        names.insert(std::move(lower));
+    }
+    for (const auto& ing : rec.match_status.missing_ingredients) {
+        std::string lower;
+        for (char c : ing.name)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        names.insert(std::move(lower));
+    }
+    return names;
+}
+
+/// 构建健康提示（整改 N3：软档食材命中 + 钠阈值按量分级）：
+/// ① 命中软档食材（盐/酱油/糖/蜂蜜等）→ 按条件分组文案（如"含盐、酱油，高血压人群建议少盐清淡"）；
+/// ② 高血压用户遇整道钠 ≥800mg 的菜谱，即使软档名单未命中也附钠提示（按量分级真正接入推荐；
+///    有盐/酱油等软命中时不再重复——提示已覆盖"少盐"语义，避免"含盐…；钠含量较高…"冗余）。
+/// 未命中或无条件 → 返回空串（前端不展示；评分阶段据此空串跳过轻微降权）。
+std::string buildHealthNotice(const RecommendedRecipe& rec, const std::vector<std::string>& conditions) {
+    if (conditions.empty()) return "";
+    const auto names = ingredientNames(rec);
+    // 条件 → 提示文案模板（%s 处填充命中食材名；措辞保守：少放/按需，不做绝对禁止）
+    // 模板与名单同源 HealthConditionLists.h（数组序 = 多条件命中时的文案拼接序）
+    std::string notice;
+    bool highBpSoftHit = false; // 高血压软档是否已给出提示（决定钠阈值提示是否补充）
+    for (const auto& tmpl : gocook::health::softNoticeTemplates()) {
+        if (std::find(conditions.begin(), conditions.end(), tmpl.first) == conditions.end()) continue;
+        auto it = CONDITION_SOFT_ADVISED.find(tmpl.first);
+        if (it == CONDITION_SOFT_ADVISED.end()) continue;
+        std::vector<std::string> hits;
+        for (const auto& ing : it->second) {
             std::string lower;
-            for (char c : d) lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            if (names.count(lower)) return true;
+            for (char c : ing)
+                lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (names.count(lower)) hits.push_back(ing);
         }
-        return false;
-    }
-
-    /// 营养适配评分 (0.0 或 0.10)
-    double nutritionFitScore(const RecommendedRecipe& rec,
-                             const std::string& healthGoal)
-    {
-        if (healthGoal.empty()) return 0.0;
-        std::string goal;
-        for (char c : healthGoal) goal += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-        if (goal == "高蛋白" && rec.protein_g >= 15.0) return BOOST_HEALTH_GOAL;
-        if (goal == "低卡"   && rec.calories < 300)    return BOOST_HEALTH_GOAL;
-        if (goal == "减脂"   && rec.fat_g < 10.0)      return BOOST_HEALTH_GOAL;
-        if (goal == "增肌"   && rec.protein_g >= 20.0 && rec.fat_g < 15.0) return BOOST_HEALTH_GOAL;
-        return 0.0;
-    }
-
-    // ────────────────────────────────────────────────────────────
-    // 营养计算工具（投稿/编辑时按食材清单自动计算，见方案 A+C）
-    // ────────────────────────────────────────────────────────────
-
-    /// 四舍五入到 1 位小数（入库与展示一致，避免 0.30000000000000004）
-    double round1(double v) {
-        return std::round(v * 10.0) / 10.0;
-    }
-
-    /// 名称规范化：去首尾空白 + 去掉中文/英文括号括注（如 "鸡胸肉（去皮）" → "鸡胸肉"）
-    std::string normalizeIngredientName(const std::string& raw) {
-        std::string s = raw;
-        // trim
-        size_t b = s.find_first_not_of(" \t\r\n");
-        size_t e = s.find_last_not_of(" \t\r\n");
-        if (b == std::string::npos) return "";
-        s = s.substr(b, e - b + 1);
-        // 去括号括注（保留括号前内容；中文括号与英文括号都处理）
-        for (const std::string_view open : {"（", "("}) {
-            auto pos = s.find(open);
-            if (pos != std::string::npos) {
-                s = s.substr(0, pos);
-            }
+        if (hits.empty()) continue;
+        if (tmpl.first == "高血压") highBpSoftHit = true;
+        std::string joined;
+        for (size_t i = 0; i < hits.size(); ++i) {
+            if (i) joined += "、";
+            joined += hits[i];
         }
-        // 再去一次尾空白（"鸡胸肉（去皮）" 处理完可能留尾空格）
-        e = s.find_last_not_of(" \t\r\n");
-        s = (e == std::string::npos) ? "" : s.substr(0, e + 1);
-        return s;
+        char buf[160];
+        snprintf(buf, sizeof(buf), tmpl.second.c_str(), joined.c_str());
+        if (!notice.empty()) notice += "；";
+        notice += buf;
     }
+    // 钠阈值补充（高血压专属；per_serving 当前语义为整道菜营养合计，文案不带"单份"字样）
+    if (!highBpSoftHit && rec.sodium_mg >= 800.0 &&
+        std::find(conditions.begin(), conditions.end(), "高血压") != conditions.end()) {
+        if (!notice.empty()) notice += "；";
+        notice += "钠含量较高，高血压人群建议少盐清淡";
+    }
+    return notice;
+}
 
-    /// 把"数量+单位"换算成克。返回 nullopt 表示无法换算（跳过该食材，不参与计算）。
-    /// 规则：质量单位直接换算；毫升/升按 1ml≈1g 近似（水基食材误差可接受）；
-    ///       容器单位按固定容量近似；计数单位（个/只/根…）依赖食材表
-    ///       default_portion_g（单个近似质量），没有单重或单位未知/数量非正 → 无法换算。
-    ///       单位先做首尾空白 trim（"克 " 等带空白输入不再被静默跳过）。
-    std::optional<double> gramsOf(double quantity, const std::string& unit,
-                                  double defaultPortionG) {
-        if (quantity <= 0.0) return std::nullopt;
-        if (unit.empty()) return std::nullopt;
+/// 将 ISO 日期字符串转为 time_t
+time_t parseISODate(const std::string& iso) {
+    std::tm tm = {};
+    std::stringstream ss(iso);
+    ss >> std::get_time(&tm, "%Y-%m-%d");
+    if (ss.fail()) {
+        // 尝试带时间的格式
+        ss.clear();
+        ss.str(iso);
+        ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+    }
+    if (ss.fail()) return 0;
+#ifdef _WIN32
+    return _mkgmtime(&tm);
+#else
+    return timegm(&tm);
+#endif
+}
 
-        const size_t ub = unit.find_first_not_of(" \t\r\n");
-        const size_t ue = unit.find_last_not_of(" \t\r\n");
-        const std::string u = (ub == std::string::npos) ? "" : unit.substr(ub, ue - ub + 1);
-        if (u.empty()) return std::nullopt;
+/// 判断 time_t 是否在最近 N 天内
+bool isRecent(time_t ts, int days) {
+    if (ts == 0) return false;
+    time_t now = std::time(nullptr);
+    return (now - ts) <= days * 86400;
+}
 
-        // 质量单位
-        if (u == "克" || u == "g" || u == "G") return quantity;
-        if (u == "千克" || u == "公斤" || u == "kg" || u == "KG") return quantity * 1000.0;
-        if (u == "斤") return quantity * 500.0;
-        if (u == "两") return quantity * 50.0;
-        if (u == "磅" || u == "lb" || u == "LB") return quantity * 453.592;
+/// 检查菜谱风味是否命中用户“喜欢”列表（命中 → BOOST_LIKE_FLAVOR）
+bool matchesLikeFlavor(const RecommendedRecipe& rec, const std::vector<std::string>& likes) {
+    if (likes.empty() || rec.flavor.empty()) return false;
+    std::string lowerFlavor;
+    for (char c : rec.flavor)
+        lowerFlavor += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const auto& like : likes) {
+        std::string lowerLike;
+        for (char c : like)
+            lowerLike += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lowerFlavor == lowerLike) return true;
+    }
+    return false;
+}
 
-        // 体积单位（近似 1ml ≈ 1g）：毫升/升直接换算；固定容器容量近似（约数，水基食材误差可接受）
-        if (u == "毫升" || u == "ml" || u == "mL" || u == "ML") return quantity;
-        if (u == "升" || u == "L" || u == "l") return quantity * 1000.0;
-        if (u == "杯") return quantity * 240.0;   // 1 杯 ≈ 240ml（标准量杯）
-        if (u == "碗") return quantity * 200.0;   // 1 碗 ≈ 200ml（家常饭碗）
-        if (u == "汤匙") return quantity * 15.0;  // 1 汤匙 ≈ 15ml
-        if (u == "勺") return quantity * 10.0;    // 1 勺 ≈ 10ml（中式汤勺）
-        if (u == "茶匙") return quantity * 5.0;   // 1 茶匙 ≈ 5ml
-
-        // 计数单位：依赖食材单重
-        static const std::unordered_set<std::string> countUnits = {
-            "个", "只", "条", "根", "片", "块", "把", "瓣", "颗", "枚", "粒", "份", "盒", "袋",
-            "包", "瓶", "罐",
-        };
-        if (countUnits.count(u)) {
-            if (defaultPortionG > 0.0) return quantity * defaultPortionG;
-            return std::nullopt;  // 该食材没有单重 → 无法换算
+/// 检查菜谱标签是否命中用户“喜欢”列表（命中 → BOOST_LIKE_TAG）
+bool matchesLikeTag(const RecommendedRecipe& rec, const std::vector<std::string>& likes) {
+    if (likes.empty() || rec.tags.empty()) return false;
+    for (const auto& like : likes) {
+        std::string lowerLike;
+        for (char c : like)
+            lowerLike += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (const auto& tag : rec.tags) {
+            std::string lowerTag;
+            for (char c : tag)
+                lowerTag += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (lowerTag == lowerLike) return true;
         }
-        return std::nullopt;  // 未知单位
     }
+    return false;
+}
 
-    /// 按阈值规则生成健康提示（措辞保守，无命中返回空串，前端自动隐藏）。
-    /// 注意：per_serving 当前语义为整道菜营养合计（非单份），文案刻意不带"单份"字样。
-    std::string buildHealthNotes(const gocook::models::NutritionReport::PerServing& ps) {
-        std::string notes;
-        auto add = [&](const std::string& text) {
-            if (!notes.empty()) notes += " ";
-            notes += text;
-        };
-        if (ps.sodium_mg >= 800.0)   add("钠含量较高，高血压患者建议减少额外用盐。");
-        if (ps.calories >= 700.0)    add("热量偏高，建议适量食用。");
-        if (ps.protein_g >= 25.0 && ps.fat_g < 15.0) add("高蛋白低脂，适合健身人群。");
-        if (ps.fiber_g >= 5.0)       add("富含膳食纤维，有助于肠道健康。");
-        return notes;
+/// 检查菜谱是否包含任何厌恶食材
+bool hasDislikedIngredient(const RecommendedRecipe& rec, const std::vector<std::string>& dislikes) {
+    if (dislikes.empty()) return false;
+    auto names = ingredientNames(rec);
+    for (const auto& d : dislikes) {
+        std::string lower;
+        for (char c : d)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (names.count(lower)) return true;
     }
+    return false;
+}
+
+/// 营养适配评分 (0.0 或 0.10)
+double nutritionFitScore(const RecommendedRecipe& rec, const std::string& healthGoal) {
+    if (healthGoal.empty()) return 0.0;
+    std::string goal;
+    for (char c : healthGoal)
+        goal += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    if (goal == "高蛋白" && rec.protein_g >= 15.0) return BOOST_HEALTH_GOAL;
+    if (goal == "低卡" && rec.calories < 300) return BOOST_HEALTH_GOAL;
+    if (goal == "减脂" && rec.fat_g < 10.0) return BOOST_HEALTH_GOAL;
+    if (goal == "增肌" && rec.protein_g >= 20.0 && rec.fat_g < 15.0) return BOOST_HEALTH_GOAL;
+    return 0.0;
+}
+
+// ────────────────────────────────────────────────────────────
+// 营养计算工具（投稿/编辑时按食材清单自动计算，见方案 A+C）
+// ────────────────────────────────────────────────────────────
+
+/// 四舍五入到 1 位小数（入库与展示一致，避免 0.30000000000000004）
+double round1(double v) {
+    return std::round(v * 10.0) / 10.0;
+}
+
+/// 名称规范化：去首尾空白 + 去掉中文/英文括号括注（如 "鸡胸肉（去皮）" → "鸡胸肉"）
+std::string normalizeIngredientName(const std::string& raw) {
+    std::string s = raw;
+    // trim
+    size_t b = s.find_first_not_of(" \t\r\n");
+    size_t e = s.find_last_not_of(" \t\r\n");
+    if (b == std::string::npos) return "";
+    s = s.substr(b, e - b + 1);
+    // 去括号括注（保留括号前内容；中文括号与英文括号都处理）
+    for (const std::string_view open : {"（", "("}) {
+        auto pos = s.find(open);
+        if (pos != std::string::npos) {
+            s = s.substr(0, pos);
+        }
+    }
+    // 再去一次尾空白（"鸡胸肉（去皮）" 处理完可能留尾空格）
+    e = s.find_last_not_of(" \t\r\n");
+    s = (e == std::string::npos) ? "" : s.substr(0, e + 1);
+    return s;
+}
+
+/// 把"数量+单位"换算成克。返回 nullopt 表示无法换算（跳过该食材，不参与计算）。
+/// 规则：质量单位直接换算；毫升/升按 1ml≈1g 近似（水基食材误差可接受）；
+///       容器单位按固定容量近似；计数单位（个/只/根…）依赖食材表
+///       default_portion_g（单个近似质量），没有单重或单位未知/数量非正 → 无法换算。
+///       单位先做首尾空白 trim（"克 " 等带空白输入不再被静默跳过）。
+std::optional<double> gramsOf(double quantity, const std::string& unit, double defaultPortionG) {
+    if (quantity <= 0.0) return std::nullopt;
+    if (unit.empty()) return std::nullopt;
+
+    const size_t ub = unit.find_first_not_of(" \t\r\n");
+    const size_t ue = unit.find_last_not_of(" \t\r\n");
+    const std::string u = (ub == std::string::npos) ? "" : unit.substr(ub, ue - ub + 1);
+    if (u.empty()) return std::nullopt;
+
+    // 质量单位
+    if (u == "克" || u == "g" || u == "G") return quantity;
+    if (u == "千克" || u == "公斤" || u == "kg" || u == "KG") return quantity * 1000.0;
+    if (u == "斤") return quantity * 500.0;
+    if (u == "两") return quantity * 50.0;
+    if (u == "磅" || u == "lb" || u == "LB") return quantity * 453.592;
+
+    // 体积单位（近似 1ml ≈ 1g）：毫升/升直接换算；固定容器容量近似（约数，水基食材误差可接受）
+    if (u == "毫升" || u == "ml" || u == "mL" || u == "ML") return quantity;
+    if (u == "升" || u == "L" || u == "l") return quantity * 1000.0;
+    if (u == "杯") return quantity * 240.0;  // 1 杯 ≈ 240ml（标准量杯）
+    if (u == "碗") return quantity * 200.0;  // 1 碗 ≈ 200ml（家常饭碗）
+    if (u == "汤匙") return quantity * 15.0; // 1 汤匙 ≈ 15ml
+    if (u == "勺") return quantity * 10.0;   // 1 勺 ≈ 10ml（中式汤勺）
+    if (u == "茶匙") return quantity * 5.0;  // 1 茶匙 ≈ 5ml
+
+    // 计数单位：依赖食材单重
+    static const std::unordered_set<std::string> countUnits = {
+        "个",
+        "只",
+        "条",
+        "根",
+        "片",
+        "块",
+        "把",
+        "瓣",
+        "颗",
+        "枚",
+        "粒",
+        "份",
+        "盒",
+        "袋",
+        "包",
+        "瓶",
+        "罐",
+    };
+    if (countUnits.count(u)) {
+        if (defaultPortionG > 0.0) return quantity * defaultPortionG;
+        return std::nullopt; // 该食材没有单重 → 无法换算
+    }
+    return std::nullopt; // 未知单位
+}
+
+/// 按阈值规则生成健康提示（措辞保守，无命中返回空串，前端自动隐藏）。
+/// 注意：per_serving 当前语义为整道菜营养合计（非单份），文案刻意不带"单份"字样。
+std::string buildHealthNotes(const gocook::models::NutritionReport::PerServing& ps) {
+    std::string notes;
+    auto add = [&](const std::string& text) {
+        if (!notes.empty()) notes += " ";
+        notes += text;
+    };
+    if (ps.sodium_mg >= 800.0) add("钠含量较高，高血压患者建议减少额外用盐。");
+    if (ps.calories >= 700.0) add("热量偏高，建议适量食用。");
+    if (ps.protein_g >= 25.0 && ps.fat_g < 15.0) add("高蛋白低脂，适合健身人群。");
+    if (ps.fiber_g >= 5.0) add("富含膳食纤维，有助于肠道健康。");
+    return notes;
+}
 
 } // anonymous namespace
 
-PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size,
-                                                  const nlohmann::json& filters) {
+PagedRecipes RecipeServiceImpl::getPublicRecipes(int page, int size, const nlohmann::json& filters) {
     return recipeRepo_->findPublicRecipes(page, size, filters);
 }
 
-PagedRecipes RecipeServiceImpl::searchRecipes(const std::string& keyword,
-                                                int page, int size,
-                                                const nlohmann::json& filters) {
+PagedRecipes
+RecipeServiceImpl::searchRecipes(const std::string& keyword, int page, int size, const nlohmann::json& filters) {
     return recipeRepo_->searchRecipes(keyword, page, size, filters);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 智能推荐算法（三层：库存匹配 → 健康过滤 → 偏好加权+多样化）
 // ═══════════════════════════════════════════════════════════════
-PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
-                                                                  int page,
-                                                                  int size,
-                                                                  unsigned int seed) {
+PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId, int page, int size, unsigned int seed) {
     if (!inventoryRepo_ || !userRepo_) {
         throw ServiceException("推荐功能未完全配置", 501);
     }
@@ -381,8 +390,9 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
 
     // ── 2. 加载用户偏好 ──
     UserPreferences prefs;
-    try { prefs = userRepo_->getPreferences(userId); }
-    catch (const std::exception& e) {
+    try {
+        prefs = userRepo_->getPreferences(userId);
+    } catch (const std::exception& e) {
         // 未设置偏好本就不抛异常，能走到这里的都是真实故障（池繁忙 503 / DB 不可用等）——
         // 留痕并降级为空偏好，不把故障伪装成"未设置"
         LOG_WARN("读取用户偏好失败，使用空默认值: %s", e.what());
@@ -444,20 +454,16 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
             popBoost = BOOST_RATING_MED;
 
         // 新鲜度
-        double recencyBoost = isRecent(parseISODate(rec.submitted_at), RECENT_DAYS)
-            ? BOOST_RECENT : 0.0;
+        double recencyBoost = isRecent(parseISODate(rec.submitted_at), RECENT_DAYS) ? BOOST_RECENT : 0.0;
 
         // 营养适配
         double nutritionBoost = nutritionFitScore(rec, prefs.health_goal);
 
         // 最终复合评分：各维度独立加权求和
         // prefMod ∈ [-0.5, +0.25]（厌恶 -0.50 / 风味 +0.15 / 标签 +0.10，可叠加），乘积贡献 ∈ [-0.125, +0.0625]
-        double finalScore =
-              rec.match_score * WEIGHT_INVENTORY
-            + prefMod         * WEIGHT_PREFERENCE
-            + popBoost        * WEIGHT_POPULARITY
-            + recencyBoost    * WEIGHT_RECENCY
-            + nutritionBoost  * WEIGHT_NUTRITION;
+        double finalScore = rec.match_score * WEIGHT_INVENTORY + prefMod * WEIGHT_PREFERENCE +
+                            popBoost * WEIGHT_POPULARITY + recencyBoost * WEIGHT_RECENCY +
+                            nutritionBoost * WEIGHT_NUTRITION;
 
         // 软档健康提示减分：命中（盐/酱油/糖等可少放食材）不剔除，仅轻微降权，提示语随卡片展示
         if (!rec.health_notice.empty()) {
@@ -469,10 +475,9 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
     }
 
     // ── 7. 按复合评分降序排列 ──
-    std::sort(candidates.begin(), candidates.end(),
-              [](const RecommendedRecipe& a, const RecommendedRecipe& b) {
-                  return a.match_score > b.match_score;
-              });
+    std::sort(candidates.begin(), candidates.end(), [](const RecommendedRecipe& a, const RecommendedRecipe& b) {
+        return a.match_score > b.match_score;
+    });
 
     // ── 7.5 「换一批」加权随机序（seed≠0 时）：键 u^(1/权重) 降序重排 ──
     // Efraimidis–Spirakis 无偏加权抽样：权重随复合分升高——高分菜常见、低分菜概率
@@ -485,17 +490,14 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
         std::vector<std::pair<double, size_t>> keys;
         keys.reserve(candidates.size());
         for (size_t i = 0; i < candidates.size(); ++i) {
-            const double weight = std::pow(candidates[i].match_score + SHUFFLE_WEIGHT_FLOOR,
-                                           SHUFFLE_WEIGHT_EXPONENT);
+            const double weight = std::pow(candidates[i].match_score + SHUFFLE_WEIGHT_FLOOR, SHUFFLE_WEIGHT_EXPONENT);
             // u 取开区间防御：避免极小/零值产生极端键
             const double u = std::max(uniform01(rng), std::numeric_limits<double>::min());
             keys.emplace_back(std::pow(u, 1.0 / weight), i);
         }
-        std::sort(keys.begin(), keys.end(),
-                  [](const std::pair<double, size_t>& a,
-                     const std::pair<double, size_t>& b) {
-                      return a.first > b.first;
-                  });
+        std::sort(keys.begin(), keys.end(), [](const std::pair<double, size_t>& a, const std::pair<double, size_t>& b) {
+            return a.first > b.first;
+        });
         std::vector<RecommendedRecipe> reordered;
         reordered.reserve(candidates.size());
         for (const auto& key : keys) {
@@ -517,8 +519,12 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
             if (taken[i]) continue;
             const auto& rec = candidates[i];
             bool skip = false;
-            std::string fv; for (char c : rec.flavor) fv += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            std::string cm; for (char c : rec.cooking_method) cm += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            std::string fv;
+            for (char c : rec.flavor)
+                fv += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            std::string cm;
+            for (char c : rec.cooking_method)
+                cm += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
             auto fcnt = flavorCount[fv];
             auto mcnt = methodCount[cm];
@@ -526,14 +532,18 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
             if (fcnt >= MAX_PER_FLAVOR) skip = true;
             if (mcnt >= MAX_PER_METHOD && !skip) {
                 // 仅当同一方法且同一风味也满时才跳过
-                if (fcnt >= MAX_PER_FLAVOR) skip = true;
-                else skip = false; // 方法满但风味未满，仍可接受
+                if (fcnt >= MAX_PER_FLAVOR)
+                    skip = true;
+                else
+                    skip = false; // 方法满但风味未满，仍可接受
             }
 
             // pass >= 1 时放宽约束
             if (pass >= 1) {
-                if (fcnt >= MAX_PER_FLAVOR + 1 && mcnt >= MAX_PER_METHOD + 1) skip = true;
-                else skip = false;
+                if (fcnt >= MAX_PER_FLAVOR + 1 && mcnt >= MAX_PER_METHOD + 1)
+                    skip = true;
+                else
+                    skip = false;
             }
 
             if (skip) continue;
@@ -552,20 +562,17 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
 
     // 输出顺序规范化：恒为复合分降序（stable——同分保持既有相对序，同 seed 可复现）。
     // 加权随机批与兜底补位只影响"组成"，不改变"展示序"；seed=0 路径据此也收敛回严格降序。
-    std::stable_sort(diverse.begin(), diverse.end(),
-                     [](const RecommendedRecipe& a, const RecommendedRecipe& b) {
-                         return a.match_score > b.match_score;
-                     });
+    std::stable_sort(diverse.begin(), diverse.end(), [](const RecommendedRecipe& a, const RecommendedRecipe& b) {
+        return a.match_score > b.match_score;
+    });
 
     // ── 9. 构建响应 ──
     PagedRecommendedRecipes result;
     result.data = std::move(diverse);
     result.pagination.page = page;
     result.pagination.size = size;
-    result.pagination.total = raw.pagination.total;  // total 保留原始候选数，过滤只影响 data 条数
-    result.pagination.total_pages = result.pagination.total > 0
-        ? (result.pagination.total + size - 1) / size
-        : 0;
+    result.pagination.total = raw.pagination.total; // total 保留原始候选数，过滤只影响 data 条数
+    result.pagination.total_pages = result.pagination.total > 0 ? (result.pagination.total + size - 1) / size : 0;
     result.health_filter_applied = hasHealthProfile && excludedByHealth > 0;
 
     return result;
@@ -573,24 +580,20 @@ PagedRecommendedRecipes RecipeServiceImpl::getRecommendedRecipes(int userId,
 
 RecipeDetail RecipeServiceImpl::getRecipeDetail(int recipeId, int userId) {
     return recipeRepo_->findById(recipeId, userId);
-
 }
 
 SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int userId, const SubmitRecipeRequest& data) {
     // 内容查重：食材清单和步骤完全一致则拒稿
     nlohmann::json ingredients = nlohmann::json::array();
     for (const auto& ing : data.ingredients) {
-        ingredients.push_back({{"name", ing.name},
-                               {"quantity", ing.quantity},
-                               {"unit", ing.unit}});
+        ingredients.push_back({{"name", ing.name}, {"quantity", ing.quantity}, {"unit", ing.unit}});
     }
     nlohmann::json steps = nlohmann::json::array();
     for (const auto& step : data.steps) {
         nlohmann::json j;
         j["order"] = step.order;
         j["description"] = step.description;
-        if (step.duration.has_value())
-            j["duration"] = step.duration.value();
+        if (step.duration.has_value()) j["duration"] = step.duration.value();
         steps.push_back(std::move(j));
     }
 
@@ -604,11 +607,11 @@ SubmitRecipeResponse RecipeServiceImpl::submitRecipe(int userId, const SubmitRec
     return recipeRepo_->create(userId, data, nutritionInfo.value_or(nlohmann::json::object()));
 }
 std::vector<RecipeVideo> RecipeServiceImpl::getRecipeVideos(int recipeId) {
-    recipeRepo_->findById(recipeId);  // 验证菜谱存在，不存在自动抛 404
+    recipeRepo_->findById(recipeId); // 验证菜谱存在，不存在自动抛 404
     return recipeRepo_->findVideos(recipeId);
 }
 PagedRatings RecipeServiceImpl::getRecipeRatings(int recipeId, int page, int size) {
-    recipeRepo_->findById(recipeId);  // 验证菜谱存在，不存在自动抛 404
+    recipeRepo_->findById(recipeId); // 验证菜谱存在，不存在自动抛 404
     return recipeRepo_->findRatings(recipeId, page, size);
 }
 PagedMyRecipes RecipeServiceImpl::getMySubmittedRecipes(int userId, int page, int size, const std::string& status) {
@@ -621,7 +624,10 @@ std::string RecipeServiceImpl::editRecipe(int userId, int recipeId, const EditRe
     auto nutritionInfo = buildNutritionInfo(updates.ingredients, updates.nutrition);
     return recipeRepo_->update(userId, recipeId, updates, nutritionInfo);
 }
-void RecipeServiceImpl::toggleFavorite(int userId, int recipeId, std::optional<int> groupId, std::optional<bool> isPublic) {
+void RecipeServiceImpl::toggleFavorite(int userId,
+                                       int recipeId,
+                                       std::optional<int> groupId,
+                                       std::optional<bool> isPublic) {
     // 验证菜谱存在
     auto recipe = recipeRepo_->findById(recipeId);
     if (recipe.id == 0) {
@@ -629,13 +635,11 @@ void RecipeServiceImpl::toggleFavorite(int userId, int recipeId, std::optional<i
     }
     recipeRepo_->toggleFavorite(userId, recipeId, groupId, isPublic);
 }
-void RecipeServiceImpl::rateRecipe(int userId, int recipeId,
-                                   const RateRecipeRequest& request) {
-    recipeRepo_->findById(recipeId);  // 验证菜谱存在，不存在自动抛 404
+void RecipeServiceImpl::rateRecipe(int userId, int recipeId, const RateRecipeRequest& request) {
+    recipeRepo_->findById(recipeId); // 验证菜谱存在，不存在自动抛 404
     recipeRepo_->rateRecipe(userId, recipeId, request);
 }
-void RecipeServiceImpl::updateRating(int userId, int recipeId, int ratingId,
-                                     const RateRecipeRequest& request) {
+void RecipeServiceImpl::updateRating(int userId, int recipeId, int ratingId, const RateRecipeRequest& request) {
     recipeRepo_->updateRating(userId, recipeId, ratingId, request);
 }
 void RecipeServiceImpl::deleteRating(int userId, int recipeId, int ratingId) {
@@ -670,43 +674,40 @@ void RecipeServiceImpl::deleteRecipe(int userId, int recipeId) {
 // ═══════════════════════════════════════════════════════════════
 namespace {
 
-    /// 组装"回退形态"营养 JSON：有手填值 → 顶部四项 + per_serving 四项（"用户可选补充"语义）；
-    /// 无手填 → 空对象（前端显示"暂无营养报告"）。excluded 非空时附未计入明细。
-    /// 未注入营养仓库 / 营养表查询异常 / 全部食材不可换算 三条回退路径统一走这里，
-    /// 保证入库形态一致：顶部四项与 per_serving 始终成对写入。
-    nlohmann::json fallbackNutrition(
-        const std::optional<Nutrition>& userNutrition,
-        const std::vector<nlohmann::json>& excluded)
-    {
-        if (!userNutrition.has_value()) return nlohmann::json::object();
-        nlohmann::json j;
-        j["calories"] = userNutrition->calories;
-        j["protein"]  = userNutrition->protein;
-        j["fat"]      = userNutrition->fat;
-        j["carbs"]    = userNutrition->carbs;
-        j["per_serving"]["calories"]    = userNutrition->calories;
-        j["per_serving"]["protein_g"]   = userNutrition->protein;
-        j["per_serving"]["fat_g"]       = userNutrition->fat;
-        j["per_serving"]["carbs_g"]     = userNutrition->carbs;
-        j["per_serving"]["fiber_g"]     = 0.0;
-        j["per_serving"]["sodium_mg"]   = 0.0;
-        j["per_serving"]["vitamin_c_mg"]= 0.0;
-        j["ingredients_breakdown"] = nlohmann::json::array();
-        j["health_notes"] = "";
-        if (!excluded.empty()) {
-            nlohmann::json arr = nlohmann::json::array();
-            for (const auto& e : excluded) arr.push_back(e);
-            j["excluded_ingredients"] = arr;
-        }
-        return j;
+/// 组装"回退形态"营养 JSON：有手填值 → 顶部四项 + per_serving 四项（"用户可选补充"语义）；
+/// 无手填 → 空对象（前端显示"暂无营养报告"）。excluded 非空时附未计入明细。
+/// 未注入营养仓库 / 营养表查询异常 / 全部食材不可换算 三条回退路径统一走这里，
+/// 保证入库形态一致：顶部四项与 per_serving 始终成对写入。
+nlohmann::json fallbackNutrition(const std::optional<Nutrition>& userNutrition,
+                                 const std::vector<nlohmann::json>& excluded) {
+    if (!userNutrition.has_value()) return nlohmann::json::object();
+    nlohmann::json j;
+    j["calories"] = userNutrition->calories;
+    j["protein"] = userNutrition->protein;
+    j["fat"] = userNutrition->fat;
+    j["carbs"] = userNutrition->carbs;
+    j["per_serving"]["calories"] = userNutrition->calories;
+    j["per_serving"]["protein_g"] = userNutrition->protein;
+    j["per_serving"]["fat_g"] = userNutrition->fat;
+    j["per_serving"]["carbs_g"] = userNutrition->carbs;
+    j["per_serving"]["fiber_g"] = 0.0;
+    j["per_serving"]["sodium_mg"] = 0.0;
+    j["per_serving"]["vitamin_c_mg"] = 0.0;
+    j["ingredients_breakdown"] = nlohmann::json::array();
+    j["health_notes"] = "";
+    if (!excluded.empty()) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto& e : excluded)
+            arr.push_back(e);
+        j["excluded_ingredients"] = arr;
     }
+    return j;
+}
 
 } // anonymous namespace
 
-std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
-    const std::vector<Ingredient>& ingredients,
-    const std::optional<Nutrition>& userNutrition)
-{
+std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(const std::vector<Ingredient>& ingredients,
+                                                                    const std::optional<Nutrition>& userNutrition) {
     // 未注入营养仓库（测试/旧组装）→ 回退形态（手填四项或空对象）
     if (!nutritionRepo_) return fallbackNutrition(userNutrition, {});
 
@@ -724,8 +725,7 @@ std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
         // 有手填值 → 回退使用；无手填 → 返回 nullopt：
         // 投稿按空对象处理，编辑由仓库保留库中已有 nutrition_info，不因计算不可用而清空。
         LOG_WARN("[NUTRITION] findByNames 查询异常，降级为回退营养: %s", e.what());
-        if (userNutrition.has_value())
-            return fallbackNutrition(userNutrition, {});
+        if (userNutrition.has_value()) return fallbackNutrition(userNutrition, {});
         return std::nullopt;
     }
 
@@ -735,36 +735,36 @@ std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
     std::vector<NutritionBreakdownItem> breakdown;
     std::vector<nlohmann::json> excluded;
     for (size_t i = 0; i < ingredients.size(); ++i) {
-        if (i >= rows.size() || !rows[i]) {                    // 营养库未收录
+        if (i >= rows.size() || !rows[i]) { // 营养库未收录
             excluded.push_back({{"name", ingredients[i].name}, {"reason", "未收录"}});
             continue;
         }
-        auto grams = gramsOf(ingredients[i].quantity, ingredients[i].unit,
-                             rows[i]->default_portion_g);
-        if (!grams.has_value()) {                              // 无法换算（计数单位无单重/未知单位）
+        auto grams = gramsOf(ingredients[i].quantity, ingredients[i].unit, rows[i]->default_portion_g);
+        if (!grams.has_value()) { // 无法换算（计数单位无单重/未知单位）
             excluded.push_back({{"name", ingredients[i].name}, {"reason", "无法换算"}});
             continue;
         }
         const double factor = *grams / 100.0;
 
         NutritionBreakdownItem bi;
-        bi.name = rows[i]->name;                             // 用规范名（别名命中时显示规范名）
-        bi.calories  = round1(rows[i]->calories * factor);
+        bi.name = rows[i]->name; // 用规范名（别名命中时显示规范名）
+        bi.calories = round1(rows[i]->calories * factor);
         bi.protein_g = round1(rows[i]->protein_g * factor);
-        bi.fat_g     = round1(rows[i]->fat_g * factor);
-        bi.carbs_g   = round1(rows[i]->carbs_g * factor);
-        cal  += bi.calories;
-        pro  += bi.protein_g;
-        fat  += bi.fat_g;
+        bi.fat_g = round1(rows[i]->fat_g * factor);
+        bi.carbs_g = round1(rows[i]->carbs_g * factor);
+        cal += bi.calories;
+        pro += bi.protein_g;
+        fat += bi.fat_g;
         carb += bi.carbs_g;
-        fib  += round1(rows[i]->fiber_g * factor);
-        sod  += round1(rows[i]->sodium_mg * factor);
+        fib += round1(rows[i]->fiber_g * factor);
+        sod += round1(rows[i]->sodium_mg * factor);
         vitc += round1(rows[i]->vitamin_c_mg * factor);
         breakdown.push_back(std::move(bi));
     }
     if (!excluded.empty()) {
         LOG_WARN("[NUTRITION] %zu/%d 个食材未计入营养（未收录/无法换算）",
-                 excluded.size(), static_cast<int>(ingredients.size()));
+                 excluded.size(),
+                 static_cast<int>(ingredients.size()));
     }
 
     // 全部食材未收录/不可换算 → 无法自动计算：回退手填四项或空对象，并附未计入明细
@@ -782,16 +782,16 @@ std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
 
     nlohmann::json j;
     j["calories"] = ps.calories;
-    j["protein"]  = ps.protein_g;
-    j["fat"]      = ps.fat_g;
-    j["carbs"]    = ps.carbs_g;
-    j["per_serving"]["calories"]    = ps.calories;
-    j["per_serving"]["protein_g"]   = ps.protein_g;
-    j["per_serving"]["fat_g"]       = ps.fat_g;
-    j["per_serving"]["carbs_g"]     = ps.carbs_g;
-    j["per_serving"]["fiber_g"]     = ps.fiber_g;
-    j["per_serving"]["sodium_mg"]   = ps.sodium_mg;
-    j["per_serving"]["vitamin_c_mg"]= ps.vitamin_c_mg;
+    j["protein"] = ps.protein_g;
+    j["fat"] = ps.fat_g;
+    j["carbs"] = ps.carbs_g;
+    j["per_serving"]["calories"] = ps.calories;
+    j["per_serving"]["protein_g"] = ps.protein_g;
+    j["per_serving"]["fat_g"] = ps.fat_g;
+    j["per_serving"]["carbs_g"] = ps.carbs_g;
+    j["per_serving"]["fiber_g"] = ps.fiber_g;
+    j["per_serving"]["sodium_mg"] = ps.sodium_mg;
+    j["per_serving"]["vitamin_c_mg"] = ps.vitamin_c_mg;
 
     nlohmann::json breakdownJson = nlohmann::json::array();
     for (const auto& bi : breakdown)
@@ -801,10 +801,12 @@ std::optional<nlohmann::json> RecipeServiceImpl::buildNutritionInfo(
                                  {"fat_g", bi.fat_g},
                                  {"carbs_g", bi.carbs_g}});
     j["ingredients_breakdown"] = breakdownJson;
-    j["excluded_ingredients"] = excluded;   // 恒为数组（无未计入项时为空数组）
+    j["excluded_ingredients"] = excluded; // 恒为数组（无未计入项时为空数组）
     j["health_notes"] = buildHealthNotes(ps);
 
     LOG_DEBUG("[NUTRITION] 菜谱营养计算完成：%d 个食材，%zu 个匹配，%zu 个未计入",
-              static_cast<int>(ingredients.size()), breakdown.size(), excluded.size());
-    return j;   // json → optional<json> 隐式转换
+              static_cast<int>(ingredients.size()),
+              breakdown.size(),
+              excluded.size());
+    return j; // json → optional<json> 隐式转换
 }

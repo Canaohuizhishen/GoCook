@@ -29,7 +29,7 @@ inline const std::unordered_map<std::string, std::vector<std::string>>& hardExcl
         {"高血压", {"咸菜", "腊肉", "咸鱼", "腐乳", "榨菜"}},
         {"糖尿病", {"甜面酱", "炼乳", "果酱"}},
         {"高血脂", {"肥肉", "猪油", "黄油", "奶油", "五花肉", "油炸", "猪板油"}},
-        {"痛风",   {"海鲜", "动物内脏", "啤酒", "浓汤", "香菇", "虾", "蟹"}},
+        {"痛风", {"海鲜", "动物内脏", "啤酒", "浓汤", "香菇", "虾", "蟹"}},
     };
     return kMap;
 }
@@ -69,4 +69,4 @@ inline const std::vector<std::string>& softAdvisedFor(const std::string& conditi
     return it != map.end() ? it->second : kEmpty;
 }
 
-}  // namespace gocook::health
+} // namespace gocook::health

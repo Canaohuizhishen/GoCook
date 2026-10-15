@@ -21,8 +21,7 @@ std::string readLine(BIO* bio) {
 }
 
 // 发送 SMTP 命令并读取响应码（自动排干多行响应）
-int sendCommand(BIO* bio, const std::string& cmd, std::string& response,
-                bool drainMultiline = false) {
+int sendCommand(BIO* bio, const std::string& cmd, std::string& response, bool drainMultiline = false) {
     if (cmd.size() > 0) {
         std::string fullCmd = cmd + "\r\n";
         BIO_write(bio, fullCmd.data(), fullCmd.size());
@@ -48,7 +47,7 @@ int sendCommand(BIO* bio, const std::string& cmd, std::string& response,
                 break;
             }
         } while (lastLine.size() >= 4 && lastLine[3] == '-');
-        response = lastLine;  // 保留最后一行
+        response = lastLine; // 保留最后一行
     }
     return code;
 }
@@ -56,14 +55,14 @@ int sendCommand(BIO* bio, const std::string& cmd, std::string& response,
 // Base64 编码
 std::string base64Encode(const std::string& input) {
     static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                "abcdefghijklmnopqrstuvwxyz"
-                                "0123456789+/";
+                               "abcdefghijklmnopqrstuvwxyz"
+                               "0123456789+/";
     std::string out;
     out.reserve(((input.size() + 2) / 3) * 4);
     for (size_t i = 0; i < input.size(); i += 3) {
         uint32_t val = static_cast<unsigned char>(input[i]) << 16;
-        if (i + 1 < input.size()) val |= static_cast<unsigned char>(input[i+1]) << 8;
-        if (i + 2 < input.size()) val |= static_cast<unsigned char>(input[i+2]);
+        if (i + 1 < input.size()) val |= static_cast<unsigned char>(input[i + 1]) << 8;
+        if (i + 2 < input.size()) val |= static_cast<unsigned char>(input[i + 2]);
         out += table[(val >> 18) & 0x3F];
         out += table[(val >> 12) & 0x3F];
         out += (i + 1 < input.size()) ? table[(val >> 6) & 0x3F] : '=';
@@ -84,23 +83,25 @@ EmailSender::SmtpConfig EmailSender::loadConfig() {
 
     if (host) cfg.host = host;
     if (port) {
-        try { cfg.port = std::stoi(port); }
-        catch (const std::exception&) {
+        try {
+            cfg.port = std::stoi(port);
+        } catch (const std::exception&) {
             LOG_WARN("SMTP_PORT 环境变量值 '%s' 无效，回退到 587", port);
             cfg.port = 587;
         }
     }
     if (user) cfg.username = user;
     if (pass) cfg.password = pass;
-    if (from) cfg.from = from;
-    else cfg.from = cfg.username;
+    if (from)
+        cfg.from = from;
+    else
+        cfg.from = cfg.username;
 
     cfg.valid = !cfg.username.empty() && !cfg.password.empty();
     return cfg;
 }
 
-std::string EmailSender::buildPasswordResetEmailBody(const std::string& token,
-                                                      int expiryMinutes) {
+std::string EmailSender::buildPasswordResetEmailBody(const std::string& token, int expiryMinutes) {
     std::ostringstream body;
     body << "<!DOCTYPE html><html><body style='font-family: sans-serif; padding: 20px;'>"
          << "<h2>GoCook 密码重置</h2>"
@@ -108,8 +109,7 @@ std::string EmailSender::buildPasswordResetEmailBody(const std::string& token,
          << "<p>您最近请求重置 GoCook 账户密码。请使用以下重置令牌：</p>"
          << "<div style='margin: 20px 0; padding: 24px 12px; background: #f5f5f5; "
          << "     border-radius: 8px; font-family: monospace; font-size: 56px; font-weight: bold; "
-         << "     text-align: center; letter-spacing: 8px;'>"
-         << token << "</div>"
+         << "     text-align: center; letter-spacing: 8px;'>" << token << "</div>"
          << "<p>此验证码将在 <strong>" << expiryMinutes << " 分钟</strong> 后过期。</p>"
          << "<p>如果您没有请求重置密码，请忽略此邮件。</p>"
          << "<hr><p style='color: #888; font-size: 12px;'>GoCook 团队</p>"
@@ -117,9 +117,7 @@ std::string EmailSender::buildPasswordResetEmailBody(const std::string& token,
     return body.str();
 }
 
-bool EmailSender::sendEmail(const std::string& to,
-                             const std::string& subject,
-                             const std::string& body) {
+bool EmailSender::sendEmail(const std::string& to, const std::string& subject, const std::string& body) {
     auto cfg = loadConfig();
     if (!cfg.valid) {
         LOG_WARN("SMTP 未配置，无法发送邮件");
@@ -143,8 +141,7 @@ static SSL_CTX* createSmtpSslCtx() {
     }
 
     const char* insecureEnv = std::getenv("GOCOOK_SMTP_TLS_INSECURE");
-    bool tlsInsecure = (insecureEnv && (std::string(insecureEnv) == "true"
-                                         || std::string(insecureEnv) == "1"));
+    bool tlsInsecure = (insecureEnv && (std::string(insecureEnv) == "true" || std::string(insecureEnv) == "1"));
     if (tlsInsecure) {
         LOG_WARN("已通过 GOCOOK_SMTP_TLS_INSECURE 关闭 TLS 证书校验");
         SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
@@ -221,12 +218,12 @@ static BIO* startTlsConnect(SSL_CTX* ctx, const std::string& addr) {
 /// @brief 在已建立的 TLS BIO 上发送 SMTP AUTH LOGIN、MAIL FROM、RCPT TO、DATA 与 QUIT。
 ///        邮件被接受（DATA 返回 250）时返回 true。
 static bool smtpSendMail(BIO* bio,
-                          const std::string& username,
-                          const std::string& password,
-                          const std::string& from,
-                          const std::string& to,
-                          const std::string& subject,
-                          const std::string& body) {
+                         const std::string& username,
+                         const std::string& password,
+                         const std::string& from,
+                         const std::string& to,
+                         const std::string& subject,
+                         const std::string& body) {
     std::string resp;
 
     // 发送 AUTH LOGIN
@@ -286,8 +283,7 @@ static bool smtpSendMail(BIO* bio,
     return true;
 }
 
-bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
-                           const std::string& subject, const std::string& body) {
+bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to, const std::string& subject, const std::string& body) {
     // 初始化 OpenSSL — OPENSSL_init_ssl 负责 OpenSSL 3.x 的全部初始化
     // （SSL_load_error_strings / ERR_load_BIO_strings / OpenSSL_add_all_algorithms
     //  在 OpenSSL 3.0 中已弃用，init_ssl 会自动调用）
@@ -304,8 +300,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
         // STARTTLS 模式：明文 TCP → EHLO → STARTTLS → TLS → 重新 EHLO
         BIO* chain = startTlsConnect(ctx, addr);
         if (chain) {
-            ok = smtpSendMail(chain, cfg.username, cfg.password, cfg.from,
-                              to, subject, body);
+            ok = smtpSendMail(chain, cfg.username, cfg.password, cfg.from, to, subject, body);
             BIO_free_all(chain);
         } else {
             LOG_ERROR("无法连接 STARTTLS 服务器：%s", addr.c_str());
@@ -342,8 +337,7 @@ bool EmailSender::sendRaw(SmtpConfig& cfg, const std::string& to,
         sendCommand(bio, "", resp);
         LOG_DEBUG("SMTP 服务器问候：%s", resp.c_str());
         if (sendCommand(bio, "EHLO gocook-server", resp, true) == 250) {
-            ok = smtpSendMail(bio, cfg.username, cfg.password, cfg.from,
-                              to, subject, body);
+            ok = smtpSendMail(bio, cfg.username, cfg.password, cfg.from, to, subject, body);
         } else {
             LOG_ERROR("EHLO 命令失败：%s", resp.c_str());
         }

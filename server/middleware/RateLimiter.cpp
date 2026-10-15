@@ -5,23 +5,22 @@
 using namespace std::chrono;
 
 RateLimiter::RateLimiter(std::vector<Rule> rules, std::chrono::seconds cleanupInterval, size_t maxRecords)
-    : rules_(std::move(rules)), cleanupInterval_(cleanupInterval), maxRecords_(maxRecords)
-{
+    : rules_(std::move(rules)),
+      cleanupInterval_(cleanupInterval),
+      maxRecords_(maxRecords) {
     // 启动后台清理线程
     cleanupThread_ = std::thread([this] { cleanupLoop(); });
 }
 
-RateLimiter::~RateLimiter()
-{
+RateLimiter::~RateLimiter() {
     running_ = false;
-    cv_.notify_all();                     // 立即唤醒清理线程，避免长时间等待
+    cv_.notify_all(); // 立即唤醒清理线程，避免长时间等待
     if (cleanupThread_.joinable()) {
-        cleanupThread_.join();            // 几乎瞬间返回
+        cleanupThread_.join(); // 几乎瞬间返回
     }
 }
 
-bool RateLimiter::isAllowed(const std::string& ip, const std::string& path)
-{
+bool RateLimiter::isAllowed(const std::string& ip, const std::string& path) {
     auto now = steady_clock::now();
     auto [windowSize, maxRequests] = matchRule(path);
     std::string key = ip + ":" + path;
@@ -45,8 +44,7 @@ bool RateLimiter::isAllowed(const std::string& ip, const std::string& path)
     return true;
 }
 
-std::pair<std::chrono::seconds, int> RateLimiter::matchRule(const std::string& path) const
-{
+std::pair<std::chrono::seconds, int> RateLimiter::matchRule(const std::string& path) const {
     // 按顺序匹配规则，返回第一个匹配的规则
     for (const auto& rule : rules_) {
         if (path.compare(0, rule.pathPrefix.size(), rule.pathPrefix) == 0) {
@@ -57,8 +55,7 @@ std::pair<std::chrono::seconds, int> RateLimiter::matchRule(const std::string& p
     return {std::chrono::seconds(60), 60};
 }
 
-RateLimiter::Stats RateLimiter::getStats() const
-{
+RateLimiter::Stats RateLimiter::getStats() const {
     Stats s;
     std::shared_lock lock(mutex_);
     s.activeEntries = records_.size();
@@ -67,8 +64,7 @@ RateLimiter::Stats RateLimiter::getStats() const
     return s;
 }
 
-void RateLimiter::cleanupLoop()
-{
+void RateLimiter::cleanupLoop() {
     while (running_) {
         {
             std::unique_lock lock(cvMutex_);
@@ -81,13 +77,13 @@ void RateLimiter::cleanupLoop()
         try {
             auto now = steady_clock::now();
             // 取所有规则中最大的时间窗口作为清理阈值
-            auto maxWindowIt = std::max_element(rules_.begin(), rules_.end(),
-                                                [](const Rule& a, const Rule& b) { return a.windowSize < b.windowSize; });
+            auto maxWindowIt = std::max_element(
+                rules_.begin(), rules_.end(), [](const Rule& a, const Rule& b) { return a.windowSize < b.windowSize; });
             auto threshold = now - (maxWindowIt != rules_.end() ? maxWindowIt->windowSize : seconds(60));
 
             // 单次持锁遍历，统一完成过期条目清理与容量上限裁剪
             std::unique_lock lock(mutex_);
-            for (auto it = records_.begin(); it != records_.end(); ) {
+            for (auto it = records_.begin(); it != records_.end();) {
                 auto& timestamps = it->second;
                 auto eraseIt = std::upper_bound(timestamps.begin(), timestamps.end(), threshold);
                 if (eraseIt != timestamps.begin()) {

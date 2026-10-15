@@ -24,9 +24,9 @@ constexpr const char* kUploadsDirEnv = "GOCOOK_UPLOADS_DIR";
 // 环境变量守卫：用例内 set/clear 修改，析构时恢复原值（原值不存在则清除）
 class EnvGuard {
 public:
-    explicit EnvGuard(const char* name) : name_(name) {
-        if (const char* v = std::getenv(name); v != nullptr)
-            saved_ = std::string(v);
+    explicit EnvGuard(const char* name)
+        : name_(name) {
+        if (const char* v = std::getenv(name); v != nullptr) saved_ = std::string(v);
     }
     ~EnvGuard() {
         if (saved_)
@@ -48,16 +48,14 @@ private:
 TEST(UploadPathsTest, 默认根目录为server_uploads的绝对路径) {
     EnvGuard guard(kUploadsDirEnv);
     guard.clear();
-    EXPECT_EQ(UploadPaths::baseDir(),
-              std::filesystem::absolute("server/uploads").string());
+    EXPECT_EQ(UploadPaths::baseDir(), std::filesystem::absolute("server/uploads").string());
 }
 
 TEST(UploadPathsTest, 环境变量覆盖上传根目录) {
     EnvGuard guard(kUploadsDirEnv);
     guard.set("/tmp/gocook_test_uploads");
     EXPECT_EQ(UploadPaths::baseDir(), "/tmp/gocook_test_uploads");
-    EXPECT_EQ(UploadPaths::urlToPath("/uploads/recipes/a.jpg", "recipes"),
-              "/tmp/gocook_test_uploads/recipes/a.jpg");
+    EXPECT_EQ(UploadPaths::urlToPath("/uploads/recipes/a.jpg", "recipes"), "/tmp/gocook_test_uploads/recipes/a.jpg");
 }
 
 TEST(UploadPathsTest, urlToPath取URL文件名拼接到子目录) {
@@ -88,6 +86,5 @@ TEST(UploadPathsTest, 环境变量带尾斜杠双斜杠拼接可接受) {
     EnvGuard guard(kUploadsDirEnv);
     guard.set("/data/uploads/");
     // filesystem::absolute 保留尾斜杠，拼接产生 //，对文件系统操作无害（与旧实现行为一致）
-    EXPECT_EQ(UploadPaths::urlToPath("/uploads/recipes/a.jpg", "recipes"),
-              "/data/uploads//recipes/a.jpg");
+    EXPECT_EQ(UploadPaths::urlToPath("/uploads/recipes/a.jpg", "recipes"), "/data/uploads//recipes/a.jpg");
 }

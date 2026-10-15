@@ -10,7 +10,8 @@ class AuthMiddleware {
 public:
     /// 构造函数：JWT 签名密钥 + 用户仓库（读取 token_version 做主动吊销校验）
     AuthMiddleware(const std::string& secret, gocook::repository::IUserRepository& userRepo)
-        : secret_(secret), userRepo_(userRepo) {}
+        : secret_(secret),
+          userRepo_(userRepo) {}
 
     /// 验证请求头中的 Bearer Token，返回解析后的用户信息
     /// @param auth_header Authorization 请求头的值
@@ -19,5 +20,5 @@ public:
 
 private:
     std::string secret_;
-    gocook::repository::IUserRepository& userRepo_;  ///< 会话版本（token_version）数据来源
+    gocook::repository::IUserRepository& userRepo_; ///< 会话版本（token_version）数据来源
 };

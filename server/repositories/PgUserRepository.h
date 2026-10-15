@@ -11,32 +11,30 @@
 class PgUserRepository : public gocook::repository::IUserRepository {
 public:
     // 构造函数，注入数据库连接池引用
-    explicit PgUserRepository(ConnectionPool& db) : db_(db) {}
+    explicit PgUserRepository(ConnectionPool& db)
+        : db_(db) {}
 
     // 按用户名查询用户认证信息（含密码哈希，用于登录验证）
     std::optional<gocook::repository::UserAuthInfo> findByUsername(const std::string& username) override;
     // 检查邮箱是否已被注册
     bool existsByEmail(const std::string& email) override;
     // 创建新用户
-    void createUser(const std::string& username,
-                    const std::string& passwordHash,
-                    const std::string& email) override;
+    void createUser(const std::string& username, const std::string& passwordHash, const std::string& email) override;
     // 创建/覆盖待验证注册记录（两段式注册第一步）
     void upsertPendingRegistration(const std::string& username,
                                    const std::string& passwordHash,
                                    const std::string& email,
                                    const std::string& token) override;
     // 校验验证码并原子创建用户（两段式注册第二步）
-    gocook::models::RegistrationOutcome createUserFromPendingRegistration(
-        const std::string& email, const std::string& token) override;
+    gocook::models::RegistrationOutcome createUserFromPendingRegistration(const std::string& email,
+                                                                          const std::string& token) override;
 
     // 按 ID 查询用户公开资料
     std::optional<gocook::models::UserProfile> findById(int userId) override;
     // 通过邮箱查找用户 ID（用于忘记密码）
     std::optional<int> findIdByEmail(const std::string& email) override;
     // 通过用户名+邮箱联合查找用户 ID（忘记密码时双重验证身份）
-    std::optional<int> findIdByUsernameAndEmail(const std::string& username,
-                                                 const std::string& email) override;
+    std::optional<int> findIdByUsernameAndEmail(const std::string& username, const std::string& email) override;
     // 创建密码重置令牌（过期时间由 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 统一计算）
     void createPasswordResetToken(int userId, const std::string& token) override;
     // 按令牌查找对应用户 ID（仅返回未使用且未过期的令牌）
@@ -44,12 +42,10 @@ public:
     // 标记密码重置令牌为已使用
     void markResetTokenUsed(const std::string& token) override;
     // 在同一事务中重置密码并标记令牌已用（防止令牌重放）
-    void resetPasswordAndMarkTokenUsed(int userId,
-                                       const std::string& newPasswordHash,
-                                       const std::string& token) override;
+    void
+    resetPasswordAndMarkTokenUsed(int userId, const std::string& newPasswordHash, const std::string& token) override;
     // 更新用户个人资料
-    void updateProfile(int userId,
-                       const gocook::models::UpdateProfileRequest& profile) override;
+    void updateProfile(int userId, const gocook::models::UpdateProfileRequest& profile) override;
     // 获取用户密码哈希（修改密码时验证原密码用）
     std::string getPasswordHash(int userId) override;
     // 查询会话版本号（JWT 主动吊销：与令牌 ver claim 比对）
@@ -60,46 +56,39 @@ public:
     void deleteAccount(int userId) override;
 
     // 上传头像文件（仅暂存：落盘并返回引用，不改变用户资料；绑定在 updateProfile 完成）
-    gocook::models::AvatarUploadResponse uploadAvatar(
-        int userId, const std::string& filePath) override;
+    gocook::models::AvatarUploadResponse uploadAvatar(int userId, const std::string& filePath) override;
 
     // 查询用户饮食偏好
     gocook::models::UserPreferences getPreferences(int userId) override;
     // 更新用户饮食偏好
-    void updatePreferences(int userId,
-                           const gocook::models::UserPreferences& prefs) override;
+    void updatePreferences(int userId, const gocook::models::UserPreferences& prefs) override;
     // 查询用户健康条件列表
     std::vector<std::string> getHealthConditions(int userId) override;
     // 录入/更新健康指标
-    gocook::models::HealthProfileResponse updateHealthProfile(
-        int userId, const gocook::models::HealthProfileRequest& req) override;
+    gocook::models::HealthProfileResponse updateHealthProfile(int userId,
+                                                              const gocook::models::HealthProfileRequest& req) override;
     // 查询健康指标（含忌口建议）
     gocook::models::HealthProfileResponse getHealthProfile(int userId) override;
 
     // 查询收藏列表（分页，可按分组筛选）
-    gocook::models::PagedFavorites getFavorites(int userId, int page, int size,
-                                                const std::string& group) override;
+    gocook::models::PagedFavorites getFavorites(int userId, int page, int size, const std::string& group) override;
     // 查询收藏分组列表
     std::vector<gocook::models::FavoriteGroup> getFavoriteGroups(int userId) override;
     // 创建收藏分组，返回创建的分组对象
-    gocook::models::FavoriteGroup createFavoriteGroup(
-        int userId, const gocook::models::CreateGroupRequest& req) override;
+    gocook::models::FavoriteGroup createFavoriteGroup(int userId,
+                                                      const gocook::models::CreateGroupRequest& req) override;
     // 更新收藏分组
-    void updateFavoriteGroup(int userId, int groupId,
-                             const gocook::models::UpdateGroupRequest& req) override;
+    void updateFavoriteGroup(int userId, int groupId, const gocook::models::UpdateGroupRequest& req) override;
     // 删除收藏分组
     void deleteFavoriteGroup(int userId, int groupId) override;
     // 批量更新收藏项属性（分组/可见性，单条=单元素列表）
-    void batchUpdateFavorites(int userId,
-                              const gocook::models::BatchUpdateFavoritesRequest& req) override;
+    void batchUpdateFavorites(int userId, const gocook::models::BatchUpdateFavoritesRequest& req) override;
     // 批量删除收藏
-    void batchDeleteFavorites(
-        int userId, const gocook::models::BatchDeleteFavoritesRequest& req) override;
+    void batchDeleteFavorites(int userId, const gocook::models::BatchDeleteFavoritesRequest& req) override;
 
     // 查询通知列表（分页，可按类型筛选；is_read 由"id > 水位"动态计算）
-    gocook::models::PagedNotifications getNotifications(int userId, int page,
-                                                        int size,
-                                                        const std::string& type) override;
+    gocook::models::PagedNotifications
+    getNotifications(int userId, int page, int size, const std::string& type) override;
     // 查询未读汇总（消息中心角标：各分类未读数 + 有无新公告）
     gocook::models::NotificationUnreadSummary getUnreadSummary(int userId) override;
     // 上报已读水位（幂等：GREATEST 防回退 + 收敛到频道当前最大 id）

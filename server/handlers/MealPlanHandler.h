@@ -1,14 +1,13 @@
 #pragma once
 
 #include <httplib/httplib.h>
-#include <gocook/IServices.h>          // 依赖抽象 IMealPlanService
+#include <gocook/IServices.h> // 依赖抽象 IMealPlanService
 #include <nlohmann/json.hpp>
 #include "../middleware/auth_middleware.h"
 
 class MealPlanHandler {
 public:
-    explicit MealPlanHandler(gocook::services::IMealPlanService& service,
-                             AuthMiddleware& auth);
+    explicit MealPlanHandler(gocook::services::IMealPlanService& service, AuthMiddleware& auth);
 
     // 创建膳食计划项（需认证）
     void createMealPlan(const httplib::Request& req, httplib::Response& res);
@@ -24,6 +23,6 @@ public:
     void getNutritionTrend(const httplib::Request& req, httplib::Response& res);
 
 private:
-    gocook::services::IMealPlanService& service_;   // 业务抽象
-    AuthMiddleware& auth_;                         // 认证中间件
+    gocook::services::IMealPlanService& service_; // 业务抽象
+    AuthMiddleware& auth_;                        // 认证中间件
 };
