@@ -1,0 +1,182 @@
+# ============================================================
+# GoCook CI — 构建 + 全量测试 + QML 冒烟
+# ============================================================
+# 教学版全套 CI · 第 1 批（骨架）。后续批次追加：lint / 覆盖率 / CodeQL /
+# gitleaks / Dependabot / Release / ghcr 镜像 / E2E。
+#
+# 本工作流做什么：
+#   1. 全量构建 appclient / test_client / test_services（Ninja，显式 --parallel 4）
+#   2. 起 postgres:15 服务容器，按 server/reset_db.sh 的顺序灌入建表 + 种子 SQL
+#   3. ctest 串行全量（基线 483 = server 333 + client 150；2 例 E2E 在未设
+#      GOCOOK_E2E_BASE 时自动跳过）
+#   4. --output-junit 产出 JUnit XML → artifact + dorny/test-reporter
+#      （PR / commit 页面直接看逐用例结果）
+#   5. QML offscreen 冒烟：timeout 5s，退出码 124（被 timeout 正常终止）即通过
+#      （runner 无 KDE Breeze 模块，以启动参数 -style Fusion 降级，见步骤内注释）
+#
+# 环境对齐说明（对齐本机 2026-10-15 实测工具链）：
+#   - 本机：Qt 6.11.2 / GCC 16.2.1 / CMake 4.4.3 / libpqxx 8.0.2
+#   - runner：Qt 6.11.*（含 qt5compat）/ gcc-14 / pip cmake(>=4.1.1) /
+#     源码 libpqxx 8.0.1
+#   - 数据库：postgres:15 + gocook/gocook123/gocookdb（与 docker-compose.yml 一致）
+#   - GitHub services 不能把仓库文件挂进容器，因此 SQL 不走 initdb.d
+#     （docker-compose.yml 的做法），改为 checkout 后用 psql 灌入
+#   - Qt modules 只能填「附加模块」：qtbase/qtdeclarative 是基础归档，
+#     填了 aqt 会 exit 1（Brotato CI 已踩过该坑）
+#   - runner 无 KDE 桌面：org.kde.breeze 风格模块不存在，冒烟步骤以 -style Fusion
+#     启动参数降级（优先级高于代码内 qputenv 请求）
+#   - 仓库当前只有 dev 分支（无 main），触发按实际情况配置
+# ============================================================
+name: CI
+
+env:
+  CCACHE_MAXSIZE: 1G        # 限制 ccache 体积（默认上限 5G，缓存上传会拖慢）
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:        # 手动触发：不改代码也能重跑
+
+permissions:
+  contents: read            # 默认最小权限，job 层按需追加
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true  # 同一分支新 push 自动取消旧 run
+
+jobs:
+  build-test:
+    name: 构建 + 测试（ubuntu-24.04）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write         # dorny/test-reporter 写 check run 需要
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: gocook
+          POSTGRES_PASSWORD: gocook123
+          POSTGRES_DB: gocookdb
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U gocook -d gocookdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # ---------- 工具链 ----------
+
+      - name: 安装 Qt 6.11（qt5compat 为必需附加模块）
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          modules: 'qt5compat'   # Core5Compat 组件需要；基础归档不能当 modules 传
+          cache: true
+
+      - name: 安装系统依赖与工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-14 g++-14 ninja-build pkg-config \
+            libpq-dev libssl-dev \
+            libgtest-dev libgmock-dev \
+            libgl1-mesa-dev postgresql-client python3-pip ccache
+          # 项目 cmake_minimum_required 是 4.1.1，runner 自带 3.28 不够
+          # （Dockerfile 同款坑，用同样的方式解决）。
+          # 注意：不要装 apt 的 libpqxx-dev（那是 7.x），会遮住源码安装的 8.0.1。
+          sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
+
+      - name: 恢复 ccache 编译缓存（apt 装 ccache + 自建缓存，不引第三方 action）
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # 精确 key 含 sha：每次都保存一份新缓存；restore-keys 前缀匹配保证能吃到旧缓存
+          key: ccache-ubuntu-qt6.11-gcc14-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu-qt6.11-gcc14-
+
+      - name: 源码构建 libpqxx 8.0.1（对齐 Dockerfile 构建阶段）
+        run: |
+          git clone --depth 1 --branch 8.0.1 https://github.com/jtv/libpqxx.git /tmp/libpqxx
+          cmake -B /tmp/libpqxx/build -G Ninja -S /tmp/libpqxx \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTING=OFF -DBUILD_DOC=OFF
+          cmake --build /tmp/libpqxx/build --parallel 4
+          sudo cmake --install /tmp/libpqxx/build
+          sudo ldconfig
+
+      # ---------- 数据库 ----------
+
+      - name: 初始化测试数据库（顺序同 server/reset_db.sh）
+        env:
+          PGPASSWORD: gocook123
+        run: |
+          psql -h 127.0.0.1 -U gocook -d gocookdb -v ON_ERROR_STOP=1 -f server/sql/create_all_tables.sql
+          psql -h 127.0.0.1 -U gocook -d gocookdb -v ON_ERROR_STOP=1 -f server/sql/seed_ingredient_nutrition.sql
+          psql -h 127.0.0.1 -U gocook -d gocookdb -v ON_ERROR_STOP=1 -f server/sql/seed_test_data.sql
+
+      # ---------- 构建 ----------
+
+      - name: 配置 CMake（Ninja + ccache）
+        run: |
+          cmake -B build -G Ninja -S . \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: 构建 appclient / test_client / test_services
+        run: cmake --build build --target appclient test_client test_services --parallel 4
+
+      # ---------- 测试 ----------
+
+      - name: 全量测试（ctest 必须串行；默认即串行，勿加 -j）
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure --output-junit build/test-results.xml
+
+      - name: QML offscreen 冒烟（存活 5 秒即通过）
+        run: |
+          set +e
+          # main.cpp 无条件请求 KDE 的 org.kde.breeze 风格模块（本机 KDE 自带，runner 没有），
+          # 不加干预时 QML 加载硬失败退出 255。
+          # -style Fusion 启动参数优先级高于代码内 qputenv 的请求 → 无 KDE 环境降级为 Fusion。
+          # （本机 Qt 6.11.2 对照实验：QT_QUICK_CONTROLS_FALLBACK_STYLE 与 QT_QUICK_CONTROLS_CONF
+          #   均拦不住"风格模块缺失"，仅 -style 参数有效；负例 -style DefinitelyMissing 会照常失败，
+          #   即该修复不会掩盖其它加载故障）
+          env QT_QPA_PLATFORM=offscreen timeout 5 ./build/client/appclient -style Fusion
+          rc=$?
+          if [ "$rc" -ne 124 ]; then
+            echo "::error::appclient 冒烟失败：期望 124（被 timeout 终止），实际 $rc"
+            exit 1
+          fi
+          echo "冒烟通过（124 = timeout 正常终止）"
+
+      # ---------- 报告 ----------
+
+      - name: 上传测试报告（artifact）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: build/test-results.xml
+          if-no-files-found: warn
+
+      - name: 测试结果写入 commit / PR 检查
+        if: always()
+        continue-on-error: true   # 报告步骤不拦截构建：失败与否以 ctest 退出码为准
+        uses: dorny/test-reporter@v1
+        with:
+          name: ctest (JUnit)
+          path: build/test-results.xml
+          reporter: java-junit
+          fail-on-error: false
