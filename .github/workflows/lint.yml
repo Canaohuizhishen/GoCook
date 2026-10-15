@@ -1,0 +1,111 @@
+# ============================================================
+# GoCook Lint — clang-format 门禁 + clang-tidy 初探
+# ============================================================
+# 教学版全套 CI · 第 2 批。
+#
+#   format job：clang-format 22.1.8（与全库一次性格式化同版本，钉版防漂移）
+#     对全部自有 C++ 文件（排除 third_party/）做 --dry-run --Werror：
+#     未来任何不符合 .clang-format 的提交都会红叉。
+#   tidy job：clang-tidy 低告警级初探（bugprone / performance），仅自有文件，
+#     只报告不拦截（job 级 continue-on-error）——先摸清存量告警量级，
+#     后续批次再逐步收严并转为门禁。
+#
+# 说明：
+#   - tidy 需要 compile_commands.json → 环境安装步骤与 ci.yml 一致
+#     （Qt 6.11 + 系统依赖 + 源码 libpqxx 8.0.1），只 configure 不编译项目
+#   - 触发与 ci.yml 一致：dev push / PR / 手动
+# ============================================================
+name: Lint
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: clang-format 格式检查
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 clang-format 22.1.8（钉版：与全库格式化/本机同版本，防格式漂移）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-pip
+          sudo python3 -m pip install --break-system-packages 'clang-format==22.1.8'
+          clang-format --version
+
+      - name: 格式检查（全部自有 C++ 文件，排除 third_party）
+        run: |
+          files=$(git ls-files '*.cpp' '*.h' '*.hpp' ':(exclude)third_party/*')
+          echo "待检查文件数：$(echo "$files" | wc -l)"
+          clang-format --dry-run --Werror $files
+          echo "格式检查通过"
+
+  tidy:
+    name: clang-tidy 初探（报告模式，不拦截）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true   # 首期只收集存量告警量级，不让 job 失败拦住流水线
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Qt 6.11（tidy 解析 client 代码需要 Qt 头文件）
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          modules: 'qt5compat'
+          cache: true
+
+      - name: 安装系统依赖与工具链（同 ci.yml）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-14 g++-14 ninja-build pkg-config \
+            libpq-dev libssl-dev \
+            libgtest-dev libgmock-dev \
+            libgl1-mesa-dev python3-pip clang-tidy
+          # 项目 cmake_minimum_required 是 4.1.1；不要装 apt 的 libpqxx-dev（7.x）
+          sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
+          clang-tidy --version
+
+      - name: 源码构建 libpqxx 8.0.1（configure server 需要；同 Dockerfile）
+        run: |
+          git clone --depth 1 --branch 8.0.1 https://github.com/jtv/libpqxx.git /tmp/libpqxx
+          cmake -B /tmp/libpqxx/build -G Ninja -S /tmp/libpqxx \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTING=OFF -DBUILD_DOC=OFF
+          cmake --build /tmp/libpqxx/build --parallel 4
+          sudo cmake --install /tmp/libpqxx/build
+          sudo ldconfig
+
+      - name: 配置 CMake（生成 compile_commands.json）
+        run: |
+          cmake -B build -G Ninja -S . \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: clang-tidy 静态分析（低告警级、仅自有文件、报告模式）
+        run: |
+          files=$(git ls-files '*.cpp' ':(exclude)third_party/*')
+          echo "待分析文件数：$(echo "$files" | wc -l)"
+          clang-tidy -p build --quiet --checks='-*,bugprone-*,performance-*' $files > tidy-out.log 2>&1 || true
+          echo "==== 告警计数 ===="
+          echo "warning 行数：$(grep -c 'warning:' tidy-out.log || echo 0)"
+          echo "error   行数：$(grep -c 'error:' tidy-out.log || echo 0)"
+          echo "==== 输出尾部（最多 120 行）===="
+          tail -120 tidy-out.log
