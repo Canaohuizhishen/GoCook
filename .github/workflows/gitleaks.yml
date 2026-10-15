@@ -1,0 +1,40 @@
+# ============================================================
+# GoCook Secret Scan — gitleaks 密钥扫描
+# ============================================================
+# 教学版全套 CI · 第 3 批。
+#   - 扫描 git 历史/推送内容中的疑似密钥、token、私钥
+#   - 本项目 .env 未入库（.gitignore 已覆盖），预期扫描干净
+#   - 检出即红叉（真拦截，不做报告模式——密钥泄露属最高优先级）
+# ============================================================
+name: Secret Scan
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write   # gitleaks 在 PR 上评论发现需要
+
+concurrency:
+  group: gitleaks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: gitleaks 密钥扫描
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码（含完整历史——gitleaks 需要）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 运行 gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
