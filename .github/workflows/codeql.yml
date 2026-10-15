@@ -1,0 +1,85 @@
+# ============================================================
+# GoCook CodeQL — C/C++ 安全与质量静态扫描
+# ============================================================
+# 教学版全套 CI · 第 3 批。
+#   - C/C++ 需要真实编译 → build-mode: manual，复用 ci.yml 的工具链步骤
+#     （Qt 6.11 + 系统依赖 + 源码 libpqxx 8.0.1），只构建、不跑数据库/测试
+#   - 结果以 SARIF 上传到仓库 Security 页（Actions 页也会出现 CodeQL 检查）
+#   - third_party/（vendored 库）排除在告警之外；自有代码全量分析（含测试）
+#   - 触发：dev push / PR / 每周一凌晨定时（定期扫描能吃到更新的查询规则）+ 手动
+# ============================================================
+name: CodeQL
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  schedule:
+    - cron: '30 3 * * 1'   # 每周一 03:30 UTC（北京时间 11:30）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL 分析（C/C++，手动构建）
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      security-events: write   # 上传 SARIF 结果需要
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Qt 6.11（构建 client 需要）
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          modules: 'qt5compat'
+          cache: true
+
+      - name: 安装系统依赖与工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-14 g++-14 ninja-build pkg-config \
+            libpq-dev libssl-dev \
+            libgtest-dev libgmock-dev \
+            libgl1-mesa-dev python3-pip
+          sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
+
+      - name: 源码构建 libpqxx 8.0.1（对齐 Dockerfile 构建阶段）
+        run: |
+          git clone --depth 1 --branch 8.0.1 https://github.com/jtv/libpqxx.git /tmp/libpqxx
+          cmake -B /tmp/libpqxx/build -G Ninja -S /tmp/libpqxx \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTING=OFF -DBUILD_DOC=OFF
+          cmake --build /tmp/libpqxx/build --parallel 4
+          sudo cmake --install /tmp/libpqxx/build
+          sudo ldconfig
+
+      - name: 初始化 CodeQL（C/C++，手动构建模式）
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+          config: |
+            paths-ignore:
+              - third_party/**
+
+      - name: 构建（CodeQL 追踪编译过程）
+        run: |
+          cmake -B build -G Ninja -S . \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+          cmake --build build --target appclient test_client test_services --parallel 4
+
+      - name: 分析并上传结果（SARIF）
+        uses: github/codeql-action/analyze@v3

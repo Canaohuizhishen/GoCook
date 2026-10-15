@@ -55,6 +55,7 @@ jobs:
           echo "格式检查通过"
 
   tidy:
+    # 首跑实测约 16 分钟属正常（全量 TU × Qt 头文件解析 + 系统头告警）；报告模式不会拦红流水线
     name: clang-tidy 初探（报告模式，不拦截）
     runs-on: ubuntu-24.04
     timeout-minutes: 60
