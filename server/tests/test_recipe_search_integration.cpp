@@ -25,8 +25,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -54,8 +53,7 @@ bool dbAvailable() {
 class RecipeSearchDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         cleanup();
     }
 
@@ -70,21 +68,18 @@ protected:
     }
 
     /// 直接插入一条 approved 测试菜谱（指定名称/描述/食材 JSON），返回菜谱 id
-    static int insertRecipe(const std::string& name,
-                            const std::string& description,
-                            const std::string& ingredientsJson) {
+    static int
+    insertRecipe(const std::string& name, const std::string& description, const std::string& ingredientsJson) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO recipes (name, description, ingredients, status, tags)"
-            " VALUES ($1, $2, $3::jsonb, 'approved', '{}') RETURNING id",
-            pqxx::params{name, description, ingredientsJson});
+        pqxx::result r = ntxn.exec("INSERT INTO recipes (name, description, ingredients, status, tags)"
+                                   " VALUES ($1, $2, $3::jsonb, 'approved', '{}') RETURNING id",
+                                   pqxx::params{name, description, ingredientsJson});
         return r[0][0].as<int>();
     }
 
     /// 命中结果里是否含指定 id（并返回该条，供进一步断言）
-    static const gocook::models::RecipeSummary* containsId(
-        const gocook::models::PagedRecipes& paged, int id) {
+    static const gocook::models::RecipeSummary* containsId(const gocook::models::PagedRecipes& paged, int id) {
         for (const auto& rec : paged.data)
             if (rec.id == id) return &rec;
         return nullptr;
@@ -104,12 +99,11 @@ TEST_F(RecipeSearchDbTest, 关键词三路命中菜名描述与食材) {
     // 三个互不重叠的词，各只出现在对应的一路（名称统一带清理前缀）
     const std::string kwName = "集成测试搜索词名";
     const std::string kwDesc = "集成测试搜索词述";
-    const std::string kwIng  = "集成测试搜索词材";
+    const std::string kwIng = "集成测试搜索词材";
 
     int byName = insertRecipe(kwName, "普通描述", "[]");
     int byDesc = insertRecipe("集成测试搜索无关菜甲", "描述里藏着" + kwDesc, "[]");
-    int byIng  = insertRecipe("集成测试搜索无关菜乙", "普通描述",
-                              R"([{"name":"集成测试搜索词材","amount":"100克"}])");
+    int byIng = insertRecipe("集成测试搜索无关菜乙", "普通描述", R"([{"name":"集成测试搜索词材","amount":"100克"}])");
 
     auto r1 = repo.searchRecipes(kwName, 1, 50, nlohmann::json::object());
     ASSERT_EQ(r1.pagination.total, 1) << "菜名路径应唯一命中";
@@ -172,8 +166,10 @@ TEST_F(RecipeSearchDbTest, 分页total恒为命中总数且跨页数据一致) {
     ASSERT_EQ(page2.data.size(), 1u);
 
     std::set<int> ids;
-    for (const auto& rec : page1.data) ids.insert(rec.id);
-    for (const auto& rec : page2.data) ids.insert(rec.id);
+    for (const auto& rec : page1.data)
+        ids.insert(rec.id);
+    for (const auto& rec : page2.data)
+        ids.insert(rec.id);
     EXPECT_EQ(ids.size(), 3u) << "两页并集应为不重不漏的 3 条";
     EXPECT_TRUE(ids.count(a) > 0 && ids.count(b) > 0 && ids.count(c) > 0);
 }

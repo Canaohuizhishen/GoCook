@@ -21,30 +21,26 @@ public:
      * @param inventoryRepo 库存仓库（可选，用于推荐匹配，默认 nullptr）
      * @param nutritionRepo 营养仓库（可选，用于投稿/编辑时按食材自动计算营养；默认 nullptr）
      */
-    explicit RecipeServiceImpl(
-        std::unique_ptr<gocook::repository::IRecipeRepository> recipeRepo,
-        std::unique_ptr<gocook::repository::IUserRepository> userRepo = nullptr,
-        std::unique_ptr<gocook::repository::IInventoryRepository> inventoryRepo = nullptr,
-        std::unique_ptr<gocook::repository::INutritionRepository> nutritionRepo = nullptr)
-        : recipeRepo_(std::move(recipeRepo))
-        , userRepo_(std::move(userRepo))
-        , inventoryRepo_(std::move(inventoryRepo))
-        , nutritionRepo_(std::move(nutritionRepo)) {}
+    explicit RecipeServiceImpl(std::unique_ptr<gocook::repository::IRecipeRepository> recipeRepo,
+                               std::unique_ptr<gocook::repository::IUserRepository> userRepo = nullptr,
+                               std::unique_ptr<gocook::repository::IInventoryRepository> inventoryRepo = nullptr,
+                               std::unique_ptr<gocook::repository::INutritionRepository> nutritionRepo = nullptr)
+        : recipeRepo_(std::move(recipeRepo)),
+          userRepo_(std::move(userRepo)),
+          inventoryRepo_(std::move(inventoryRepo)),
+          nutritionRepo_(std::move(nutritionRepo)) {}
 
     // 获取公开菜谱列表（分页，可带筛选条件）
-    gocook::models::PagedRecipes getPublicRecipes(int page, int size,
-                                                   const nlohmann::json& filters) override;
+    gocook::models::PagedRecipes getPublicRecipes(int page, int size, const nlohmann::json& filters) override;
 
     // 按关键词搜索菜谱（分页，可带筛选条件）
-    gocook::models::PagedRecipes searchRecipes(const std::string& keyword,
-                                                int page, int size,
-                                                const nlohmann::json& filters) override;
+    gocook::models::PagedRecipes
+    searchRecipes(const std::string& keyword, int page, int size, const nlohmann::json& filters) override;
 
     // 结合用户偏好与库存生成智能推荐菜谱（分页；seed≠0 时做「换一批」加权随机序重排——
     // 候选池 = 全库（安全阀上限），按复合分加权：高分常见、低分概率极低但非零）
-    gocook::models::PagedRecommendedRecipes getRecommendedRecipes(int userId,
-                                                                   int page, int size,
-                                                                   unsigned int seed = 0) override;
+    gocook::models::PagedRecommendedRecipes
+    getRecommendedRecipes(int userId, int page, int size, unsigned int seed = 0) override;
 
     // 获取菜谱详情（userId 非 0 时附带当前用户的收藏状态）
     gocook::models::RecipeDetail getRecipeDetail(int recipeId, int userId = 0) override;
@@ -57,36 +53,33 @@ public:
 
     // 投稿新菜谱（入库前做内容查重）
     gocook::models::SubmitRecipeResponse submitRecipe(int userId,
-                                                       const gocook::models::SubmitRecipeRequest& data) override;
+                                                      const gocook::models::SubmitRecipeRequest& data) override;
 
     // 获取当前用户的投稿列表（分页，可按状态筛选）
-    gocook::models::PagedMyRecipes getMySubmittedRecipes(int userId,
-                                                          int page, int size,
-                                                          const std::string& status = "") override;
+    gocook::models::PagedMyRecipes
+    getMySubmittedRecipes(int userId, int page, int size, const std::string& status = "") override;
 
     // 编辑未审核菜谱，返回状态（"pending"）
-    std::string editRecipe(int userId, int recipeId,
-                             const gocook::models::EditRecipeRequest& updates) override;
+    std::string editRecipe(int userId, int recipeId, const gocook::models::EditRecipeRequest& updates) override;
 
     // 切换菜谱收藏状态（可指定分组与可见性）
-    void toggleFavorite(int userId, int recipeId,
+    void toggleFavorite(int userId,
+                        int recipeId,
                         std::optional<int> groupId = std::nullopt,
                         std::optional<bool> isPublic = std::nullopt) override;
 
     // 评分与评论
-    void rateRecipe(int userId, int recipeId,
-                    const gocook::models::RateRecipeRequest& request) override;
+    void rateRecipe(int userId, int recipeId, const gocook::models::RateRecipeRequest& request) override;
 
     // 修改评论
-    void updateRating(int userId, int recipeId, int ratingId,
-                      const gocook::models::RateRecipeRequest& request) override;
+    void
+    updateRating(int userId, int recipeId, int ratingId, const gocook::models::RateRecipeRequest& request) override;
 
     // 删除评论
     void deleteRating(int userId, int recipeId, int ratingId) override;
 
     // 获取当前用户对某菜谱的评分（未评分返回 nullopt）
-    std::optional<gocook::models::RecipeRating> getMyRating(int userId,
-                                                              int recipeId) override;
+    std::optional<gocook::models::RecipeRating> getMyRating(int userId, int recipeId) override;
 
     // 获取当前用户的所有评论列表（分页）
     gocook::models::PagedUserRatings getMyRatings(int userId, int page, int size) override;
@@ -114,7 +107,6 @@ private:
     // 有手填值则以手填四项入库，否则空对象；未收录/无法换算的食材写入 excluded_ingredients。
     // 返回 nullopt 仅发生在"营养表查询异常且无手填值"（无法计算也无可回退）——
     // 投稿时按空对象处理；编辑时传给仓库 nullopt，保留库中已有 nutrition_info，不因计算不可用而清空。
-    std::optional<nlohmann::json> buildNutritionInfo(
-        const std::vector<gocook::models::Ingredient>& ingredients,
-        const std::optional<gocook::models::Nutrition>& userNutrition);
+    std::optional<nlohmann::json> buildNutritionInfo(const std::vector<gocook::models::Ingredient>& ingredients,
+                                                     const std::optional<gocook::models::Nutrition>& userNutrition);
 };

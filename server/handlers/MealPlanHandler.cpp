@@ -42,10 +42,8 @@ static json toJson(const MealPlansResponse& resp) {
     for (const auto& p : resp.data)
         obj["data"].push_back(toJson(p));
     if (resp.nutrition_summary.has_value()) {
-        obj["nutrition_summary"] = {
-            {"total_calories", resp.nutrition_summary->total_calories},
-            {"avg_protein", resp.nutrition_summary->avg_protein}
-        };
+        obj["nutrition_summary"] = {{"total_calories", resp.nutrition_summary->total_calories},
+                                    {"avg_protein", resp.nutrition_summary->avg_protein}};
     }
     obj["pagination"] = toJson(resp.pagination);
     return obj;
@@ -61,11 +59,7 @@ static json toJson(const DailyMealDetails& meals) {
 }
 
 static json toJson(const CalendarDay& day) {
-    return {
-        {"date", day.date},
-        {"meals", toJson(day.meals)},
-        {"daily_total", toJson(day.daily_total)}
-    };
+    return {{"date", day.date}, {"meals", toJson(day.meals)}, {"daily_total", toJson(day.daily_total)}};
 }
 
 static json toJson(const PagedCalendarDays& paged) {
@@ -82,36 +76,29 @@ static json toJson(const NutritionComparisonItem& comp) {
 }
 
 static json toJson(const DailyNutritionComparison& comp) {
-    return {
-        {"calories", toJson(comp.calories)},
-        {"protein", toJson(comp.protein)},
-        {"fat", toJson(comp.fat)},
-        {"carbs", toJson(comp.carbs)}
-    };
+    return {{"calories", toJson(comp.calories)},
+            {"protein", toJson(comp.protein)},
+            {"fat", toJson(comp.fat)},
+            {"carbs", toJson(comp.carbs)}};
 }
 
 static json toJson(const NutritionTrendItem& item) {
-    return {
-        {"date", item.date},
-        {"actual", toJson(item.actual)},
-        {"recommended", toJson(item.recommended)},
-        {"comparison", toJson(item.comparison)}
-    };
+    return {{"date", item.date},
+            {"actual", toJson(item.actual)},
+            {"recommended", toJson(item.recommended)},
+            {"comparison", toJson(item.comparison)}};
 }
 
 static json toJson(const NutritionTrendResponse& trend) {
     json arr = json::array();
     for (const auto& t : trend.trend)
         arr.push_back(toJson(t));
-    return {
-        {"trend", arr},
-        {"daily_goals", toJson(trend.daily_goals)}
-    };
+    return {{"trend", arr}, {"daily_goals", toJson(trend.daily_goals)}};
 }
 
-MealPlanHandler::MealPlanHandler(gocook::services::IMealPlanService& service,
-                                 AuthMiddleware& auth)
-    : service_(service), auth_(auth) {}
+MealPlanHandler::MealPlanHandler(gocook::services::IMealPlanService& service, AuthMiddleware& auth)
+    : service_(service),
+      auth_(auth) {}
 
 void MealPlanHandler::createMealPlan(const httplib::Request& req, httplib::Response& res) {
     auto info = requireAuth(auth_, req, res);

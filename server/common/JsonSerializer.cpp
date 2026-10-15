@@ -8,8 +8,8 @@ using namespace gocook::models;
 // ======================== 基础模型 ========================
 
 json toJson(const Nutrition& n) {
-    return {{"calories", n.calories}, {"protein", n.protein}, {"fat", n.fat}, {"carbs", n.carbs},
-            {"has_data", n.has_data}};
+    return {
+        {"calories", n.calories}, {"protein", n.protein}, {"fat", n.fat}, {"carbs", n.carbs}, {"has_data", n.has_data}};
 }
 
 json toJson(const Ingredient& ing) {
@@ -38,29 +38,27 @@ json toJson(const MissingIngredient& ing) {
 // ======================== 菜谱相关 ========================
 
 json toJson(const RecipeSummary& recipe) {
-    return {
-        {"id", recipe.id},
-        {"name", recipe.name},
-        {"description", recipe.description},
-        {"image_url", recipe.image_url},
-        {"cooking_method", recipe.cooking_method},
-        {"flavor", recipe.flavor},
-        {"ingredient_type", recipe.ingredient_type},
-        {"prep_time_minutes", recipe.prep_time_minutes},
-        {"cook_time_minutes", recipe.cook_time_minutes},
-        {"calories", recipe.calories},
-        {"view_count", recipe.view_count},
-        {"avg_rating", recipe.avg_rating},
-        {"tags", recipe.tags},
-        {"author_id", recipe.author_id},
-        {"author_name", recipe.author_name}
-    };
+    return {{"id", recipe.id},
+            {"name", recipe.name},
+            {"description", recipe.description},
+            {"image_url", recipe.image_url},
+            {"cooking_method", recipe.cooking_method},
+            {"flavor", recipe.flavor},
+            {"ingredient_type", recipe.ingredient_type},
+            {"prep_time_minutes", recipe.prep_time_minutes},
+            {"cook_time_minutes", recipe.cook_time_minutes},
+            {"calories", recipe.calories},
+            {"view_count", recipe.view_count},
+            {"avg_rating", recipe.avg_rating},
+            {"tags", recipe.tags},
+            {"author_id", recipe.author_id},
+            {"author_name", recipe.author_name}};
 }
 
 json toJson(const RecommendedRecipe& rec) {
     json item = toJson(static_cast<const RecipeSummary&>(rec));
     item["match_score"] = rec.match_score;
-    item["health_notice"] = rec.health_notice;  // 健康软提示（空串 = 无提示）
+    item["health_notice"] = rec.health_notice; // 健康软提示（空串 = 无提示）
     json matchStatus;
     json available = json::array();
     for (const auto& ing : rec.match_status.available_ingredients)
@@ -100,31 +98,26 @@ json toJson(const RecipeDetail& detail) {
     item["author_id"] = detail.author_id;
     item["author_name"] = detail.author_name;
     item["created_at"] = detail.created_at;
-    if (!detail.updated_at.empty())
-        item["updated_at"] = detail.updated_at;
+    if (!detail.updated_at.empty()) item["updated_at"] = detail.updated_at;
     return item;
 }
 
 json toJson(const RecipeVideo& video) {
-    return {
-        {"id", video.id},
-        {"title", video.title},
-        {"platform", video.platform},
-        {"url", video.url},
-        {"thumbnail_url", video.thumbnail_url},
-        {"duration_seconds", video.duration_seconds}
-    };
+    return {{"id", video.id},
+            {"title", video.title},
+            {"platform", video.platform},
+            {"url", video.url},
+            {"thumbnail_url", video.thumbnail_url},
+            {"duration_seconds", video.duration_seconds}};
 }
 
 json toJson(const RecipeRating& rating) {
-    return {
-        {"id", rating.id},
-        {"user_id", rating.user_id},
-        {"username", rating.username},
-        {"rating", rating.rating},
-        {"comment", rating.comment},
-        {"created_at", rating.created_at}
-    };
+    return {{"id", rating.id},
+            {"user_id", rating.user_id},
+            {"username", rating.username},
+            {"rating", rating.rating},
+            {"comment", rating.comment},
+            {"created_at", rating.created_at}};
 }
 
 json toJson(const MyRecipeStatus& status) {
@@ -132,24 +125,20 @@ json toJson(const MyRecipeStatus& status) {
     item["id"] = status.id;
     item["name"] = status.name;
     item["status"] = status.status;
-    if (status.reject_reason.has_value())
-        item["reject_reason"] = status.reject_reason.value();
+    if (status.reject_reason.has_value()) item["reject_reason"] = status.reject_reason.value();
     item["submitted_at"] = status.submitted_at;
-    if (!status.updated_at.empty())
-        item["updated_at"] = status.updated_at;
+    if (!status.updated_at.empty()) item["updated_at"] = status.updated_at;
     return item;
 }
 
 // ======================== 营养报告 ========================
 
 json toJson(const NutritionBreakdownItem& item) {
-    return {
-        {"name", item.name},
-        {"calories", item.calories},
-        {"protein_g", item.protein_g},
-        {"fat_g", item.fat_g},
-        {"carbs_g", item.carbs_g}
-    };
+    return {{"name", item.name},
+            {"calories", item.calories},
+            {"protein_g", item.protein_g},
+            {"fat_g", item.fat_g},
+            {"carbs_g", item.carbs_g}};
 }
 
 json toJson(const NutritionReport& report) {
@@ -179,16 +168,14 @@ json toJson(const NutritionReport& report) {
 // ======================== 用户 / 认证相关 ========================
 
 json toJson(const UserProfile& user) {
-    return {
-        {"id", user.id},
-        {"username", user.username},
-        {"display_name", user.display_name},
-        {"email", user.email},
-        {"phone", user.phone},
-        {"avatar_url", user.avatar_url},
-        {"preferences_complete", user.preferences_complete},
-        {"created_at", user.created_at}
-    };
+    return {{"id", user.id},
+            {"username", user.username},
+            {"display_name", user.display_name},
+            {"email", user.email},
+            {"phone", user.phone},
+            {"avatar_url", user.avatar_url},
+            {"preferences_complete", user.preferences_complete},
+            {"created_at", user.created_at}};
 }
 
 json toJson(const UserPreferences& prefs) {
@@ -197,12 +184,9 @@ json toJson(const UserPreferences& prefs) {
 
 json toJson(const HealthProfileResponse& resp) {
     json j;
-    if (resp.height_cm.has_value())
-        j["height_cm"] = resp.height_cm.value();
-    if (resp.weight_kg.has_value())
-        j["weight_kg"] = resp.weight_kg.value();
-    if (!resp.conditions.empty())
-        j["conditions"] = resp.conditions;
+    if (resp.height_cm.has_value()) j["height_cm"] = resp.height_cm.value();
+    if (resp.weight_kg.has_value()) j["weight_kg"] = resp.weight_kg.value();
+    if (!resp.conditions.empty()) j["conditions"] = resp.conditions;
     json arr = json::array();
     for (const auto& item : resp.suggested_avoidances)
         arr.push_back(toJson(item));
@@ -211,67 +195,52 @@ json toJson(const HealthProfileResponse& resp) {
 }
 
 json toJson(const AvatarUploadResponse& resp) {
-    return {
-        {"avatar_url", resp.avatar_url}
-    };
+    return {{"avatar_url", resp.avatar_url}};
 }
 
 json toJson(const FavoriteItem& item) {
-    return {
-        {"id", item.id},
-        {"recipe_id", item.recipe_id},
-        {"name", item.name},
-        {"description", item.description},
-        {"image_url", item.image_url},
-        {"group_name", item.group_name},
-        {"is_public", item.is_public},
-        {"favorited_at", item.favorited_at}
-    };
+    return {{"id", item.id},
+            {"recipe_id", item.recipe_id},
+            {"name", item.name},
+            {"description", item.description},
+            {"image_url", item.image_url},
+            {"group_name", item.group_name},
+            {"is_public", item.is_public},
+            {"favorited_at", item.favorited_at}};
 }
 
 json toJson(const FavoriteGroup& group) {
-    return {
-        {"id", group.id},
-        {"name", group.name},
-        {"sort_order", group.sort_order},
-        {"count", group.count}
-    };
+    return {{"id", group.id}, {"name", group.name}, {"sort_order", group.sort_order}, {"count", group.count}};
 }
 
 // ======================== 通知 / 我的评论 ========================
 
 json toJson(const NotificationItem& item) {
-    return {
-        {"id", item.id},
-        {"title", item.title},
-        {"content", item.content},
-        {"type", item.type},
-        {"sub_type", item.sub_type},
-        {"is_read", item.is_read},   // 由"id > 已读水位"动态计算（v2.23）
-        {"related_id", item.related_id},
-        {"trigger_user_name", item.trigger_user_name},
-        {"created_at", item.created_at}
-    };
+    return {{"id", item.id},
+            {"title", item.title},
+            {"content", item.content},
+            {"type", item.type},
+            {"sub_type", item.sub_type},
+            {"is_read", item.is_read}, // 由"id > 已读水位"动态计算（v2.23）
+            {"related_id", item.related_id},
+            {"trigger_user_name", item.trigger_user_name},
+            {"created_at", item.created_at}};
 }
 
 json toJson(const NotificationUnreadSummary& summary) {
-    return {
-        {"review", summary.unread_review},
-        {"interaction", summary.unread_interaction},
-        {"system", summary.has_new_announcement}
-    };
+    return {{"review", summary.unread_review},
+            {"interaction", summary.unread_interaction},
+            {"system", summary.has_new_announcement}};
 }
 
 json toJson(const UserRatingItem& item) {
-    return {
-        {"rating_id", item.rating_id},
-        {"recipe_id", item.recipe_id},
-        {"recipe_name", item.recipe_name},
-        {"rating", item.rating},
-        {"comment", item.comment},
-        {"created_at", item.created_at},
-        {"updated_at", item.updated_at}
-    };
+    return {{"rating_id", item.rating_id},
+            {"recipe_id", item.recipe_id},
+            {"recipe_name", item.recipe_name},
+            {"rating", item.rating},
+            {"comment", item.comment},
+            {"created_at", item.created_at},
+            {"updated_at", item.updated_at}};
 }
 
 // ======================== 库存 / 购物清单 ========================
@@ -282,31 +251,26 @@ json toJson(const InventoryItem& item) {
     obj["ingredient_name"] = item.ingredient_name;
     obj["quantity"] = item.quantity;
     obj["unit"] = item.unit;
-    if (item.expiry_date.has_value())
-        obj["expiry_date"] = item.expiry_date.value();
+    if (item.expiry_date.has_value()) obj["expiry_date"] = item.expiry_date.value();
     obj["added_at"] = item.added_at;
     return obj;
 }
 
 json toJson(const ShoppingListItem& item) {
-    return {
-        {"id", item.id},
-        {"ingredient_name", item.ingredient_name},
-        {"required_quantity", item.required_quantity},
-        {"inventory_quantity", item.inventory_quantity},
-        {"to_buy_quantity", item.to_buy_quantity},
-        {"unit", item.unit},
-        {"checked", item.checked}
-    };
+    return {{"id", item.id},
+            {"ingredient_name", item.ingredient_name},
+            {"required_quantity", item.required_quantity},
+            {"inventory_quantity", item.inventory_quantity},
+            {"to_buy_quantity", item.to_buy_quantity},
+            {"unit", item.unit},
+            {"checked", item.checked}};
 }
 
 json toJson(const ShoppingListSummary& summary) {
-    return {
-        {"id", summary.id},
-        {"name", summary.name},
-        {"item_count", summary.item_count},
-        {"created_at", summary.created_at}
-    };
+    return {{"id", summary.id},
+            {"name", summary.name},
+            {"item_count", summary.item_count},
+            {"created_at", summary.created_at}};
 }
 
 json toJson(const ShoppingList& list) {
@@ -332,30 +296,24 @@ json toJson(const BatchShoppingResponse& resp) {
 // ======================== 膳食计划 ========================
 
 json toJson(const MealPlanSummary& plan) {
-    return {
-        {"plan_id", plan.plan_id},
-        {"date", plan.date},
-        {"meal_type", plan.meal_type},
-        {"recipe", toJson(plan.recipe)},
-        {"nutrition", toJson(plan.nutrition)}
-    };
+    return {{"plan_id", plan.plan_id},
+            {"date", plan.date},
+            {"meal_type", plan.meal_type},
+            {"recipe", toJson(plan.recipe)},
+            {"nutrition", toJson(plan.nutrition)}};
 }
 
 json toJson(const DailyMealDetails& daily) {
     json obj;
     if (daily.breakfast.has_value()) obj["breakfast"] = toJson(daily.breakfast.value());
-    if (daily.lunch.has_value())     obj["lunch"]     = toJson(daily.lunch.value());
-    if (daily.dinner.has_value())    obj["dinner"]    = toJson(daily.dinner.value());
-    if (daily.snack.has_value())     obj["snack"]     = toJson(daily.snack.value());
+    if (daily.lunch.has_value()) obj["lunch"] = toJson(daily.lunch.value());
+    if (daily.dinner.has_value()) obj["dinner"] = toJson(daily.dinner.value());
+    if (daily.snack.has_value()) obj["snack"] = toJson(daily.snack.value());
     return obj;
 }
 
 json toJson(const CalendarDay& day) {
-    return {
-        {"date", day.date},
-        {"meals", toJson(day.meals)},
-        {"daily_total", toJson(day.daily_total)}
-    };
+    return {{"date", day.date}, {"meals", toJson(day.meals)}, {"daily_total", toJson(day.daily_total)}};
 }
 
 json toJson(const NutritionTrendItem& trend) {
@@ -363,66 +321,51 @@ json toJson(const NutritionTrendItem& trend) {
     j["date"] = trend.date;
     j["actual"] = toJson(trend.actual);
     j["recommended"] = toJson(trend.recommended);
-    j["comparison"]["calories"]["diff"]       = trend.comparison.calories.diff;
+    j["comparison"]["calories"]["diff"] = trend.comparison.calories.diff;
     j["comparison"]["calories"]["percentage"] = trend.comparison.calories.percentage;
-    j["comparison"]["protein"]["diff"]        = trend.comparison.protein.diff;
-    j["comparison"]["protein"]["percentage"]  = trend.comparison.protein.percentage;
-    j["comparison"]["fat"]["diff"]            = trend.comparison.fat.diff;
-    j["comparison"]["fat"]["percentage"]      = trend.comparison.fat.percentage;
-    j["comparison"]["carbs"]["diff"]          = trend.comparison.carbs.diff;
-    j["comparison"]["carbs"]["percentage"]    = trend.comparison.carbs.percentage;
+    j["comparison"]["protein"]["diff"] = trend.comparison.protein.diff;
+    j["comparison"]["protein"]["percentage"] = trend.comparison.protein.percentage;
+    j["comparison"]["fat"]["diff"] = trend.comparison.fat.diff;
+    j["comparison"]["fat"]["percentage"] = trend.comparison.fat.percentage;
+    j["comparison"]["carbs"]["diff"] = trend.comparison.carbs.diff;
+    j["comparison"]["carbs"]["percentage"] = trend.comparison.carbs.percentage;
     return j;
 }
 
 // ======================== 公告 ========================
 
 json toJson(const AnnouncementItem& ann) {
-    return {
-        {"id", ann.id},
-        {"title", ann.title},
-        {"content", ann.content},
-        {"created_at", ann.created_at}
-    };
+    return {{"id", ann.id}, {"title", ann.title}, {"content", ann.content}, {"created_at", ann.created_at}};
 }
 
 // ======================== 管理员相关 ========================
 
 json toJson(const AdminUser& user) {
-    return {
-        {"id", user.id},
-        {"username", user.username},
-        {"email", user.email},
-        {"role", user.role},
-        {"status", user.status},
-        {"created_at", user.created_at}
-    };
+    return {{"id", user.id},
+            {"username", user.username},
+            {"email", user.email},
+            {"role", user.role},
+            {"status", user.status},
+            {"created_at", user.created_at}};
 }
 
 json toJson(const PendingRecipeItem& item) {
-    return {
-        {"id", item.id},
-        {"name", item.name},
-        {"author_id", item.author_id},
-        {"author_name", item.author_name},
-        {"submitted_at", item.submitted_at},
-        {"status", item.status}
-    };
+    return {{"id", item.id},
+            {"name", item.name},
+            {"author_id", item.author_id},
+            {"author_name", item.author_name},
+            {"submitted_at", item.submitted_at},
+            {"status", item.status}};
 }
 
 json toJson(const BatchReviewResponse& resp) {
-    return {
-        {"message", resp.message},
-        {"success_count", resp.success_count},
-        {"failed_ids", resp.failed_ids}
-    };
+    return {{"message", resp.message}, {"success_count", resp.success_count}, {"failed_ids", resp.failed_ids}};
 }
 
 json toJson(const NotificationResponse& resp) {
-    return {
-        {"notification_id", resp.notification_id},
-        {"status", resp.status},
-        {"estimated_recipients", resp.estimated_recipients}
-    };
+    return {{"notification_id", resp.notification_id},
+            {"status", resp.status},
+            {"estimated_recipients", resp.estimated_recipients}};
 }
 
 } // namespace JsonSerializer

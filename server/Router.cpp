@@ -12,26 +12,21 @@ Router::Router(ConnectionPool& db,
                AnnouncementHandler& announcementHandler,
                AdminHandler& adminHandler)
     : db_(db),
-    recipeHandler_(recipeHandler),
-    userHandler_(userHandler),
-    inventoryHandler_(inventoryHandler),
-    mealPlanHandler_(mealPlanHandler),
-    announcementHandler_(announcementHandler),
-    adminHandler_(adminHandler),
-    rateLimiter_(createRateLimiterRules())
-{
-}
+      recipeHandler_(recipeHandler),
+      userHandler_(userHandler),
+      inventoryHandler_(inventoryHandler),
+      mealPlanHandler_(mealPlanHandler),
+      announcementHandler_(announcementHandler),
+      adminHandler_(adminHandler),
+      rateLimiter_(createRateLimiterRules()) {}
 
-std::vector<RateLimiter::Rule> Router::createRateLimiterRules()
-{
+std::vector<RateLimiter::Rule> Router::createRateLimiterRules() {
     using namespace std::chrono;
-    return {
-        {"/api/login",    seconds(60), 5},
-        {"/api/register", seconds(60), 5},
-        {"/api/password", seconds(60), 3},
-        {"/api/admin",    seconds(60), 30},
-        {"/api",          seconds(60), 60}
-    };
+    return {{"/api/login", seconds(60), 5},
+            {"/api/register", seconds(60), 5},
+            {"/api/password", seconds(60), 3},
+            {"/api/admin", seconds(60), 30},
+            {"/api", seconds(60), 60}};
 }
 
 void Router::setupRoutes(httplib::Server& svr) {
@@ -81,8 +76,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
     //    默认或未命中：回退到 TCP 层的 remote_addr（兜底 127.0.0.1）。
     auto clientIp = [](const httplib::Request& req) -> std::string {
         if (trustProxyHeaders) {
-            if (req.has_header("X-Real-IP"))
-                return req.get_header_value("X-Real-IP");
+            if (req.has_header("X-Real-IP")) return req.get_header_value("X-Real-IP");
             if (req.has_header("X-Forwarded-For")) {
                 const std::string& xff = req.get_header_value("X-Forwarded-For");
                 auto comma = xff.find(',');
@@ -92,8 +86,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
                     first.erase(first.begin());
                 while (!first.empty() && (first.back() == ' ' || first.back() == '\t'))
                     first.pop_back();
-                if (!first.empty())
-                    return first;
+                if (!first.empty()) return first;
             }
         }
         return req.remote_addr.empty() ? "127.0.0.1" : req.remote_addr;
@@ -109,7 +102,7 @@ void Router::registerRateLimiter(httplib::Server& svr) {
             setErrorResponse(res, 429, "请求过于频繁，请稍后重试");
             return httplib::Server::HandlerResponse::Handled; // 短路
         }
-        return httplib::Server::HandlerResponse::Unhandled;   // 放行
+        return httplib::Server::HandlerResponse::Unhandled; // 放行
     });
 }
 
@@ -151,21 +144,17 @@ void Router::registerRootRoute(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerAuthRoutes(httplib::Server& svr) {
-    svr.Post("/api/register", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.registerUser(req, res);
-    });
+    svr.Post("/api/register",
+             [this](const httplib::Request& req, httplib::Response& res) { userHandler_.registerUser(req, res); });
     svr.Post("/api/register/verify", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.verifyRegistration(req, res);
     });
-    svr.Post("/api/login", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.loginUser(req, res);
-    });
-    svr.Post("/api/password/forgot", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.forgotPassword(req, res);
-    });
-    svr.Post("/api/password/reset", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.resetPassword(req, res);
-    });
+    svr.Post("/api/login",
+             [this](const httplib::Request& req, httplib::Response& res) { userHandler_.loginUser(req, res); });
+    svr.Post("/api/password/forgot",
+             [this](const httplib::Request& req, httplib::Response& res) { userHandler_.forgotPassword(req, res); });
+    svr.Post("/api/password/reset",
+             [this](const httplib::Request& req, httplib::Response& res) { userHandler_.resetPassword(req, res); });
 }
 
 // ============================================================
@@ -173,60 +162,47 @@ void Router::registerAuthRoutes(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerRecipeRoutes(httplib::Server& svr) {
-    svr.Get("/api/recipes/public", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.getRecipesPublic(req, res);
-    });
-    svr.Get("/api/recipes/search", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.searchRecipes(req, res);
-    });
+    svr.Get("/api/recipes/public",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.getRecipesPublic(req, res); });
+    svr.Get("/api/recipes/search",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.searchRecipes(req, res); });
     svr.Get("/api/recipes/recommend", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecommendedRecipes(req, res);
     });
-    svr.Get(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.getRecipeDetail(req, res);
-    });
+    svr.Get(R"(/api/recipes/(\d+))",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.getRecipeDetail(req, res); });
     svr.Get(R"(/api/recipes/(\d+)/nutrition)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getRecipeNutrition(req, res);
     });
-    svr.Get(R"(/api/recipes/(\d+)/videos)", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.getRecipeVideos(req, res);
-    });
-    svr.Get(R"(/api/recipes/(\d+)/ratings)", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.getRecipeRatings(req, res);
-    });
+    svr.Get(R"(/api/recipes/(\d+)/videos)",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.getRecipeVideos(req, res); });
+    svr.Get(R"(/api/recipes/(\d+)/ratings)",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.getRecipeRatings(req, res); });
     svr.Get(R"(/api/recipes/(\d+)/ratings/mine)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getMyRecipeRating(req, res);
     });
-    svr.Put(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.updateRating(req, res);
-    });
-    svr.Delete(R"(/api/recipes/(\d+)/ratings/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.deleteRating(req, res);
-    });
-    svr.Post("/api/recipes", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.submitRecipe(req, res);
-    });
+    svr.Put(R"(/api/recipes/(\d+)/ratings/(\d+))",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.updateRating(req, res); });
+    svr.Delete(R"(/api/recipes/(\d+)/ratings/(\d+))",
+               [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.deleteRating(req, res); });
+    svr.Post("/api/recipes",
+             [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.submitRecipe(req, res); });
     svr.Get("/api/recipes/my", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.getMySubmittedRecipes(req, res);
     });
-    svr.Put(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.editRecipe(req, res);
-    });
-    svr.Post(R"(/api/recipes/(\d+)/favorite)", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.toggleFavorite(req, res);
-    });
-    svr.Post(R"(/api/recipes/(\d+)/rate)", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.rateRecipe(req, res);
-    });
+    svr.Put(R"(/api/recipes/(\d+))",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.editRecipe(req, res); });
+    svr.Post(R"(/api/recipes/(\d+)/favorite)",
+             [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.toggleFavorite(req, res); });
+    svr.Post(R"(/api/recipes/(\d+)/rate)",
+             [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.rateRecipe(req, res); });
     svr.Post(R"(/api/recipes/(\d+)/image)", [this](const httplib::Request& req, httplib::Response& res) {
         recipeHandler_.uploadRecipeImage(req, res);
     });
-    svr.Post(R"(/api/recipes/(\d+)/steps/(\d+)/image)", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.uploadStepImage(req, res);
-    });
-    svr.Delete(R"(/api/recipes/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.deleteRecipe(req, res);
-    });
+    svr.Post(R"(/api/recipes/(\d+)/steps/(\d+)/image)",
+             [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.uploadStepImage(req, res); });
+    svr.Delete(R"(/api/recipes/(\d+))",
+               [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.deleteRecipe(req, res); });
 }
 
 // ============================================================
@@ -234,43 +210,33 @@ void Router::registerRecipeRoutes(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerUserRoutes(httplib::Server& svr) {
-    svr.Get("/api/users/me", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getCurrentUser(req, res);
-    });
-    svr.Put("/api/users/me/profile", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.updateProfile(req, res);
-    });
-    svr.Post("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.uploadAvatar(req, res);
-    });
+    svr.Get("/api/users/me",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.getCurrentUser(req, res); });
+    svr.Put("/api/users/me/profile",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.updateProfile(req, res); });
+    svr.Post("/api/users/me/avatar",
+             [this](const httplib::Request& req, httplib::Response& res) { userHandler_.uploadAvatar(req, res); });
     // 放弃未保存的暂存头像（body: {"avatar_url": ...}；编辑页"返回"时调用）
     svr.Delete("/api/users/me/avatar", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.discardPendingAvatar(req, res);
     });
-    svr.Put("/api/users/me/password", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.changePassword(req, res);
-    });
-    svr.Delete("/api/users/me", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.deleteAccount(req, res);
-    });
-    svr.Get("/api/users/me/preferences", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getPreferences(req, res);
-    });
-    svr.Put("/api/users/me/preferences", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.updatePreferences(req, res);
-    });
+    svr.Put("/api/users/me/password",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.changePassword(req, res); });
+    svr.Delete("/api/users/me",
+               [this](const httplib::Request& req, httplib::Response& res) { userHandler_.deleteAccount(req, res); });
+    svr.Get("/api/users/me/preferences",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.getPreferences(req, res); });
+    svr.Put("/api/users/me/preferences",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.updatePreferences(req, res); });
     svr.Put("/api/users/me/health-profile", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.updateHealthProfile(req, res);
     });
-    svr.Get("/api/users/me/health-profile", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getHealthProfile(req, res);
-    });
-    svr.Get("/api/users/me/favorites", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getFavorites(req, res);
-    });
-    svr.Get("/api/users/me/favorites/groups", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getFavoriteGroups(req, res);
-    });
+    svr.Get("/api/users/me/health-profile",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.getHealthProfile(req, res); });
+    svr.Get("/api/users/me/favorites",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.getFavorites(req, res); });
+    svr.Get("/api/users/me/favorites/groups",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.getFavoriteGroups(req, res); });
     svr.Post("/api/users/me/favorites/groups", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.createFavoriteGroup(req, res);
     });
@@ -294,9 +260,8 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Delete("/api/users/me/favorites/batch", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.batchDeleteFavorites(req, res);
     });
-    svr.Get("/api/users/me/notifications", [this](const httplib::Request& req, httplib::Response& res) {
-        userHandler_.getNotifications(req, res);
-    });
+    svr.Get("/api/users/me/notifications",
+            [this](const httplib::Request& req, httplib::Response& res) { userHandler_.getNotifications(req, res); });
     svr.Get("/api/users/me/notifications/unread-summary", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.getNotificationsUnreadSummary(req, res);
     });
@@ -309,9 +274,8 @@ void Router::registerUserRoutes(httplib::Server& svr) {
     svr.Delete(R"(/api/users/me/notifications/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         userHandler_.deleteNotification(req, res);
     });
-    svr.Get("/api/users/me/ratings", [this](const httplib::Request& req, httplib::Response& res) {
-        recipeHandler_.getMyRatings(req, res);
-    });
+    svr.Get("/api/users/me/ratings",
+            [this](const httplib::Request& req, httplib::Response& res) { recipeHandler_.getMyRatings(req, res); });
 }
 
 // ============================================================
@@ -319,9 +283,8 @@ void Router::registerUserRoutes(httplib::Server& svr) {
 // ============================================================
 
 void Router::registerInventoryRoutes(httplib::Server& svr) {
-    svr.Get("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
-        inventoryHandler_.getInventory(req, res);
-    });
+    svr.Get("/api/inventory",
+            [this](const httplib::Request& req, httplib::Response& res) { inventoryHandler_.getInventory(req, res); });
     svr.Post("/api/inventory", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.upsertInventory(req, res);
     });
@@ -350,18 +313,22 @@ void Router::registerShoppingListRoutes(httplib::Server& svr) {
     svr.Delete(R"(/api/inventory/shopping-lists/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         inventoryHandler_.deleteShoppingList(req, res);
     });
-    svr.Patch(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        inventoryHandler_.updateShoppingListItem(req, res);
-    });
-    svr.Delete(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        inventoryHandler_.deleteShoppingListItem(req, res);
-    });
-    svr.Post(R"(/api/inventory/shopping-lists/(\d+)/items/batch)", [this](const httplib::Request& req, httplib::Response& res) {
-        inventoryHandler_.batchAddShoppingItems(req, res);
-    });
-    svr.Get(R"(/api/inventory/shopping-lists/(\d+)/export)", [this](const httplib::Request& req, httplib::Response& res) {
-        inventoryHandler_.exportShoppingList(req, res);
-    });
+    svr.Patch(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))",
+              [this](const httplib::Request& req, httplib::Response& res) {
+                  inventoryHandler_.updateShoppingListItem(req, res);
+              });
+    svr.Delete(R"(/api/inventory/shopping-lists/(\d+)/items/(\d+))",
+               [this](const httplib::Request& req, httplib::Response& res) {
+                   inventoryHandler_.deleteShoppingListItem(req, res);
+               });
+    svr.Post(R"(/api/inventory/shopping-lists/(\d+)/items/batch)",
+             [this](const httplib::Request& req, httplib::Response& res) {
+                 inventoryHandler_.batchAddShoppingItems(req, res);
+             });
+    svr.Get(R"(/api/inventory/shopping-lists/(\d+)/export)",
+            [this](const httplib::Request& req, httplib::Response& res) {
+                inventoryHandler_.exportShoppingList(req, res);
+            });
 }
 
 // ============================================================
@@ -372,15 +339,13 @@ void Router::registerMealPlanRoutes(httplib::Server& svr) {
     svr.Post("/api/meal-plans", [this](const httplib::Request& req, httplib::Response& res) {
         mealPlanHandler_.createMealPlan(req, res);
     });
-    svr.Get("/api/meal-plans", [this](const httplib::Request& req, httplib::Response& res) {
-        mealPlanHandler_.getMealPlans(req, res);
-    });
+    svr.Get("/api/meal-plans",
+            [this](const httplib::Request& req, httplib::Response& res) { mealPlanHandler_.getMealPlans(req, res); });
     svr.Get("/api/meal-plans/detail", [this](const httplib::Request& req, httplib::Response& res) {
         mealPlanHandler_.getMealPlanDetail(req, res);
     });
-    svr.Put(R"(/api/meal-plans/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        mealPlanHandler_.updateMealPlan(req, res);
-    });
+    svr.Put(R"(/api/meal-plans/(\d+))",
+            [this](const httplib::Request& req, httplib::Response& res) { mealPlanHandler_.updateMealPlan(req, res); });
     svr.Delete(R"(/api/meal-plans/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
         mealPlanHandler_.deleteMealPlan(req, res);
     });
@@ -405,31 +370,23 @@ void Router::registerAnnouncementRoutes(httplib::Server& svr) {
 
 void Router::registerAdminRoutes(httplib::Server& svr) {
     // 用户管理
-    svr.Get("/api/admin/users", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.getUsers(req, res);
-    });
-    svr.Post("/api/admin/users", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.createUser(req, res);
-    });
-    svr.Put(R"(/api/admin/users/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.updateUser(req, res);
-    });
-    svr.Patch(R"(/api/admin/users/(\d+)/status)", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.setUserStatus(req, res);
-    });
-    svr.Delete(R"(/api/admin/users/(\d+))", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.deleteUser(req, res);
-    });
+    svr.Get("/api/admin/users",
+            [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.getUsers(req, res); });
+    svr.Post("/api/admin/users",
+             [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.createUser(req, res); });
+    svr.Put(R"(/api/admin/users/(\d+))",
+            [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.updateUser(req, res); });
+    svr.Patch(R"(/api/admin/users/(\d+)/status)",
+              [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.setUserStatus(req, res); });
+    svr.Delete(R"(/api/admin/users/(\d+))",
+               [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.deleteUser(req, res); });
     // 菜谱审核
-    svr.Get("/api/admin/recipes/pending", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.getPendingRecipes(req, res);
-    });
-    svr.Post(R"(/api/admin/recipes/(\d+)/approve)", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.approveRecipe(req, res);
-    });
-    svr.Post(R"(/api/admin/recipes/(\d+)/reject)", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.rejectRecipe(req, res);
-    });
+    svr.Get("/api/admin/recipes/pending",
+            [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.getPendingRecipes(req, res); });
+    svr.Post(R"(/api/admin/recipes/(\d+)/approve)",
+             [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.approveRecipe(req, res); });
+    svr.Post(R"(/api/admin/recipes/(\d+)/reject)",
+             [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.rejectRecipe(req, res); });
     svr.Post("/api/admin/recipes/batch-review", [this](const httplib::Request& req, httplib::Response& res) {
         adminHandler_.batchReviewRecipes(req, res);
     });
@@ -437,21 +394,17 @@ void Router::registerAdminRoutes(httplib::Server& svr) {
     svr.Post("/api/admin/announcements", [this](const httplib::Request& req, httplib::Response& res) {
         adminHandler_.publishAnnouncement(req, res);
     });
-    svr.Post("/api/admin/notifications", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.sendNotification(req, res);
-    });
+    svr.Post("/api/admin/notifications",
+             [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.sendNotification(req, res); });
     // 运营数据统计
-    svr.Get("/api/admin/statistics", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.getStatistics(req, res);
-    });
+    svr.Get("/api/admin/statistics",
+            [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.getStatistics(req, res); });
     // 管理员操作日志
-    svr.Get("/api/admin/logs", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.getAdminLogs(req, res);
-    });
+    svr.Get("/api/admin/logs",
+            [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.getAdminLogs(req, res); });
     // 全局用户行为日志
-    svr.Get("/api/admin/activity-logs", [this](const httplib::Request& req, httplib::Response& res) {
-        adminHandler_.getActivityLogs(req, res);
-    });
+    svr.Get("/api/admin/activity-logs",
+            [this](const httplib::Request& req, httplib::Response& res) { adminHandler_.getActivityLogs(req, res); });
 }
 
 // ============================================================
@@ -463,8 +416,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
         try {
             auto conn = db_.getConnection();
             pqxx::work txn(*conn);
-            pqxx::result userRes = txn.exec(
-                "SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
+            pqxx::result userRes = txn.exec("SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
             if (userRes.empty()) {
                 res.status = 404;
                 res.set_header("Content-Type", "application/json");
@@ -473,21 +425,19 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             }
             int testUserId = userRes[0]["id"].as<int>();
 
-            auto rows = txn.exec(
-                "SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
-                "FROM inventory WHERE user_id = $1 ORDER BY added_at DESC",
-                pqxx::params{testUserId});
+            auto rows = txn.exec("SELECT id, ingredient_name, quantity, unit, expiry_date, added_at "
+                                 "FROM inventory WHERE user_id = $1 ORDER BY added_at DESC",
+                                 pqxx::params{testUserId});
 
             json result = json::array();
             for (const auto& row : rows) {
                 json item;
-                item["id"]              = row["id"].as<int>();
+                item["id"] = row["id"].as<int>();
                 item["ingredient_name"] = row["ingredient_name"].c_str();
-                item["quantity"]        = row["quantity"].as<double>();
-                item["unit"]            = row["unit"].c_str();
-                if (!row["expiry_date"].is_null())
-                    item["expiry_date"] = row["expiry_date"].c_str();
-                item["added_at"]        = row["added_at"].c_str();
+                item["quantity"] = row["quantity"].as<double>();
+                item["unit"] = row["unit"].c_str();
+                if (!row["expiry_date"].is_null()) item["expiry_date"] = row["expiry_date"].c_str();
+                item["added_at"] = row["added_at"].c_str();
                 result.push_back(item);
             }
             txn.commit();
@@ -528,8 +478,7 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             auto conn = db_.getConnection();
             pqxx::work txn(*conn);
 
-            pqxx::result userRes = txn.exec(
-                "SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
+            pqxx::result userRes = txn.exec("SELECT id FROM users WHERE username = $1", pqxx::params{"testuser"});
             if (userRes.empty()) {
                 res.status = 404;
                 res.set_header("Content-Type", "application/json");
@@ -545,19 +494,23 @@ void Router::registerPublicTestRoutes(httplib::Server& svr) {
             // 重新插入 4 条测试通知（类型枚举收口 review/interaction，v2.23；is_read 列已移除）
             txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
-                "VALUES ($1, '审核结果', '您的菜谱「红烧肉」已通过审核，现在可以在首页看到啦！', 'review', NULL, 1, NULL)",
+                "VALUES ($1, '审核结果', '您的菜谱「红烧肉」已通过审核，现在可以在首页看到啦！', 'review', NULL, 1, "
+                "NULL)",
                 pqxx::params{uid});
             txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
-                "VALUES ($1, '审核结果', '您的菜谱「清蒸鲈鱼」审核未通过，原因：图片不清晰。', 'review', NULL, 2, 'admin_cook')",
+                "VALUES ($1, '审核结果', '您的菜谱「清蒸鲈鱼」审核未通过，原因：图片不清晰。', 'review', NULL, 2, "
+                "'admin_cook')",
                 pqxx::params{uid});
             txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
-                "VALUES ($1, '新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', 567, 'foodie_lily')",
+                "VALUES ($1, '新的互动', '用户 foodie_lily 回复了你的评论', 'interaction', 'comment_reply', 567, "
+                "'foodie_lily')",
                 pqxx::params{uid});
             txn.exec(
                 "INSERT INTO notifications (user_id, title, content, type, sub_type, related_id, trigger_user_name) "
-                "VALUES ($1, '新的互动', '用户 chef_wang 赞了你的菜谱「番茄炒蛋」', 'interaction', 'recipe_like', 1, 'chef_wang')",
+                "VALUES ($1, '新的互动', '用户 chef_wang 赞了你的菜谱「番茄炒蛋」', 'interaction', 'recipe_like', 1, "
+                "'chef_wang')",
                 pqxx::params{uid});
 
             txn.commit();

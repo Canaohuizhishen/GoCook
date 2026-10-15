@@ -7,5 +7,7 @@
 class MockNutritionRepository : public gocook::repository::INutritionRepository {
 public:
     MOCK_METHOD(std::vector<std::optional<gocook::repository::IngredientNutrition>>,
-                findByNames, (const std::vector<std::string>&), (override));
+                findByNames,
+                (const std::vector<std::string>&),
+                (override));
 };

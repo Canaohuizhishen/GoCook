@@ -22,15 +22,15 @@ class RateLimiter {
 public:
     /// 单条频率限制规则
     struct Rule {
-        std::string pathPrefix;             ///< 路径前缀，用于匹配请求路径
-        std::chrono::seconds windowSize;    ///< 时间窗口大小（秒）
-        int maxRequests;                    ///< 窗口内允许的最大请求数
+        std::string pathPrefix;          ///< 路径前缀，用于匹配请求路径
+        std::chrono::seconds windowSize; ///< 时间窗口大小（秒）
+        int maxRequests;                 ///< 窗口内允许的最大请求数
     };
 
     /// 运行状态快照（供监控使用）
     struct Stats {
-        size_t activeEntries;    ///< 当前活跃的记录数
-        size_t rejectedCount;   ///< 累计被拒绝的请求数
+        size_t activeEntries; ///< 当前活跃的记录数
+        size_t rejectedCount; ///< 累计被拒绝的请求数
     };
 
     /**
@@ -73,7 +73,7 @@ private:
 
     std::vector<Rule> rules_;
     std::chrono::seconds cleanupInterval_;
-    size_t maxRecords_;          ///< 记录表容量上限，防止无界增长
+    size_t maxRecords_; ///< 记录表容量上限，防止无界增长
 
     std::atomic<bool> running_{true};
     std::thread cleanupThread_;

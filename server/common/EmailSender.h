@@ -24,12 +24,9 @@ class EmailSender {
 public:
     /// 构建密码重置邮件正文（HTML；token 与 expiryMinutes 由调用方传入）
     /// 唯一正文来源——真发与开发模式 [DEV MAIL] 日志打印同一字符串，文案单点维护
-    static std::string buildPasswordResetEmailBody(const std::string& token,
-                                                   int expiryMinutes);
+    static std::string buildPasswordResetEmailBody(const std::string& token, int expiryMinutes);
     /// 发送通用邮件
-    static bool sendEmail(const std::string& to,
-                          const std::string& subject,
-                          const std::string& body);
+    static bool sendEmail(const std::string& to, const std::string& subject, const std::string& body);
 
     /// SMTP 是否已配置（有用户名和密码）
     static bool isConfigured();
@@ -46,6 +43,5 @@ private:
     };
 
     static SmtpConfig loadConfig();
-    static bool sendRaw(SmtpConfig& cfg, const std::string& to,
-                        const std::string& subject, const std::string& body);
+    static bool sendRaw(SmtpConfig& cfg, const std::string& to, const std::string& subject, const std::string& body);
 };

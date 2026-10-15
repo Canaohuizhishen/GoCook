@@ -24,8 +24,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -53,8 +52,7 @@ bool dbAvailable() {
 class NutritionDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         cleanup();
         seedNutritionRows();
     }
@@ -74,12 +72,11 @@ protected:
     static void seedNutritionRows() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        ntxn.exec(
-            "INSERT INTO ingredient_nutrition"
-            " (name, aliases, default_portion_g, calories, protein_g, fat_g,"
-            "  carbs_g, fiber_g, sodium_mg, vitamin_c_mg) VALUES"
-            " ('集成测试食A', ARRAY['集成测试别名A'], 100, 1, 2, 3, 4, 5, 6, 7),"
-            " ('集成测试食B', ARRAY['集成测试食A'], NULL, 7, 8, 9, 10, 11, 12, 13)");
+        ntxn.exec("INSERT INTO ingredient_nutrition"
+                  " (name, aliases, default_portion_g, calories, protein_g, fat_g,"
+                  "  carbs_g, fiber_g, sodium_mg, vitamin_c_mg) VALUES"
+                  " ('集成测试食A', ARRAY['集成测试别名A'], 100, 1, 2, 3, 4, 5, 6, 7),"
+                  " ('集成测试食B', ARRAY['集成测试食A'], NULL, 7, 8, 9, 10, 11, 12, 13)");
     }
 
     // 插入测试菜谱，返回 id；nutritionJson 为空串时 nutrition_info 为 SQL NULL。
@@ -91,13 +88,11 @@ protected:
         std::string name = "集成测试菜谱" + std::to_string(++s_recipeSeq);
         pqxx::result r;
         if (nutritionJson.empty()) {
-            r = ntxn.exec(
-                "INSERT INTO recipes (name, nutrition_info, tags) VALUES ($1, NULL, '{}') RETURNING id",
-                pqxx::params{name});
+            r = ntxn.exec("INSERT INTO recipes (name, nutrition_info, tags) VALUES ($1, NULL, '{}') RETURNING id",
+                          pqxx::params{name});
         } else {
-            r = ntxn.exec(
-                "INSERT INTO recipes (name, nutrition_info, tags) VALUES ($1, $2::jsonb, '{}') RETURNING id",
-                pqxx::params{name, nutritionJson});
+            r = ntxn.exec("INSERT INTO recipes (name, nutrition_info, tags) VALUES ($1, $2::jsonb, '{}') RETURNING id",
+                          pqxx::params{name, nutritionJson});
         }
         return r[0][0].as<int>();
     }
@@ -173,10 +168,9 @@ TEST_F(NutritionDbTest, per_serving空对象为无数据) {
 
 TEST_F(NutritionDbTest, per_serving全0为无数据) {
     PgRecipeRepository repo(testPool());
-    int id = insertRecipe(
-        R"({"calories":0,"protein":0,"fat":0,"carbs":0,)"
-        R"("per_serving":{"calories":0,"protein_g":0,"fat_g":0,"carbs_g":0,)"
-        R"("fiber_g":0,"sodium_mg":0,"vitamin_c_mg":0}})");
+    int id = insertRecipe(R"({"calories":0,"protein":0,"fat":0,"carbs":0,)"
+                          R"("per_serving":{"calories":0,"protein_g":0,"fat_g":0,"carbs_g":0,)"
+                          R"("fiber_g":0,"sodium_mg":0,"vitamin_c_mg":0}})");
     EXPECT_FALSE(repo.findNutrition(id).has_data);
     EXPECT_FALSE(repo.findById(id).nutrition.has_data) << "per_serving 全 0：详情页应显示空态";
 }
@@ -185,10 +179,9 @@ TEST_F(NutritionDbTest, 宏量全0仅钠有值为有数据) {
     // 纯调味料菜谱（如"盐 10 克"）宏量四项全 0 但钠有真实值，属合法营养报告，
     // 不得按"全 0 占位"判为无数据（每 100g 盐钠 3875.8mg，10g 用量即上值）。
     PgRecipeRepository repo(testPool());
-    int id = insertRecipe(
-        R"({"calories":0,"protein":0,"fat":0,"carbs":0,)"
-        R"("per_serving":{"calories":0,"protein_g":0,"fat_g":0,"carbs_g":0,)"
-        R"("fiber_g":0,"sodium_mg":3875.8,"vitamin_c_mg":0}})");
+    int id = insertRecipe(R"({"calories":0,"protein":0,"fat":0,"carbs":0,)"
+                          R"("per_serving":{"calories":0,"protein_g":0,"fat_g":0,"carbs_g":0,)"
+                          R"("fiber_g":0,"sodium_mg":3875.8,"vitamin_c_mg":0}})");
     auto report = repo.findNutrition(id);
     EXPECT_TRUE(report.has_data);
     EXPECT_DOUBLE_EQ(report.per_serving.sodium_mg, 3875.8);
@@ -200,8 +193,7 @@ TEST_F(NutritionDbTest, 旧flat格式正数为无数据) {
     // 判定收口回归：无 per_serving 的旧 flat-only 行即使四项均为正数，两页也统一判无数据
     // （前端展示空态而非按旧格式展示——该行为由判定收口引入，此处钉死）
     PgRecipeRepository repo(testPool());
-    int id = insertRecipe(
-        R"({"calories":350,"protein":12.5,"fat":8.2,"carbs":40.1})");
+    int id = insertRecipe(R"({"calories":350,"protein":12.5,"fat":8.2,"carbs":40.1})");
     EXPECT_FALSE(repo.findNutrition(id).has_data);
     EXPECT_FALSE(repo.findById(id).nutrition.has_data) << "旧 flat-only 正数：详情页应显示空态";
 }
@@ -216,13 +208,12 @@ TEST_F(NutritionDbTest, NULL营养为无数据) {
 
 TEST_F(NutritionDbTest, 新格式透传excluded与per_serving) {
     PgRecipeRepository repo(testPool());
-    std::string nut =
-        R"({"calories":100,"protein":10,"fat":5,"carbs":20,)"
-        R"("per_serving":{"calories":100,"protein_g":10,"fat_g":5,"carbs_g":20,)"
-        R"("fiber_g":1,"sodium_mg":2,"vitamin_c_mg":3},)"
-        R"("ingredients_breakdown":[{"name":"鸡","calories":100,"protein_g":10,"fat_g":5,"carbs_g":20}],)"
-        R"("excluded_ingredients":[{"name":"盐","reason":"无法换算"},{"name":"秘料","reason":"未收录"}],)"
-        R"("health_notes":"测试提示"})";
+    std::string nut = R"({"calories":100,"protein":10,"fat":5,"carbs":20,)"
+                      R"("per_serving":{"calories":100,"protein_g":10,"fat_g":5,"carbs_g":20,)"
+                      R"("fiber_g":1,"sodium_mg":2,"vitamin_c_mg":3},)"
+                      R"("ingredients_breakdown":[{"name":"鸡","calories":100,"protein_g":10,"fat_g":5,"carbs_g":20}],)"
+                      R"("excluded_ingredients":[{"name":"盐","reason":"无法换算"},{"name":"秘料","reason":"未收录"}],)"
+                      R"("health_notes":"测试提示"})";
     int id = insertRecipe(nut);
     auto report = repo.findNutrition(id);
     EXPECT_TRUE(report.has_data);
@@ -251,22 +242,20 @@ TEST_F(NutritionDbTest, update传nullopt保留旧营养传空对象清空) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
         // 测试用户（不存在则创建）
-        pqxx::result u = ntxn.exec(
-            "INSERT INTO users (username, password_hash) VALUES ('集成测试用户', 'x')"
-            " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
-            " RETURNING id");
+        pqxx::result u = ntxn.exec("INSERT INTO users (username, password_hash) VALUES ('集成测试用户', 'x')"
+                                   " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                                   " RETURNING id");
         authorId = u[0][0].as<int>();
 
         // 带营养数据的菜谱（模拟"编辑前已保存过营养"）
-        const std::string nut =
-            R"({"calories":100,"protein":10,"fat":5,"carbs":20,)"
-            R"("per_serving":{"calories":100,"protein_g":10,"fat_g":5,"carbs_g":20,)"
-            R"("fiber_g":1,"sodium_mg":2,"vitamin_c_mg":3},)"
-            R"("ingredients_breakdown":[],"excluded_ingredients":[],"health_notes":""})";
+        const std::string nut = R"({"calories":100,"protein":10,"fat":5,"carbs":20,)"
+                                R"("per_serving":{"calories":100,"protein_g":10,"fat_g":5,"carbs_g":20,)"
+                                R"("fiber_g":1,"sodium_mg":2,"vitamin_c_mg":3},)"
+                                R"("ingredients_breakdown":[],"excluded_ingredients":[],"health_notes":""})";
         std::string name = "集成测试菜谱" + std::to_string(++s_recipeSeq);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO recipes (name, author_id, nutrition_info) VALUES ($1, $2, $3::jsonb) RETURNING id",
-            pqxx::params{name, authorId, nut});
+        pqxx::result r =
+            ntxn.exec("INSERT INTO recipes (name, author_id, nutrition_info) VALUES ($1, $2, $3::jsonb) RETURNING id",
+                      pqxx::params{name, authorId, nut});
         id = r[0][0].as<int>();
     }
 

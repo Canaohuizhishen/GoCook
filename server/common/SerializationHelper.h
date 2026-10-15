@@ -10,10 +10,5 @@
  * 输出字段：page / size / total / total_pages。
  */
 inline nlohmann::json toJson(const gocook::models::Pagination& pag) {
-    return {
-        {"page", pag.page},
-        {"size", pag.size},
-        {"total", pag.total},
-        {"total_pages", pag.total_pages}
-    };
+    return {{"page", pag.page}, {"size", pag.size}, {"total", pag.total}, {"total_pages", pag.total_pages}};
 }

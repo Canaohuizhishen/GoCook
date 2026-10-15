@@ -1,14 +1,15 @@
 #include "ConnectionPool.h"
-#include "Logger.h"              // LOG_WARN/LOG_INFO/LOG_DEBUG
-#include <gocook/IServices.h>    // ServiceException 定义在这（双端共享契约）
+#include "Logger.h"           // LOG_WARN/LOG_INFO/LOG_DEBUG
+#include <gocook/IServices.h> // ServiceException 定义在这（双端共享契约）
 #include <stdexcept>
 
 ConnectionPool::ConnectionPool(const std::string& connStr, int maxSize)
-    : connStr_(connStr), maxSize_(maxSize) {}
+    : connStr_(connStr),
+      maxSize_(maxSize) {}
 
 ConnectionPool::~ConnectionPool() {
     std::unique_lock lock(mutex_);
-    pool_.clear();               // 空闲连接全部析构关闭
+    pool_.clear(); // 空闲连接全部析构关闭
 }
 
 std::unique_ptr<pqxx::connection> ConnectionPool::createConnection() {
@@ -20,8 +21,7 @@ std::unique_ptr<pqxx::connection> ConnectionPool::createConnection() {
     return conn;
 }
 
-ConnectionPool::ConnectionGuard ConnectionPool::getConnection(
-    std::chrono::milliseconds timeout) {
+ConnectionPool::ConnectionGuard ConnectionPool::getConnection(std::chrono::milliseconds timeout) {
     std::unique_lock lock(mutex_);
 
     // ① 池空 + 存活连接数到上限（满池）→ 阻塞等待归还；等 timeout 还等不到 → 503（绝不无限挂起）
@@ -31,17 +31,17 @@ ConnectionPool::ConnectionGuard ConnectionPool::getConnection(
         }
     }
 
-    if (!pool_.empty()) {        // ② 有闲置连接 → 取出复用
+    if (!pool_.empty()) { // ② 有闲置连接 → 取出复用
         auto raw = std::move(pool_.front());
         pool_.pop_front();
         pqxx::connection* ptr = raw.get();
-        if (!ptr->is_open()) {   // ③ 死连接检测：数据库重启后连接已断，丢弃重建
+        if (!ptr->is_open()) { // ③ 死连接检测：数据库重启后连接已断，丢弃重建
             LOG_WARN("检测到失效的数据库连接，正在丢弃重建");
             ptr = nullptr;
-            raw.reset();         //    销毁死连接 → 存活总数 -1
+            raw.reset(); //    销毁死连接 → 存活总数 -1
             --activeCount_;
             if (activeCount_ < maxSize_) {
-                raw = createConnection();   //    重建一条（存活总数回到上限内）
+                raw = createConnection(); //    重建一条（存活总数回到上限内）
                 ptr = raw.get();
                 ++activeCount_;
             } else {

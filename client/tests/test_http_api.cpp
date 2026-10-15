@@ -50,14 +50,12 @@
 namespace {
 
 // 轮询事件循环直到 done 或超时（QNetworkAccessManager 是异步的，需要事件循环推进）
-bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
-{
+bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!done.load()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     // 让最后一个回调之后的挂起事件也跑完（如 deleteLater）
@@ -70,17 +68,16 @@ class StubServer {
 public:
     std::atomic<int> searchReqCount{0};
     std::atomic<int> avatarReqCount{0};
-    std::atomic<int> avatarMode{0};              // 头像上传响应模式：0=401（T4）；1=200 空对象（T4c）
-    std::atomic<int> favoriteReqCount{0};        // POST 收藏（Interactive 挂起/重放计数）
-    std::atomic<int> favoritesListReqCount{0};   // GET 收藏列表（Silent 拦截计数）
-    std::atomic<int> deleteRecipeReqCount{0};    // DELETE 菜谱（T8 守卫拦截验证）
-    std::atomic<int> stepImageReqCount{0};       // POST 步骤图（T10 两段式响应计数）
-    std::atomic<int> discardAvatarReqCount{0};   // DELETE 暂存头像（T4b 计数）
-    std::atomic<int> discardAvatarBodySize{0};   // T4b：DELETE 请求体字节数（验证带体到达）
+    std::atomic<int> avatarMode{0};                   // 头像上传响应模式：0=401（T4）；1=200 空对象（T4c）
+    std::atomic<int> favoriteReqCount{0};             // POST 收藏（Interactive 挂起/重放计数）
+    std::atomic<int> favoritesListReqCount{0};        // GET 收藏列表（Silent 拦截计数）
+    std::atomic<int> deleteRecipeReqCount{0};         // DELETE 菜谱（T8 守卫拦截验证）
+    std::atomic<int> stepImageReqCount{0};            // POST 步骤图（T10 两段式响应计数）
+    std::atomic<int> discardAvatarReqCount{0};        // DELETE 暂存头像（T4b 计数）
+    std::atomic<int> discardAvatarBodySize{0};        // T4b：DELETE 请求体字节数（验证带体到达）
     std::atomic<bool> discardAvatarBodyHasUrl{false}; // T4b：体验证请求体含 avatar_url 字段
 
-    StubServer()
-    {
+    StubServer() {
         // 与真实服务端 RecipeHandler::searchRecipes 完全一致的 400 响应
         svr.Get("/api/recipes/search", [this](const httplib::Request&, httplib::Response& res) {
             searchReqCount++;
@@ -131,7 +128,8 @@ public:
         svr.Get("/api/users/me/favorites", [this](const httplib::Request&, httplib::Response& res) {
             favoritesListReqCount++;
             res.status = 200;
-            res.set_content(R"({"pagination":{"page":1,"size":20,"total":0,"total_pages":0},"data":[]})", "application/json");
+            res.set_content(R"({"pagination":{"page":1,"size":20,"total":0,"total_pages":0},"data":[]})",
+                            "application/json");
         });
 
         // T8 用：删除菜谱（游客守卫验证：拦截期间不得被发出）
@@ -181,31 +179,24 @@ public:
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
-        if (port <= 0)
-            throw std::runtime_error("StubServer: bind_to_any_port failed");
+        if (port <= 0) throw std::runtime_error("StubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
 
         // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running()
         // 显式暴露启动失败；同时消除“端口已绑定但尚未开始监听”的竞态窗口
         for (int i = 0; i < 200; ++i) {
-            if (svr.is_running())
-                return;
+            if (svr.is_running()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         throw std::runtime_error("StubServer: failed to start");
     }
 
-    ~StubServer()
-    {
+    ~StubServer() {
         svr.stop();
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
     }
 
-    std::string baseUrl() const
-    {
-        return "http://127.0.0.1:" + std::to_string(port);
-    }
+    std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
 
 private:
     httplib::Server svr;
@@ -220,12 +211,10 @@ class TcpRefuseSink {
 public:
     std::atomic<int> accepted{0};
 
-    TcpRefuseSink()
-    {
+    TcpRefuseSink() {
 #ifdef Q_OS_UNIX
         listenFd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (listenFd < 0)
-            throw std::runtime_error("TcpRefuseSink: socket failed");
+        if (listenFd < 0) throw std::runtime_error("TcpRefuseSink: socket failed");
         int one = 1;
         ::setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
         sockaddr_in addr{};
@@ -238,38 +227,30 @@ public:
         if (::getsockname(listenFd, reinterpret_cast<sockaddr*>(&addr), &len) != 0)
             throw std::runtime_error("TcpRefuseSink: getsockname failed");
         port = ntohs(addr.sin_port);
-        if (::listen(listenFd, 16) != 0)
-            throw std::runtime_error("TcpRefuseSink: listen failed");
+        if (::listen(listenFd, 16) != 0) throw std::runtime_error("TcpRefuseSink: listen failed");
         th = std::thread([this]() { acceptLoop(); });
 #else
         GTEST_SKIP() << "TcpRefuseSink 仅支持 Unix";
 #endif
     }
 
-    ~TcpRefuseSink()
-    {
+    ~TcpRefuseSink() {
 #ifdef Q_OS_UNIX
         stop = true;
         ::shutdown(listenFd, SHUT_RDWR);
         ::close(listenFd);
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
 #endif
     }
 
-    std::string baseUrl() const
-    {
-        return "http://127.0.0.1:" + std::to_string(port);
-    }
+    std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
 
 private:
 #ifdef Q_OS_UNIX
-    void acceptLoop()
-    {
+    void acceptLoop() {
         while (!stop.load()) {
             int c = ::accept(listenFd, nullptr, nullptr);
-            if (c < 0)
-                break;
+            if (c < 0) break;
             accepted++;
             // 读取并丢弃请求数据，直到收到完整请求头——确保客户端认为请求已送达，
             // 再关闭连接 → RemoteHostClosedError(statusCode=0)，避免 QNAM 内部自动重发干扰计数
@@ -278,8 +259,7 @@ private:
             std::string received;
             while ((n = ::recv(c, buf, sizeof(buf), 0)) > 0) {
                 received.append(buf, static_cast<size_t>(n));
-                if (received.find("\r\n\r\n") != std::string::npos)
-                    break;
+                if (received.find("\r\n\r\n") != std::string::npos) break;
             }
             ::close(c);
         }
@@ -293,10 +273,9 @@ private:
 
 class HttpApiTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         api.setMaxRetries(0);
-        api.setRetryDelay(50); // 测试里缩短重试间隔
+        api.setRetryDelay(50);   // 测试里缩短重试间隔
         api.setToken(QString()); // 每个用例从"未登录"开始（避免上一个用例的 token 污染）
     }
 
@@ -306,8 +285,7 @@ protected:
 } // namespace
 
 // ==================== T1：业务 400 不触发 GET 重试（NetDemo bug 回归） ====================
-TEST_F(HttpApiTest, Business400_NotRetried)
-{
+TEST_F(HttpApiTest, Business400_NotRetried) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setMaxRetries(2); // 即使开启重试，业务 400 也不得重发
@@ -316,13 +294,12 @@ TEST_F(HttpApiTest, Business400_NotRetried)
     bool ok = true;
     QString err;
     int cbCount = 0;
-    api.get("/api/recipes/search?keyword=&page=1&size=5",
-            [&](bool s, const QString& e, const QJsonDocument&) {
-                ok = s;
-                err = e;
-                cbCount++;
-                done = true;
-            });
+    api.get("/api/recipes/search?keyword=&page=1&size=5", [&](bool s, const QString& e, const QJsonDocument&) {
+        ok = s;
+        err = e;
+        cbCount++;
+        done = true;
+    });
 
     ASSERT_TRUE(waitUntil(done)) << "回调超时";
     EXPECT_FALSE(ok);
@@ -332,8 +309,7 @@ TEST_F(HttpApiTest, Business400_NotRetried)
 }
 
 // ==================== T2：401 → unauthorized 信号 + 服务端精确文案 ====================
-TEST_F(HttpApiTest, Unauthorized401_SignalAndMessage)
-{
+TEST_F(HttpApiTest, Unauthorized401_SignalAndMessage) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -356,8 +332,7 @@ TEST_F(HttpApiTest, Unauthorized401_SignalAndMessage)
 }
 
 // ==================== T3：batchUpdateFavorites（PATCH）401 也触发 unauthorized ====================
-TEST_F(HttpApiTest, BatchUpdateFavorites401_TriggersUnauthorized)
-{
+TEST_F(HttpApiTest, BatchUpdateFavorites401_TriggersUnauthorized) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     // 模拟"已登录但 token 失效"：无 token 时 Interactive 请求会被登录守卫拦截（不发请求，见 Guard 用例），
@@ -386,8 +361,7 @@ TEST_F(HttpApiTest, BatchUpdateFavorites401_TriggersUnauthorized)
 }
 
 // ==================== T4：uploadAvatar（绕过 sendRequest）401 文案统一 ====================
-TEST_F(HttpApiTest, UploadAvatar401_UnifiedMessage)
-{
+TEST_F(HttpApiTest, UploadAvatar401_UnifiedMessage) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     // 模拟"已登录但 token 失效"（无 token 会被登录守卫拦截，见 Guard 用例）
@@ -421,10 +395,9 @@ TEST_F(HttpApiTest, UploadAvatar401_UnifiedMessage)
 }
 
 // ==================== T4c：uploadAvatar 2xx 但缺 avatar_url → 判失败 ====================
-TEST_F(HttpApiTest, UploadAvatarMissingUrl_Rejected)
-{
+TEST_F(HttpApiTest, UploadAvatarMissingUrl_Rejected) {
     StubServer stub;
-    stub.avatarMode = 1;  // 200 + 空对象
+    stub.avatarMode = 1; // 200 + 空对象
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("valid-token"));
 
@@ -452,8 +425,7 @@ TEST_F(HttpApiTest, UploadAvatarMissingUrl_Rejected)
 }
 
 // ==================== T4b：discardPendingAvatar（DELETE 带体）成功，且带体到达不挂死 ====================
-TEST_F(HttpApiTest, DiscardPendingAvatar_DeleteWithBodySucceeds)
-{
+TEST_F(HttpApiTest, DiscardPendingAvatar_DeleteWithBodySucceeds) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     // 模拟"已登录"（绕过登录守卫）
@@ -462,12 +434,11 @@ TEST_F(HttpApiTest, DiscardPendingAvatar_DeleteWithBodySucceeds)
     std::atomic<bool> done{false};
     bool ok = false;
     std::string err = "initial";
-    api.discardPendingAvatar("/uploads/avatars/user_1_123.jpg",
-                             [&](bool s, const std::string& e) {
-                                 ok = s;
-                                 err = e;
-                                 done = true;
-                             });
+    api.discardPendingAvatar("/uploads/avatars/user_1_123.jpg", [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
 
     ASSERT_TRUE(waitUntil(done)) << "回调超时（DELETE 带体不应挂死）";
     EXPECT_TRUE(ok);
@@ -479,8 +450,7 @@ TEST_F(HttpApiTest, DiscardPendingAvatar_DeleteWithBodySucceeds)
 }
 
 // ==================== T4.1：Interactive 未登录 → 挂起 + authRequired，不发请求 ====================
-TEST_F(HttpApiTest, InteractiveGuest_SuspendsAndEmitsAuthRequired)
-{
+TEST_F(HttpApiTest, InteractiveGuest_SuspendsAndEmitsAuthRequired) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -506,8 +476,7 @@ TEST_F(HttpApiTest, InteractiveGuest_SuspendsAndEmitsAuthRequired)
 }
 
 // ==================== T4.2：登录成功后自动重放挂起请求 ====================
-TEST_F(HttpApiTest, InteractiveGuest_ReplayAfterLogin)
-{
+TEST_F(HttpApiTest, InteractiveGuest_ReplayAfterLogin) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -539,8 +508,7 @@ TEST_F(HttpApiTest, InteractiveGuest_ReplayAfterLogin)
 }
 
 // ==================== T4.3：登录页取消 → 挂起请求按"请先登录"失败 ====================
-TEST_F(HttpApiTest, InteractiveGuest_CancelFailsWithLoginRequired)
-{
+TEST_F(HttpApiTest, InteractiveGuest_CancelFailsWithLoginRequired) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -563,8 +531,7 @@ TEST_F(HttpApiTest, InteractiveGuest_CancelFailsWithLoginRequired)
 }
 
 // ==================== T4.4：Silent 未登录 → 不发请求、不发 authRequired、静默失败 ====================
-TEST_F(HttpApiTest, SilentGuest_FailsWithoutRequestOrSignal)
-{
+TEST_F(HttpApiTest, SilentGuest_FailsWithoutRequestOrSignal) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -589,8 +556,7 @@ TEST_F(HttpApiTest, SilentGuest_FailsWithoutRequestOrSignal)
 }
 
 // ==================== T5：断网（连接拒绝）→ 统一网络文案 ====================
-TEST_F(HttpApiTest, NetworkError_ConnectionRefused_UnifiedMessage)
-{
+TEST_F(HttpApiTest, NetworkError_ConnectionRefused_UnifiedMessage) {
     // 127.0.0.1:1 无任何监听 → 立即连接拒绝，statusCode=0
     api.setBaseUrl(QStringLiteral("http://127.0.0.1:1"));
 
@@ -609,8 +575,7 @@ TEST_F(HttpApiTest, NetworkError_ConnectionRefused_UnifiedMessage)
 }
 
 // ==================== T5b：网络恢复（down→up 边沿）信号 ====================
-TEST_F(HttpApiTest, NetworkRestored_EdgeSession)
-{
+TEST_F(HttpApiTest, NetworkRestored_EdgeSession) {
     StubServer stub;
     int restoredCount = 0;
     QObject::connect(&api, &HttpGoCookApi::networkRestored, [&]() { restoredCount++; });
@@ -654,8 +619,7 @@ TEST_F(HttpApiTest, NetworkRestored_EdgeSession)
 }
 
 // ==================== T5c：服务器繁忙 503 → 归一为固定文案（不透传响应体） ====================
-TEST_F(HttpApiTest, ServerBusy503_NormalizedMessage)
-{
+TEST_F(HttpApiTest, ServerBusy503_NormalizedMessage) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -678,8 +642,7 @@ TEST_F(HttpApiTest, ServerBusy503_NormalizedMessage)
 // 注：QNetworkAccessManager 对幂等请求在"响应前连接被关闭"时会内部隐藏重发
 // （实测基线 1 次外部请求可产生 3 次 TCP 连接），精确计数会被污染，
 // 因此用"开启重试后连接尝试必须多于不重试基线"来验证 HttpGoCookApi 的重试确实在发新请求。
-TEST_F(HttpApiTest, NetworkError_StillRetried_TcpLevelCount)
-{
+TEST_F(HttpApiTest, NetworkError_StillRetried_TcpLevelCount) {
     TcpRefuseSink sinkBase;
     {
         HttpGoCookApi baseApi;
@@ -714,11 +677,9 @@ TEST_F(HttpApiTest, NetworkError_StillRetried_TcpLevelCount)
 // ==================== T7：E2E —— 真实 GoCook 服务端（可选） ====================
 // 用法：GOCOOK_E2E_BASE=http://127.0.0.1:8080 ./test_client
 // 未设置时跳过。账号 testuser/test123（server/sql/seed_test_data.sql）。
-TEST(HttpApiE2E, RealServerSmoke)
-{
+TEST(HttpApiE2E, RealServerSmoke) {
     const char* base = std::getenv("GOCOOK_E2E_BASE");
-    if (!base || !*base)
-        GTEST_SKIP() << "未设置 GOCOOK_E2E_BASE，跳过真实服务端端到端测试";
+    if (!base || !*base) GTEST_SKIP() << "未设置 GOCOOK_E2E_BASE，跳过真实服务端端到端测试";
 
     HttpGoCookApi api;
     api.setBaseUrl(QString::fromUtf8(base));
@@ -748,13 +709,12 @@ TEST(HttpApiE2E, RealServerSmoke)
     done = false;
     ok = false;
     int cbCount = 0;
-    api.searchRecipes("", 1, 5, {},
-                      [&](bool s, const gocook::models::PagedRecipes&, const std::string& e) {
-                          ok = s;
-                          err = e;
-                          cbCount++;
-                          done = true;
-                      });
+    api.searchRecipes("", 1, 5, {}, [&](bool s, const gocook::models::PagedRecipes&, const std::string& e) {
+        ok = s;
+        err = e;
+        cbCount++;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "搜索超时";
     EXPECT_FALSE(ok);
     EXPECT_EQ(err, "搜索关键词不能为空") << "应透传服务端 400 文案";
@@ -791,7 +751,7 @@ TEST(HttpApiE2E, RealServerSmoke)
 
     // --- 5. 游客模式全链路（登录守卫 + 挂起 + 重放，真实服务端） ---
     api.setBaseUrl(QString::fromUtf8(base));
-    api.setAuthToken("");   // 回到游客（无 token）
+    api.setAuthToken(""); // 回到游客（无 token）
 
     // 5.1 游客浏览公开接口：菜谱列表 + 详情（可选认证，无 token 也成功）
     done = false;
@@ -819,8 +779,11 @@ TEST(HttpApiE2E, RealServerSmoke)
     QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
     done = false;
     ok = false;
-    api.toggleFavorite(1, std::nullopt, std::nullopt,
-                       [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    api.toggleFavorite(1, std::nullopt, std::nullopt, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
     QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
     EXPECT_TRUE(authRequiredCalled.load()) << "游客写操作必须触发 authRequired";
     EXPECT_FALSE(done.load()) << "挂起期间回调不得触发";
@@ -835,7 +798,7 @@ TEST(HttpApiE2E, RealServerSmoke)
     QObject::disconnect(&api, &HttpGoCookApi::authRequired, nullptr, nullptr);
     QObject::connect(&api, &HttpGoCookApi::authRequired, [&]() { authRequiredCalled = true; });
     done = false;
-    api.setAuthToken("");   // 再次回到游客
+    api.setAuthToken(""); // 再次回到游客
     api.getFavorites(1, 20, "", [&](bool s, const gocook::models::PagedFavorites&, const std::string& e) {
         ok = s;
         err = e;
@@ -851,11 +814,9 @@ TEST(HttpApiE2E, RealServerSmoke)
 // ==================== 整改 N5：库存编辑链路 PUT /api/inventory/:id E2E ====================
 // 覆盖 Router/Handler 层的 HTTP 语义：200 整行替换、409 唯一冲突（数据不变）、404 不存在。
 // 依赖真实服务端 + 种子账号 testuser/test123（与 RealServerSmoke 同门，未设 GOCOOK_E2E_BASE 即跳过）。
-TEST(HttpApiE2E, InventoryPutEdit)
-{
+TEST(HttpApiE2E, InventoryPutEdit) {
     const char* base = std::getenv("GOCOOK_E2E_BASE");
-    if (!base || !*base)
-        GTEST_SKIP() << "未设置 GOCOOK_E2E_BASE，跳过真实服务端端到端测试";
+    if (!base || !*base) GTEST_SKIP() << "未设置 GOCOOK_E2E_BASE，跳过真实服务端端到端测试";
 
     HttpGoCookApi api;
     api.setBaseUrl(QString::fromUtf8(base));
@@ -898,7 +859,7 @@ TEST(HttpApiE2E, InventoryPutEdit)
             }
             done = true;
         });
-        waitUntil(done);   // 阻塞等清场完成（回调内不放置断言宏，避免 void 返回冲突）
+        waitUntil(done); // 阻塞等清场完成（回调内不放置断言宏，避免 void 返回冲突）
     };
     cleanup();
     ASSERT_TRUE(ok) << "清场失败: " << err;
@@ -914,7 +875,12 @@ TEST(HttpApiE2E, InventoryPutEdit)
     int idA = -1;
     done = false;
     ok = false;
-    api.upsertInventory(postA, [&](bool s, int id, const std::string& e) { ok = s; idA = id; err = e; done = true; });
+    api.upsertInventory(postA, [&](bool s, int id, const std::string& e) {
+        ok = s;
+        idA = id;
+        err = e;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "POST A 超时";
     ASSERT_TRUE(ok) << "POST A 失败: " << err;
     ASSERT_GT(idA, 0);
@@ -922,7 +888,12 @@ TEST(HttpApiE2E, InventoryPutEdit)
     postA.quantity = 30.0;
     done = false;
     ok = false;
-    api.upsertInventory(postA, [&](bool s, int id, const std::string& e) { ok = s; idA = id; err = e; done = true; });
+    api.upsertInventory(postA, [&](bool s, int id, const std::string& e) {
+        ok = s;
+        idA = id;
+        err = e;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "POST A(2) 超时";
     ASSERT_TRUE(ok) << "POST A(2) 失败: " << err;
 
@@ -934,18 +905,27 @@ TEST(HttpApiE2E, InventoryPutEdit)
     int idB = -1;
     done = false;
     ok = false;
-    api.upsertInventory(postB, [&](bool s, int id, const std::string& e) { ok = s; idB = id; err = e; done = true; });
+    api.upsertInventory(postB, [&](bool s, int id, const std::string& e) {
+        ok = s;
+        idB = id;
+        err = e;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "POST B 超时";
     ASSERT_TRUE(ok) << "POST B 失败: " << err;
     ASSERT_GT(idB, 0);
 
     gocook::models::UpsertInventoryRequest clash;
-    clash.ingredient_name = nameB;   // 撞 idB 那行（同名同单位）
+    clash.ingredient_name = nameB; // 撞 idB 那行（同名同单位）
     clash.quantity = 1.0;
     clash.unit = "克";
     done = false;
     ok = true;
-    api.updateInventoryItem(idA, clash, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    api.updateInventoryItem(idA, clash, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "PUT 冲突超时";
     EXPECT_FALSE(ok) << "改名撞唯一约束应 409 失败";
     EXPECT_NE(err.find("同名同单位"), std::string::npos) << "409 文案不符: " << err;
@@ -954,7 +934,11 @@ TEST(HttpApiE2E, InventoryPutEdit)
     //          与 DELETE 等接口一致——细节仅入服务端日志；409 才透传具体冲突文案） ---
     done = false;
     ok = true;
-    api.updateInventoryItem(999999999, postB, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    api.updateInventoryItem(999999999, postB, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "PUT 404 超时";
     EXPECT_FALSE(ok) << "不存在条目应 404";
     EXPECT_EQ(err, "请求的资源不存在") << "404 应走服务端通用文案（ErrorHelper 归一策略）: " << err;
@@ -989,7 +973,11 @@ TEST(HttpApiE2E, InventoryPutEdit)
     edit.unit = "克";
     done = false;
     ok = false;
-    api.updateInventoryItem(idB, edit, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+    api.updateInventoryItem(idB, edit, [&](bool s, const std::string& e) {
+        ok = s;
+        err = e;
+        done = true;
+    });
     ASSERT_TRUE(waitUntil(done)) << "PUT 编辑超时";
     ASSERT_TRUE(ok) << "PUT 编辑失败: " << err;
 
@@ -1005,7 +993,10 @@ TEST(HttpApiE2E, InventoryPutEdit)
         if (s) {
             for (const auto& item : data.data) {
                 if (item.ingredient_name == nameB) oldBGone = false;
-                if (item.ingredient_name == "E2E_土豆改") { newBPresent = true; qtyNewB = item.quantity; }
+                if (item.ingredient_name == "E2E_土豆改") {
+                    newBPresent = true;
+                    qtyNewB = item.quantity;
+                }
             }
         }
         done = true;
@@ -1022,8 +1013,7 @@ TEST(HttpApiE2E, InventoryPutEdit)
 }
 
 // ==================== T8：deleteRecipe 游客守卫（Interactive）——不发请求、取消失败 ====================
-TEST_F(HttpApiTest, DeleteRecipe_GuestGuard_SuspendedNoSend)
-{
+TEST_F(HttpApiTest, DeleteRecipe_GuestGuard_SuspendedNoSend) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -1056,8 +1046,7 @@ TEST_F(HttpApiTest, DeleteRecipe_GuestGuard_SuspendedNoSend)
 }
 
 // ==================== T9：评分三件套失败抑制全局 toast（suppress）；对照组必发 ====================
-TEST_F(HttpApiTest, RatingFailures_SuppressGlobalToast_Pin)
-{
+TEST_F(HttpApiTest, RatingFailures_SuppressGlobalToast_Pin) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("valid-token"));
@@ -1069,44 +1058,57 @@ TEST_F(HttpApiTest, RatingFailures_SuppressGlobalToast_Pin)
     req.rating = 5;
     req.comment = "好吃";
 
-    {   // 发评：失败文案为服务端精确文案，且不得发全局 networkError
+    { // 发评：失败文案为服务端精确文案，且不得发全局 networkError
         std::atomic<bool> done{false};
         bool ok = true;
         std::string err;
-        api.rateRecipe(42, req, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+        api.rateRecipe(42, req, [&](bool s, const std::string& e) {
+            ok = s;
+            err = e;
+            done = true;
+        });
         ASSERT_TRUE(waitUntil(done)) << "rateRecipe 回调超时";
         EXPECT_FALSE(ok);
         EXPECT_EQ(err, "评分服务开小差");
     }
-    {   // 改评
+    { // 改评
         std::atomic<bool> done{false};
         bool ok = true;
         std::string err;
-        api.updateRating(42, 7, req, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+        api.updateRating(42, 7, req, [&](bool s, const std::string& e) {
+            ok = s;
+            err = e;
+            done = true;
+        });
         ASSERT_TRUE(waitUntil(done)) << "updateRating 回调超时";
         EXPECT_FALSE(ok);
         EXPECT_EQ(err, "评分服务开小差");
     }
-    {   // 删评
+    { // 删评
         std::atomic<bool> done{false};
         bool ok = true;
         std::string err;
-        api.deleteRating(42, 7, [&](bool s, const std::string& e) { ok = s; err = e; done = true; });
+        api.deleteRating(42, 7, [&](bool s, const std::string& e) {
+            ok = s;
+            err = e;
+            done = true;
+        });
         ASSERT_TRUE(waitUntil(done)) << "deleteRating 回调超时";
         EXPECT_FALSE(ok);
         EXPECT_EQ(err, "评分服务开小差");
     }
     EXPECT_EQ(networkErrorCount, 0) << "评分三件套失败必须抑制全局 networkError（页内呈现，避免双弹）";
 
-    {   // 对照组：suppress=false 的购物清单列表失败必须恰好发 1 次全局提示
+    { // 对照组：suppress=false 的购物清单列表失败必须恰好发 1 次全局提示
         std::atomic<bool> done{false};
         bool ok = true;
         std::string err;
-        api.getShoppingLists([&](bool s, const std::vector<gocook::models::ShoppingListSummary>&, const std::string& e) {
-            ok = s;
-            err = e;
-            done = true;
-        });
+        api.getShoppingLists(
+            [&](bool s, const std::vector<gocook::models::ShoppingListSummary>&, const std::string& e) {
+                ok = s;
+                err = e;
+                done = true;
+            });
         ASSERT_TRUE(waitUntil(done)) << "getShoppingLists 回调超时";
         EXPECT_FALSE(ok);
         EXPECT_EQ(err, "清单服务异常");
@@ -1115,8 +1117,7 @@ TEST_F(HttpApiTest, RatingFailures_SuppressGlobalToast_Pin)
 }
 
 // ==================== T10：uploadStepImage 2xx 解析——非 JSON 判失败，合法 JSON 成功回传 ====================
-TEST_F(HttpApiTest, UploadStepImage_2xxNonJson_RejectedThenJsonParsed)
-{
+TEST_F(HttpApiTest, UploadStepImage_2xxNonJson_RejectedThenJsonParsed) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("valid-token"));
@@ -1128,30 +1129,28 @@ TEST_F(HttpApiTest, UploadStepImage_2xxNonJson_RejectedThenJsonParsed)
     img.write("fake-png-bytes");
     img.close();
 
-    {   // 第 1 次：2xx + 非 JSON 体 → 必须判失败（本提交收口的行为）
+    { // 第 1 次：2xx + 非 JSON 体 → 必须判失败（本提交收口的行为）
         std::atomic<bool> done{false};
         bool ok = true;
         std::string err;
-        api.uploadStepImage(42, 0, img.fileName().toStdString(),
-                            [&](bool s, const std::string&, const std::string& e) {
-                                ok = s;
-                                err = e;
-                                done = true;
-                            });
+        api.uploadStepImage(42, 0, img.fileName().toStdString(), [&](bool s, const std::string&, const std::string& e) {
+            ok = s;
+            err = e;
+            done = true;
+        });
         ASSERT_TRUE(waitUntil(done)) << "回调超时";
         EXPECT_FALSE(ok);
         EXPECT_EQ(err, "无效的响应格式");
     }
-    {   // 第 2 次：2xx + 合法 JSON → 成功并回传 image_url
+    { // 第 2 次：2xx + 合法 JSON → 成功并回传 image_url
         std::atomic<bool> done{false};
         bool ok = false;
         std::string url;
-        api.uploadStepImage(42, 0, img.fileName().toStdString(),
-                            [&](bool s, const std::string& u, const std::string&) {
-                                ok = s;
-                                url = u;
-                                done = true;
-                            });
+        api.uploadStepImage(42, 0, img.fileName().toStdString(), [&](bool s, const std::string& u, const std::string&) {
+            ok = s;
+            url = u;
+            done = true;
+        });
         ASSERT_TRUE(waitUntil(done)) << "回调超时";
         EXPECT_TRUE(ok);
         EXPECT_EQ(url, "/uploads/steps/42_0.jpg");
@@ -1160,8 +1159,7 @@ TEST_F(HttpApiTest, UploadStepImage_2xxNonJson_RejectedThenJsonParsed)
 }
 
 // ==================== T11：QJS 门面回调第二参为中文文案（非原始 JSON 体） ====================
-TEST_F(HttpApiTest, QmlFacade_ErrMsgChinese_NotRawJson)
-{
+TEST_F(HttpApiTest, QmlFacade_ErrMsgChinese_NotRawJson) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
 
@@ -1191,8 +1189,7 @@ TEST_F(HttpApiTest, QmlFacade_ErrMsgChinese_NotRawJson)
     // 轮询 JS 侧 __done（事件循环驱动网络回调）
     QElapsedTimer timer;
     timer.start();
-    while (!engine.globalObject().property(QStringLiteral("__done")).toBool()
-           && timer.elapsed() < 5000) {
+    while (!engine.globalObject().property(QStringLiteral("__done")).toBool() && timer.elapsed() < 5000) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -1200,17 +1197,14 @@ TEST_F(HttpApiTest, QmlFacade_ErrMsgChinese_NotRawJson)
 
     ASSERT_TRUE(engine.globalObject().property(QStringLiteral("__done")).toBool()) << "JS 回调超时";
     EXPECT_FALSE(engine.globalObject().property(QStringLiteral("__ok")).toBool());
-    EXPECT_EQ(engine.globalObject().property(QStringLiteral("__err")).toString().toStdString(),
-              "无效的访问令牌")
+    EXPECT_EQ(engine.globalObject().property(QStringLiteral("__err")).toString().toStdString(), "无效的访问令牌")
         << "失败回调第二参必须是中文文案（回归前此处是原始 JSON 字符串）";
-    EXPECT_EQ(engine.globalObject().property(QStringLiteral("__respErr")).toString().toStdString(),
-              "无效的访问令牌")
+    EXPECT_EQ(engine.globalObject().property(QStringLiteral("__respErr")).toString().toStdString(), "无效的访问令牌")
         << "响应对象仍应携带服务端 error 字段";
 }
 
 // ==================== T12：batchAddShoppingItems 成功判定收口 2xx（200 而非 201 也判成功） ====================
-TEST_F(HttpApiTest, BatchAddShoppingItems_200Accepted)
-{
+TEST_F(HttpApiTest, BatchAddShoppingItems_200Accepted) {
     StubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("valid-token"));
@@ -1223,8 +1217,8 @@ TEST_F(HttpApiTest, BatchAddShoppingItems_200Accepted)
     std::atomic<bool> done{false};
     bool ok = false;
     std::string message;
-    api.batchAddShoppingItems(42, {item},
-        [&](bool s, const gocook::models::BatchShoppingResponse& resp, const std::string&) {
+    api.batchAddShoppingItems(
+        42, {item}, [&](bool s, const gocook::models::BatchShoppingResponse& resp, const std::string&) {
             ok = s;
             message = resp.message;
             done = true;

@@ -22,8 +22,7 @@
 
 namespace {
 
-const char* kDefaultTestConn =
-    "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
+const char* kDefaultTestConn = "dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432";
 
 std::string testConnString() {
     const char* env = std::getenv("GOCOOK_TEST_DB");
@@ -51,8 +50,7 @@ bool dbAvailable() {
 class NotificationWatermarkDbTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        if (!dbAvailable())
-            GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
+        if (!dbAvailable()) GTEST_SKIP() << "未检测到可用 PostgreSQL（可用 GOCOOK_TEST_DB 指定连接串）";
         cleanup();
         userId_ = ensureUser();
     }
@@ -72,10 +70,9 @@ protected:
     static int ensureUser() {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO users (username, password_hash) VALUES ('集成测试水位用户', 'x')"
-            " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
-            " RETURNING id");
+        pqxx::result r = ntxn.exec("INSERT INTO users (username, password_hash) VALUES ('集成测试水位用户', 'x')"
+                                   " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                                   " RETURNING id");
         return r[0][0].as<int>();
     }
 
@@ -83,10 +80,9 @@ protected:
     static int insertNotification(int userId, const std::string& type) {
         auto guard = testPool().getConnection();
         pqxx::nontransaction ntxn(*guard);
-        pqxx::result r = ntxn.exec(
-            "INSERT INTO notifications (user_id, title, content, type) "
-            "VALUES ($1, '集成测试通知', '内容', $2) RETURNING id",
-            pqxx::params{userId, type});
+        pqxx::result r = ntxn.exec("INSERT INTO notifications (user_id, title, content, type) "
+                                   "VALUES ($1, '集成测试通知', '内容', $2) RETURNING id",
+                                   pqxx::params{userId, type});
         return r[0][0].as<int>();
     }
 
@@ -101,8 +97,7 @@ protected:
 };
 
 // ==================== 水位汇总 / 动态已读 / 分类互不影响 ====================
-TEST_F(NotificationWatermarkDbTest, 水位汇总与动态已读语义)
-{
+TEST_F(NotificationWatermarkDbTest, 水位汇总与动态已读语义) {
     PgUserRepository repo(testPool());
 
     const int r1 = insertNotification(userId_, "review");
@@ -125,10 +120,8 @@ TEST_F(NotificationWatermarkDbTest, 水位汇总与动态已读语义)
     auto list = repo.getNotifications(userId_, 1, 20, "review");
     ASSERT_EQ(list.data.size(), 2u);
     for (const auto& item : list.data) {
-        if (item.id == r1)
-            EXPECT_TRUE(item.is_read) << "id <= 水位 = 已读";
-        if (item.id == r2)
-            EXPECT_FALSE(item.is_read) << "id > 水位 = 未读";
+        if (item.id == r1) EXPECT_TRUE(item.is_read) << "id <= 水位 = 已读";
+        if (item.id == r2) EXPECT_FALSE(item.is_read) << "id > 水位 = 未读";
     }
 
     // interaction 列表水位未推进，仍为未读
@@ -142,8 +135,7 @@ TEST_F(NotificationWatermarkDbTest, 水位汇总与动态已读语义)
 }
 
 // ==================== 水位只前进不回退，且收敛到当前最大 id ====================
-TEST_F(NotificationWatermarkDbTest, 水位只前进不回退且收敛到当前最大id)
-{
+TEST_F(NotificationWatermarkDbTest, 水位只前进不回退且收敛到当前最大id) {
     PgUserRepository repo(testPool());
     const int r1 = insertNotification(userId_, "review");
     const int r2 = insertNotification(userId_, "review");
@@ -166,13 +158,11 @@ TEST_F(NotificationWatermarkDbTest, 水位只前进不回退且收敛到当前�
 }
 
 // ==================== 公告频道独立水位（红点） ====================
-TEST_F(NotificationWatermarkDbTest, 公告频道独立水位)
-{
+TEST_F(NotificationWatermarkDbTest, 公告频道独立水位) {
     PgUserRepository repo(testPool());
 
     const int maxAnnId = maxAnnouncementId();
-    if (maxAnnId == 0)
-        GTEST_SKIP() << "公告表为空（先执行种子数据）";
+    if (maxAnnId == 0) GTEST_SKIP() << "公告表为空（先执行种子数据）";
 
     // 该用户从未看过公告：有红点；且不产生任何通知类未读
     const auto before = repo.getUnreadSummary(userId_);

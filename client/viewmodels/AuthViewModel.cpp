@@ -4,101 +4,96 @@
 #include <gocook/IGoCookApi.h>
 #include "../api/HttpGoCookApi.h"
 
-AuthViewModel::AuthViewModel(IGoCookApi *api, QObject *parent, LocalDatabase *db)
-    : QObject(parent)
-    , m_api(api)
-    , m_db(db ? db : LocalDatabase::instance())
-    , m_loggedIn(false)
-    , m_userId(0)
-{
+AuthViewModel::AuthViewModel(IGoCookApi* api, QObject* parent, LocalDatabase* db)
+    : QObject(parent),
+      m_api(api),
+      m_db(db ? db : LocalDatabase::instance()),
+      m_loggedIn(false),
+      m_userId(0) {
     // 注册 401 未授权回调
     // 401 统一入口：已登录 → 会话失效自动登出；未登录且在自动登录校验窗口内 →
     // 标记“令牌被服务端明确拒绝”（sendRaw 先触发本回调再回调业务结果，标志在回调时可见）
     m_api->setUnauthorizedHandler([self = QPointer<AuthViewModel>(this)]() {
         if (!self) return;
-        if (self->m_loggedIn) { self->logout(); return; }
+        if (self->m_loggedIn) {
+            self->logout();
+            return;
+        }
         if (self->m_autoLoginInFlight) self->m_autoLoginUnauthorized = true;
     });
 }
 
-void AuthViewModel::login(const QString &username, const QString &password)
-{
+void AuthViewModel::login(const QString& username, const QString& password) {
     gocook::models::LoginRequest req;
     req.username = username.toStdString();
     req.password = password.toStdString();
 
-    m_api->login(req, [self = QPointer<AuthViewModel>(this), username](bool success,
-                                        const gocook::models::LoginResponse &data,
-                                        const std::string &error) {
-        if (!self) return;
-        if (!success) {
-            // IGoCookApi 边界防御：实现层（HttpGoCookApi）保证 error 非空；此处兜底其它实现的空文案
-            emit self->loginFailed(QString::fromStdString(error.empty() ? "未知错误" : error));
-            return;
-        }
-        if (data.token.empty() || data.user_id == 0) {
-            emit self->loginFailed("登录失败：响应缺少令牌或用户ID");
-            return;
-        }
+    m_api->login(req,
+                 [self = QPointer<AuthViewModel>(this),
+                  username](bool success, const gocook::models::LoginResponse& data, const std::string& error) {
+                     if (!self) return;
+                     if (!success) {
+                         // IGoCookApi 边界防御：实现层（HttpGoCookApi）保证 error 非空；此处兜底其它实现的空文案
+                         emit self->loginFailed(QString::fromStdString(error.empty() ? "未知错误" : error));
+                         return;
+                     }
+                     if (data.token.empty() || data.user_id == 0) {
+                         emit self->loginFailed("登录失败：响应缺少令牌或用户ID");
+                         return;
+                     }
 
-        QString token = QString::fromStdString(data.token);
-        QString apiUsername = QString::fromStdString(data.username);
-        // 持久化登录态
-        self->m_db->saveUser(data.user_id, apiUsername, token);
-        // 触发 tokenChanged → 挂起的 Interactive 请求自动重放
-        self->m_api->setAuthToken(data.token);
-        self->setLoggedIn(true, data.user_id, apiUsername);
-        emit self->loginSuccess();
-    });
+                     QString token = QString::fromStdString(data.token);
+                     QString apiUsername = QString::fromStdString(data.username);
+                     // 持久化登录态
+                     self->m_db->saveUser(data.user_id, apiUsername, token);
+                     // 触发 tokenChanged → 挂起的 Interactive 请求自动重放
+                     self->m_api->setAuthToken(data.token);
+                     self->setLoggedIn(true, data.user_id, apiUsername);
+                     emit self->loginSuccess();
+                 });
 }
 
-void AuthViewModel::registerUser(const QString &username,
-                                 const QString &password,
-                                 const QString &email)
-{
+void AuthViewModel::registerUser(const QString& username, const QString& password, const QString& email) {
     gocook::models::RegisterRequest req;
     req.username = username.toStdString();
     req.password = password.toStdString();
-    req.email    = email.toStdString();
+    req.email = email.toStdString();
 
-    m_api->registerUser(req, [self = QPointer<AuthViewModel>(this)](bool success, const std::string &error) {
+    m_api->registerUser(req, [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
         if (!self) return;
         if (success) {
             // 两段式注册第一步完成：验证邮件已发送，等待输入验证码
             emit self->registerStarted();
         } else {
             // IGoCookApi 边界防御：实现层（HttpGoCookApi）保证 error 非空；此处兜底其它实现的空文案
-            emit self->registerFailed(QString::fromStdString(
-                error.empty() ? "未知错误" : error));
+            emit self->registerFailed(QString::fromStdString(error.empty() ? "未知错误" : error));
         }
     });
 }
 
-void AuthViewModel::verifyRegistration(const QString &email, const QString &token)
-{
-    m_api->verifyRegistration(email.toStdString(), token.toStdString(),
-        [self = QPointer<AuthViewModel>(this)](bool success, const std::string &error) {
-            if (!self) return;
-            if (success) {
-                emit self->registrationVerified();
-            } else {
-                // IGoCookApi 边界防御：实现层（HttpGoCookApi）保证 error 非空；此处兜底其它实现的空文案
-                emit self->registrationVerifyFailed(QString::fromStdString(
-                    error.empty() ? "未知错误" : error));
-            }
-        });
+void AuthViewModel::verifyRegistration(const QString& email, const QString& token) {
+    m_api->verifyRegistration(email.toStdString(),
+                              token.toStdString(),
+                              [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
+                                  if (!self) return;
+                                  if (success) {
+                                      emit self->registrationVerified();
+                                  } else {
+                                      // IGoCookApi 边界防御：实现层（HttpGoCookApi）保证 error 非空；此处兜底其它实现的空文案
+                                      emit self->registrationVerifyFailed(
+                                          QString::fromStdString(error.empty() ? "未知错误" : error));
+                                  }
+                              });
 }
 
-void AuthViewModel::logout()
-{
+void AuthViewModel::logout() {
     m_db->clearUser();
     m_api->setAuthToken("");
     setLoggedIn(false, 0, "");
     emit logoutFinished();
 }
 
-void AuthViewModel::checkAutoLogin()
-{
+void AuthViewModel::checkAutoLogin() {
     // 从本地 SQLite 数据库 m_db 取用户行
     QVariantMap user = m_db->getUser();
     if (!user.isEmpty()) {
@@ -109,7 +104,8 @@ void AuthViewModel::checkAutoLogin()
         m_autoLoginInFlight = true;
         m_autoLoginUnauthorized = false;
         // 调 getCurrentUser() 去服务端校验这个 token 是否还有效
-        m_api->getCurrentUser([self = QPointer<AuthViewModel>(this), token](bool success, const gocook::models::UserProfile& profile, const std::string& error) {
+        m_api->getCurrentUser([self = QPointer<AuthViewModel>(this), token](
+                                  bool success, const gocook::models::UserProfile& profile, const std::string& error) {
             if (!self) return;
             const bool unauthorized = self->m_autoLoginUnauthorized;
             self->m_autoLoginInFlight = false;
@@ -154,9 +150,8 @@ void AuthViewModel::checkAutoLogin()
 
 void AuthViewModel::loadProfile() {
     if (!m_loggedIn) return;
-    m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](bool success,
-                           const gocook::models::UserProfile& profile,
-                           const std::string& error) {
+    m_api->getCurrentUser([self = QPointer<AuthViewModel>(this)](
+                              bool success, const gocook::models::UserProfile& profile, const std::string& error) {
         if (!self) return;
         if (!success) {
             emit self->profileSaveFailed(QString::fromStdString(error));
@@ -170,50 +165,44 @@ void AuthViewModel::loadProfile() {
     });
 }
 
-void AuthViewModel::saveProfile(const QString &displayName,
-                                 const QString &email,
-                                 const QString &phone) {
+void AuthViewModel::saveProfile(const QString& displayName, const QString& email, const QString& phone) {
     if (!m_loggedIn) return;
 
     gocook::models::UpdateProfileRequest req;
-    if (!displayName.isEmpty())
-        req.display_name = displayName.toStdString();
-    if (!email.isEmpty())
-        req.email = email.toStdString();
-    if (!phone.isEmpty())
-        req.phone = phone.toStdString();
-    if (!m_pendingAvatarUrl.isEmpty())  // 有未保存的暂存头像：随保存一并绑定生效
+    if (!displayName.isEmpty()) req.display_name = displayName.toStdString();
+    if (!email.isEmpty()) req.email = email.toStdString();
+    if (!phone.isEmpty()) req.phone = phone.toStdString();
+    if (!m_pendingAvatarUrl.isEmpty()) // 有未保存的暂存头像：随保存一并绑定生效
         req.avatar_url = m_pendingAvatarUrl.toStdString();
 
-    m_api->updateProfile(req, [self = QPointer<AuthViewModel>(this)]
-                         (bool success,
-                          const gocook::models::UserProfile& profile,
-                          const std::string& error) {
-        if (!self) return;
-        if (!success) {
-            emit self->profileSaveFailed(QString::fromStdString(error));
-            return;
-        }
+    m_api->updateProfile(req,
+                         [self = QPointer<AuthViewModel>(this)](
+                             bool success, const gocook::models::UserProfile& profile, const std::string& error) {
+                             if (!self) return;
+                             if (!success) {
+                                 emit self->profileSaveFailed(QString::fromStdString(error));
+                                 return;
+                             }
 
-        // 回写本地状态
-        self->m_profileDisplayName = QString::fromStdString(profile.display_name);
-        self->m_profileEmail = QString::fromStdString(profile.email);
-        self->m_profilePhone = QString::fromStdString(profile.phone);
-        self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
+                             // 回写本地状态
+                             self->m_profileDisplayName = QString::fromStdString(profile.display_name);
+                             self->m_profileEmail = QString::fromStdString(profile.email);
+                             self->m_profilePhone = QString::fromStdString(profile.phone);
+                             self->m_profileAvatarUrl = QString::fromStdString(profile.avatar_url);
 
-        // 版本号自增，版本号一变，URL 变，强制重新拉图
-        self->m_avatarVersion++;
-        emit self->avatarVersionChanged();
+                             // 版本号自增，版本号一变，URL 变，强制重新拉图
+                             self->m_avatarVersion++;
+                             emit self->avatarVersionChanged();
 
-        // 头像已绑定生效，清空待处理引用
-        self->m_pendingAvatarUrl.clear();
+                             // 头像已绑定生效，清空待处理引用
+                             self->m_pendingAvatarUrl.clear();
 
-        emit self->profileChanged();
-        emit self->profileSaved();
-    });
+                             emit self->profileChanged();
+                             emit self->profileSaved();
+                         });
 }
 
-void AuthViewModel::uploadAvatar(const QString &filePath) {
+void AuthViewModel::uploadAvatar(const QString& filePath) {
     if (!m_loggedIn) {
         emit avatarUploadFailed(QStringLiteral("未登录，请先登录"));
         return;
@@ -221,31 +210,30 @@ void AuthViewModel::uploadAvatar(const QString &filePath) {
     // 重传语义：旧暂存保留至新上传成功后才丢弃（失败时旧暂存原样保留，预览不落空；
     // 丢弃失败由服务端 GC 兜底）
     const QString previousUrl = m_pendingAvatarUrl;
-    const int seq = m_avatarUploadSeq.begin();  // 上传代次（RequestEpoch）：只接受最后一次上传的回调
-    m_api->uploadAvatar(filePath.toStdString(), [self = QPointer<AuthViewModel>(this), seq, previousUrl]
-                        (bool success,
-                         const gocook::models::AvatarUploadResponse& resp,
-                         const std::string& error) {
-        if (!self) return;
-        if (!self->m_avatarUploadSeq.isCurrent(seq)) {
-            // 陈旧回调（期间发生了放弃/重传/登出）：该暂存文件已无人认领，尽力丢弃
-            if (success) self->m_api->discardPendingAvatar(resp.avatar_url, nullptr);
-            return;
-        }
-        if (!success) {
-            emit self->avatarUploadFailed(QString::fromStdString(error));
-            return;  // 旧暂存（previousUrl）保持 pending：预览与"保存将绑定"语义一致
-        }
-        // 新上传成功：旧暂存使命结束，尽力丢弃（已绑定 / 与新 URL 相同不丢，防误删在用或刚生成的文件）
-        const QString newUrl = QString::fromStdString(resp.avatar_url);
-        if (!previousUrl.isEmpty() && previousUrl != self->m_profileAvatarUrl
-            && previousUrl != newUrl) {
-            self->m_api->discardPendingAvatar(previousUrl.toStdString(), nullptr);
-        }
-        // 仅暂存：不改动已保存资料（m_profileAvatarUrl），等 saveProfile 绑定后才正式生效
-        self->m_pendingAvatarUrl = newUrl;
-        emit self->avatarUploaded(self->m_pendingAvatarUrl);
-    });
+    const int seq = m_avatarUploadSeq.begin(); // 上传代次（RequestEpoch）：只接受最后一次上传的回调
+    m_api->uploadAvatar(filePath.toStdString(),
+                        [self = QPointer<AuthViewModel>(this), seq, previousUrl](
+                            bool success, const gocook::models::AvatarUploadResponse& resp, const std::string& error) {
+                            if (!self) return;
+                            if (!self->m_avatarUploadSeq.isCurrent(seq)) {
+                                // 陈旧回调（期间发生了放弃/重传/登出）：该暂存文件已无人认领，尽力丢弃
+                                if (success) self->m_api->discardPendingAvatar(resp.avatar_url, nullptr);
+                                return;
+                            }
+                            if (!success) {
+                                emit self->avatarUploadFailed(QString::fromStdString(error));
+                                return; // 旧暂存（previousUrl）保持 pending：预览与"保存将绑定"语义一致
+                            }
+                            // 新上传成功：旧暂存使命结束，尽力丢弃（已绑定 / 与新 URL 相同不丢，防误删在用或刚生成的文件）
+                            const QString newUrl = QString::fromStdString(resp.avatar_url);
+                            if (!previousUrl.isEmpty() && previousUrl != self->m_profileAvatarUrl &&
+                                previousUrl != newUrl) {
+                                self->m_api->discardPendingAvatar(previousUrl.toStdString(), nullptr);
+                            }
+                            // 仅暂存：不改动已保存资料（m_profileAvatarUrl），等 saveProfile 绑定后才正式生效
+                            self->m_pendingAvatarUrl = newUrl;
+                            emit self->avatarUploaded(self->m_pendingAvatarUrl);
+                        });
 }
 
 bool AuthViewModel::hasPendingAvatar() const {
@@ -253,40 +241,39 @@ bool AuthViewModel::hasPendingAvatar() const {
 }
 
 void AuthViewModel::discardPendingAvatar() {
-    m_avatarUploadSeq.invalidate();  // 作废在途上传：其回调视为陈旧并丢弃对应文件
+    m_avatarUploadSeq.invalidate(); // 作废在途上传：其回调视为陈旧并丢弃对应文件
     if (m_pendingAvatarUrl.isEmpty()) return;
 
     const QString url = m_pendingAvatarUrl;
-    m_pendingAvatarUrl.clear();  // 本地立即清空（UI 先回滚）；服务端删除尽力而为
+    m_pendingAvatarUrl.clear(); // 本地立即清空（UI 先回滚）；服务端删除尽力而为
     m_api->discardPendingAvatar(url.toStdString(),
-        [self = QPointer<AuthViewModel>(this), url](bool success, const std::string &error) {
-        if (!self) return;
-        if (!success) {
-            // 删除失败不打扰用户：残留文件由服务端 GC（24h 宽限期）兜底回收
-            qWarning().noquote() << "[AuthViewModel] 放弃暂存头像失败（服务端 GC 兜底）："
-                                 << QString::fromStdString(error);
-        }
-        emit self->avatarDiscarded(url);
-    });
+                                [self = QPointer<AuthViewModel>(this), url](bool success, const std::string& error) {
+                                    if (!self) return;
+                                    if (!success) {
+                                        // 删除失败不打扰用户：残留文件由服务端 GC（24h 宽限期）兜底回收
+                                        qWarning().noquote() << "[AuthViewModel] 放弃暂存头像失败（服务端 GC 兜底）："
+                                                             << QString::fromStdString(error);
+                                    }
+                                    emit self->avatarDiscarded(url);
+                                });
 }
 
-void AuthViewModel::changePassword(const QString &currentPassword, const QString &newPassword) {
+void AuthViewModel::changePassword(const QString& currentPassword, const QString& newPassword) {
     if (!m_loggedIn) {
         emit passwordChangeFailed(QStringLiteral("未登录，请先登录"));
         return;
     }
     m_api->changePassword(currentPassword.toStdString(),
                           newPassword.toStdString(),
-                          [self = QPointer<AuthViewModel>(this)]
-                          (bool success, const std::string& error) {
-        if (!self) return;
-        if (success) {
-            emit self->passwordChanged();
-        } else {
-            emit self->passwordChangeFailed(QString::fromStdString(
-                error.empty() ? "修改失败" : error));
-        }
-    });
+                          [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
+                              if (!self) return;
+                              if (success) {
+                                  emit self->passwordChanged();
+                              } else {
+                                  emit self->passwordChangeFailed(
+                                      QString::fromStdString(error.empty() ? "修改失败" : error));
+                              }
+                          });
 }
 
 void AuthViewModel::deleteAccount() {
@@ -294,8 +281,7 @@ void AuthViewModel::deleteAccount() {
         emit accountDeleteFailed(QStringLiteral("未登录，请先登录"));
         return;
     }
-    m_api->deleteAccount([self = QPointer<AuthViewModel>(this)]
-                         (bool success, const std::string& error) {
+    m_api->deleteAccount([self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
         if (!self) return;
         if (success) {
             // 清除本地状态并注销
@@ -304,8 +290,7 @@ void AuthViewModel::deleteAccount() {
             self->setLoggedIn(false, 0, "");
             emit self->accountDeleted();
         } else {
-            emit self->accountDeleteFailed(QString::fromStdString(
-                error.empty() ? "注销失败" : error));
+            emit self->accountDeleteFailed(QString::fromStdString(error.empty() ? "注销失败" : error));
         }
     });
 }
@@ -315,14 +300,11 @@ void AuthViewModel::loadPreferences() {
         emit preferencesLoadFailed(QStringLiteral("未登录，请先登录"));
         return;
     }
-    m_api->getPreferences([self = QPointer<AuthViewModel>(this)]
-                          (bool success,
-                           const gocook::models::UserPreferences& prefs,
-                           const std::string& error) {
+    m_api->getPreferences([self = QPointer<AuthViewModel>(this)](
+                              bool success, const gocook::models::UserPreferences& prefs, const std::string& error) {
         if (!self) return;
         if (!success) {
-            emit self->preferencesLoadFailed(QString::fromStdString(
-                error.empty() ? "获取偏好失败" : error));
+            emit self->preferencesLoadFailed(QString::fromStdString(error.empty() ? "获取偏好失败" : error));
             return;
         }
         QStringList likes, dislikes;
@@ -335,9 +317,7 @@ void AuthViewModel::loadPreferences() {
     });
 }
 
-void AuthViewModel::savePreferences(const QStringList &likes,
-                                     const QStringList &dislikes,
-                                     const QString &healthGoal) {
+void AuthViewModel::savePreferences(const QStringList& likes, const QStringList& dislikes, const QString& healthGoal) {
     if (!m_loggedIn) {
         emit preferencesSaveFailed(QStringLiteral("未登录，请先登录"));
         return;
@@ -349,19 +329,17 @@ void AuthViewModel::savePreferences(const QStringList &likes,
         prefs.dislikes.push_back(v.toStdString());
     prefs.health_goal = healthGoal.toStdString();
 
-    m_api->updatePreferences(prefs, [self = QPointer<AuthViewModel>(this)]
-                             (bool success, const std::string& error) {
+    m_api->updatePreferences(prefs, [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
         if (!self) return;
         if (success) {
             emit self->preferencesSaved();
         } else {
-            emit self->preferencesSaveFailed(QString::fromStdString(
-                error.empty() ? "保存失败" : error));
+            emit self->preferencesSaveFailed(QString::fromStdString(error.empty() ? "保存失败" : error));
         }
     });
 }
 
-void AuthViewModel::saveHealthProfile(int heightCm, double weightKg, const QStringList &conditions) {
+void AuthViewModel::saveHealthProfile(int heightCm, double weightKg, const QStringList& conditions) {
     if (!m_loggedIn) {
         emit healthProfileSaveFailed(QStringLiteral("未登录，请先登录"));
         return;
@@ -372,27 +350,26 @@ void AuthViewModel::saveHealthProfile(int heightCm, double weightKg, const QStri
     for (const auto& v : conditions)
         req.conditions.push_back(v.toStdString());
 
-    m_api->updateHealthProfile(req, [self = QPointer<AuthViewModel>(this)]
-                               (bool success,
-                                const gocook::models::HealthProfileResponse& resp,
-                                const std::string& error) {
-        if (!self) return;
-        if (!success) {
-            emit self->healthProfileSaveFailed(QString::fromStdString(
-                error.empty() ? "保存失败" : error));
-            return;
-        }
+    m_api->updateHealthProfile(
+        req,
+        [self = QPointer<AuthViewModel>(this)](
+            bool success, const gocook::models::HealthProfileResponse& resp, const std::string& error) {
+            if (!self) return;
+            if (!success) {
+                emit self->healthProfileSaveFailed(QString::fromStdString(error.empty() ? "保存失败" : error));
+                return;
+            }
 
-        // 将忌口建议转换为 QVariantList 供 QML 使用
-        QVariantList avoidances;
-        for (const auto& item : resp.suggested_avoidances) {
-            QVariantMap ai;
-            ai["ingredient"] = QString::fromStdString(item.ingredient);
-            ai["reason"] = QString::fromStdString(item.reason);
-            avoidances.append(ai);
-        }
-        emit self->healthProfileSaved(avoidances);
-    });
+            // 将忌口建议转换为 QVariantList 供 QML 使用
+            QVariantList avoidances;
+            for (const auto& item : resp.suggested_avoidances) {
+                QVariantMap ai;
+                ai["ingredient"] = QString::fromStdString(item.ingredient);
+                ai["reason"] = QString::fromStdString(item.reason);
+                avoidances.append(ai);
+            }
+            emit self->healthProfileSaved(avoidances);
+        });
 }
 
 void AuthViewModel::loadHealthProfile() {
@@ -400,14 +377,12 @@ void AuthViewModel::loadHealthProfile() {
         emit healthProfileLoadFailed(QStringLiteral("未登录，请先登录"));
         return;
     }
-    m_api->getHealthProfile([self = QPointer<AuthViewModel>(this)]
-                            (bool success,
-                             const gocook::models::HealthProfileResponse& resp,
-                             const std::string& error) {
+    m_api->getHealthProfile([self = QPointer<AuthViewModel>(this)](bool success,
+                                                                   const gocook::models::HealthProfileResponse& resp,
+                                                                   const std::string& error) {
         if (!self) return;
         if (!success) {
-            emit self->healthProfileLoadFailed(QString::fromStdString(
-                error.empty() ? "获取健康指标失败" : error));
+            emit self->healthProfileLoadFailed(QString::fromStdString(error.empty() ? "获取健康指标失败" : error));
             return;
         }
 
@@ -430,7 +405,7 @@ void AuthViewModel::loadHealthProfile() {
 
 // ==================== 密码重置 ====================
 
-void AuthViewModel::forgotPassword(const QString &username, const QString &email) {
+void AuthViewModel::forgotPassword(const QString& username, const QString& email) {
     if (username.trimmed().isEmpty()) {
         emit forgotPasswordFailed(QStringLiteral("请输入用户名"));
         return;
@@ -439,19 +414,20 @@ void AuthViewModel::forgotPassword(const QString &username, const QString &email
         emit forgotPasswordFailed(QStringLiteral("请输入邮箱地址"));
         return;
     }
-    m_api->forgotPassword(username.toStdString(), email.toStdString(),
-        [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
-            if (!self) return;
-            if (success) {
-                emit self->forgotPasswordSent();
-            } else {
-                emit self->forgotPasswordFailed(
-                    QString::fromStdString(error.empty() ? "请求失败" : error));
-            }
-        });
+    m_api->forgotPassword(username.toStdString(),
+                          email.toStdString(),
+                          [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
+                              if (!self) return;
+                              if (success) {
+                                  emit self->forgotPasswordSent();
+                              } else {
+                                  emit self->forgotPasswordFailed(
+                                      QString::fromStdString(error.empty() ? "请求失败" : error));
+                              }
+                          });
 }
 
-void AuthViewModel::resetPassword(const QString &token, const QString &newPassword) {
+void AuthViewModel::resetPassword(const QString& token, const QString& newPassword) {
     if (token.trimmed().isEmpty()) {
         emit passwordResetFailed(QStringLiteral("重置令牌无效"));
         return;
@@ -460,36 +436,35 @@ void AuthViewModel::resetPassword(const QString &token, const QString &newPasswo
         emit passwordResetFailed(QStringLiteral("密码不能少于6个字符"));
         return;
     }
-    m_api->resetPassword(token.toStdString(), newPassword.toStdString(),
-        [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
-            if (!self) return;
-            if (success) {
-                emit self->passwordResetSuccess();
-            } else {
-                emit self->passwordResetFailed(
-                    QString::fromStdString(error.empty() ? "重置失败" : error));
-            }
-        });
+    m_api->resetPassword(token.toStdString(),
+                         newPassword.toStdString(),
+                         [self = QPointer<AuthViewModel>(this)](bool success, const std::string& error) {
+                             if (!self) return;
+                             if (success) {
+                                 emit self->passwordResetSuccess();
+                             } else {
+                                 emit self->passwordResetFailed(
+                                     QString::fromStdString(error.empty() ? "重置失败" : error));
+                             }
+                         });
 }
 
 QString AuthViewModel::apiBaseUrl() const {
     // 返回 API 基础 URL，供 QML 拼接头像等静态资源 URL 使用
     // 实际从 HttpGoCookApi 获取，确保与 API 配置一致
     auto* httpApi = dynamic_cast<const HttpGoCookApi*>(m_api);
-    if (httpApi)
-        return httpApi->baseUrl();
+    if (httpApi) return httpApi->baseUrl();
     return QStringLiteral("http://127.0.0.1:8080");
 }
 
-void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &username)
-{
+void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString& username) {
     if (!loggedIn) {
         // 未保存的暂存头像一并作废：清引用 + 作废在途上传代次（其回调据此丢弃文件）
         m_avatarUploadSeq.invalidate();
         m_pendingAvatarUrl.clear();
         // 登出 / 注销 / token 失效：清空上一登录态的个人资料残留（头像等），避免游客态继续显示
-        if (!m_profileDisplayName.isEmpty() || !m_profileEmail.isEmpty() ||
-            !m_profilePhone.isEmpty() || !m_profileAvatarUrl.isEmpty()) {
+        if (!m_profileDisplayName.isEmpty() || !m_profileEmail.isEmpty() || !m_profilePhone.isEmpty() ||
+            !m_profileAvatarUrl.isEmpty()) {
             m_profileDisplayName.clear();
             m_profileEmail.clear();
             m_profilePhone.clear();
@@ -502,8 +477,7 @@ void AuthViewModel::setLoggedIn(bool loggedIn, int userId, const QString &userna
         emit loggedInChanged();
         // 会话结束（登录态 true→false 的统一出口：登出 / 401 自动登出 / 注销账号）：
         // 消费方在 main.cpp 单点接线，清理各 VM 的个人数据（见 main.cpp 组装区）
-        if (!loggedIn)
-            emit sessionEnded();
+        if (!loggedIn) emit sessionEnded();
     }
     if (m_userId != userId) {
         m_userId = userId;

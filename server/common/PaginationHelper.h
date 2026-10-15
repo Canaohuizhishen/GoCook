@@ -48,7 +48,8 @@ inline int parseIntParam(const httplib::Request& req, const std::string& name, i
         if (req.has_param(name)) {
             return std::stoi(req.get_param_value(name));
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return defaultValue;
 }
 
@@ -60,7 +61,8 @@ inline int parseIntParam(const httplib::Request& req, const std::string& name, i
  * 注意：不能直接用 std::stoul——它对 "-1" 这类负值按回绕处理而不是报错，
  * 必须先做"纯数字"预检；超出 unsigned long long 的长数字则由 stoull 抛错兜住。
  */
-inline unsigned int parseUIntParam(const httplib::Request& req, const std::string& name, unsigned int defaultValue = 0) {
+inline unsigned int
+parseUIntParam(const httplib::Request& req, const std::string& name, unsigned int defaultValue = 0) {
     try {
         if (req.has_param(name)) {
             const std::string v = req.get_param_value(name);
@@ -69,6 +71,7 @@ inline unsigned int parseUIntParam(const httplib::Request& req, const std::strin
                 if (val <= 0xFFFFFFFFull) return static_cast<unsigned int>(val);
             }
         }
-    } catch (...) {}
+    } catch (...) {
+    }
     return defaultValue;
 }

@@ -11,7 +11,7 @@
  * @param status HTTP 状态码
  * @param message 错误描述（中文）
  */
-inline void setErrorResponse(httplib::Response &res, int status, const std::string &message) {
+inline void setErrorResponse(httplib::Response& res, int status, const std::string& message) {
     res.status = status;
     res.set_header("Content-Type", "application/json");
     nlohmann::json body;
@@ -34,7 +34,7 @@ inline void setErrorResponse(httplib::Response &res, int status, const std::stri
  * @param e   捕获的异常
  * @param res  响应对象
  */
-inline void handleStandardException(const std::exception &e, httplib::Response &res) {
+inline void handleStandardException(const std::exception& e, httplib::Response& res) {
     // 运行时向下转型：Handler 收到的 e 是 std::exception 基类引用，实际传入的可能是子类 ServiceException。
     // 转型成功 → 业务异常，取其携带的 HTTP 状态码；转出 nullptr → 先按下方规则分类 JSON 异常，其余按
     // 系统底层异常处理（500），绝不把内部错误信息暴露给客户端。
@@ -61,16 +61,40 @@ inline void handleStandardException(const std::exception &e, httplib::Response &
     std::string msg;
     int code = se->statusCode();
     switch (code) {
-        case 404: msg = "请求的资源不存在";    LOG_WARN("404: %s", se->what()); break;
-        case 409: msg = se->what();            LOG_WARN("409: %s", se->what()); break;
-        case 400: msg = se->what();            LOG_WARN("400: %s", se->what()); break;
-        case 403: msg = se->what();            LOG_WARN("403: %s", se->what()); break;
-        case 401: msg = "身份验证失败";         LOG_WARN("401: %s", se->what()); break;
-        case 501: msg = "功能暂未实现";         LOG_WARN("501: %s", se->what()); break;
-        // 503（连接池饱和等瞬时故障）：原样直通——客户端据此识别"服务器繁忙"并自动重试
-        case 503: msg = se->what();            LOG_WARN("503: %s", se->what()); break;
-        default:  msg = "服务器内部错误，请稍后重试"; code = 500;
-                  LOG_ERROR("未识别的业务异常：%s（状态码 %d）", se->what(), code); break;
+    case 404:
+        msg = "请求的资源不存在";
+        LOG_WARN("404: %s", se->what());
+        break;
+    case 409:
+        msg = se->what();
+        LOG_WARN("409: %s", se->what());
+        break;
+    case 400:
+        msg = se->what();
+        LOG_WARN("400: %s", se->what());
+        break;
+    case 403:
+        msg = se->what();
+        LOG_WARN("403: %s", se->what());
+        break;
+    case 401:
+        msg = "身份验证失败";
+        LOG_WARN("401: %s", se->what());
+        break;
+    case 501:
+        msg = "功能暂未实现";
+        LOG_WARN("501: %s", se->what());
+        break;
+    // 503（连接池饱和等瞬时故障）：原样直通——客户端据此识别"服务器繁忙"并自动重试
+    case 503:
+        msg = se->what();
+        LOG_WARN("503: %s", se->what());
+        break;
+    default:
+        msg = "服务器内部错误，请稍后重试";
+        code = 500;
+        LOG_ERROR("未识别的业务异常：%s（状态码 %d）", se->what(), code);
+        break;
     }
     setErrorResponse(res, code, msg);
 }

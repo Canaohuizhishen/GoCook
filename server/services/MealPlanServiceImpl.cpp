@@ -10,13 +10,11 @@ int MealPlanServiceImpl::createMealPlan(int, const MealPlanRequest&) {
     throw ServiceException("功能暂未实现", 501);
 }
 
-MealPlansResponse MealPlanServiceImpl::getMealPlans(int, const std::string&,
-                                                     const std::string&, int, int) {
+MealPlansResponse MealPlanServiceImpl::getMealPlans(int, const std::string&, const std::string&, int, int) {
     throw ServiceException("功能暂未实现", 501);
 }
 
-PagedCalendarDays MealPlanServiceImpl::getMealPlanDetail(int, const std::string&,
-                                                          const std::string&, int, int) {
+PagedCalendarDays MealPlanServiceImpl::getMealPlanDetail(int, const std::string&, const std::string&, int, int) {
     throw ServiceException("功能暂未实现", 501);
 }
 
@@ -28,7 +26,6 @@ void MealPlanServiceImpl::deleteMealPlan(int, int) {
     throw ServiceException("功能暂未实现", 501);
 }
 
-NutritionTrendResponse MealPlanServiceImpl::getNutritionTrend(int, const std::string&,
-                                                               const std::string&) {
+NutritionTrendResponse MealPlanServiceImpl::getNutritionTrend(int, const std::string&, const std::string&) {
     throw ServiceException("功能暂未实现", 501);
 }

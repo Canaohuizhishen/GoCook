@@ -1,0 +1,30 @@
+# GoCook C++ 代码风格 — 定稿（2026-10-15 全库普查校准）
+#   - CI 与本机统一使用 clang-format 22.1.8（钉版，见 .github/workflows/lint.yml）
+#   - 校准依据：全库引用左贴 3061:450 占优（server 1837:22）；行尾 Attach「) {」≈1800 行
+#     对独立「{」≈487 行（含类/命名空间）——统一取 Attach
+#   - 中文注释不做自动重排（ReflowComments: false，防止按列宽切断句子）
+#   - include 顺序不自动排序（SortIncludes: Never，分组由人维护）
+BasedOnStyle: LLVM
+Language: Cpp
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+
+ReflowComments: false
+
+BreakBeforeBraces: Attach
+PackConstructorInitializers: Never
+
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+
+AlignAfterOpenBracket: Align
+PointerAlignment: Left
+SortIncludes: Never
+BinPackArguments: false
+BinPackParameters: false

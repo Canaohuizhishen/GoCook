@@ -11,8 +11,7 @@
 #include "viewmodels/AnnouncementViewModel.h"
 #include "viewmodels/ShoppingListViewModel.h"
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char* argv[]) {
     // 可选：虚拟键盘。默认注释掉，需要触屏输入法时再开。
     //qputenv("QT_IM_MODULE", QByteArray("qtvirtualkeyboard"));
 
@@ -26,8 +25,7 @@ int main(int argc, char *argv[])
 
     // 设置桌面入口文件路径，用于 D-Bus 门户集成（文件对话框、通知等）
     // portal 需要真实文件系统路径来读取 .desktop 文件获取 app ID
-    qputenv("QT_QPA_DESKTOP_ENTRY_PATH",
-            (QCoreApplication::applicationDirPath() + "/gocook.desktop").toLocal8Bit());
+    qputenv("QT_QPA_DESKTOP_ENTRY_PATH", (QCoreApplication::applicationDirPath() + "/gocook.desktop").toLocal8Bit());
 
     // QSettings 需要这些标识符来确定配置文件路径。
     // 例如主题模式持久化会依赖组织名/域名。
@@ -41,7 +39,7 @@ int main(int argc, char *argv[])
     //     生成 qmldir 的 singleton 条目（资源内 :/client/qmldir），"import client" 即解析。
 
     // 共享网络依赖：网络层唯一出口。生命周期需覆盖整个应用，挂到 app 对象树下自动释放。
-    HttpGoCookApi *httpApi = new HttpGoCookApi(&app);
+    HttpGoCookApi* httpApi = new HttpGoCookApi(&app);
 
     AuthViewModel authViewModel(httpApi);
     RecipeViewModel recipeVM(httpApi, &app);
@@ -53,8 +51,7 @@ int main(int argc, char *argv[])
     // 网络恢复 → 库存自动同步。
     // HttpGoCookApi 检测到“失联后首个真实响应”时发 networkRestored；
     // 库存 VM 收到后按需重拉：联网即同步，但只在数据可能过期时才真正请求。
-    QObject::connect(httpApi, &HttpGoCookApi::networkRestored,
-                     &inventoryVM, &InventoryViewModel::onNetworkRestored);
+    QObject::connect(httpApi, &HttpGoCookApi::networkRestored, &inventoryVM, &InventoryViewModel::onNetworkRestored);
 
     // 会话结束（登出 / 401 自动登出 / 注销）：各 VM 个人数据统一清理——单一收束点，
     // 新增个人域只在此加一行（替代 QML 手工逐个调用）
@@ -67,13 +64,14 @@ int main(int argc, char *argv[])
 
     // 登录成功 / 会话恢复：拉一次未读汇总，保证冷启动后铃铛角标与消息页卡片准确（游客静默跳过）
     QObject::connect(&authViewModel, &AuthViewModel::loggedInChanged, [&authViewModel, &notifyVM]() {
-        if (authViewModel.loggedIn())
-            notifyVM.refreshUnreadSummary();
+        if (authViewModel.loggedIn()) notifyVM.refreshUnreadSummary();
     });
 
     // 系统通知页完成「看过」后：清除系统红点（消息页卡片与"我的"页铃铛共用该标记）
-    QObject::connect(&announcementVM, &AnnouncementViewModel::announcementsSeen,
-                     &notifyVM, &NotificationViewModel::clearSystemNewFlag);
+    QObject::connect(&announcementVM,
+                     &AnnouncementViewModel::announcementsSeen,
+                     &notifyVM,
+                     &NotificationViewModel::clearSystemNewFlag);
 
     // 创建 QML 引擎，负责加载根 QML、创建 QML 对象树
     QQmlApplicationEngine engine;
@@ -93,13 +91,9 @@ int main(int argc, char *argv[])
     const QUrl url(QStringLiteral("qrc:/client/qml/Main.qml"));
 
     // QML 加载失败时记录日志。
-    QObject::connect(
-        &engine,
-        &QQmlApplicationEngine::objectCreationFailed,
-        &app,
-        [](const QUrl &url) {
-            qCritical("严重错误：QML 加载失败：%s", qPrintable(url.toString()));
-        });
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [](const QUrl& url) {
+        qCritical("严重错误：QML 加载失败：%s", qPrintable(url.toString()));
+    });
 
     // 根对象创建失败时直接非零退出，避免白屏挂着。
     // 用 Qt::QueuedConnection 让退出动作排队到事件循环中执行。
@@ -107,7 +101,7 @@ int main(int argc, char *argv[])
         &engine,
         &QQmlApplicationEngine::objectCreated,
         &app,
-        [url](QObject *obj, const QUrl &objUrl) {
+        [url](QObject* obj, const QUrl& objUrl) {
             if (!obj && url == objUrl) {
                 qCritical("严重错误：QML 对象创建失败（%s）", qPrintable(url.toString()));
                 QCoreApplication::exit(-1);

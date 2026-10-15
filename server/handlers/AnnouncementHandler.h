@@ -1,7 +1,7 @@
 #pragma once
 
 #include <httplib/httplib.h>
-#include <gocook/IServices.h>  // 依赖抽象 IAnnouncementService
+#include <gocook/IServices.h> // 依赖抽象 IAnnouncementService
 
 /**
  * @brief 系统公告处理器，负责处理公告相关的 HTTP 请求。
@@ -24,5 +24,5 @@ public:
     void getAnnouncements(const httplib::Request& req, httplib::Response& res);
 
 private:
-    gocook::services::IAnnouncementService& service_;  ///< 公告服务抽象引用
+    gocook::services::IAnnouncementService& service_; ///< 公告服务抽象引用
 };

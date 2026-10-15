@@ -37,13 +37,13 @@
 #include "MockRecipeRepository.h"
 #include "MockUserRepository.h"
 
-using ::testing::_;
-using ::testing::NiceMock;
-using ::testing::Return;
 using gocook::models::PagedInventory;
 using gocook::models::PagedRecommendedRecipes;
 using gocook::models::RecommendedRecipe;
 using gocook::models::UserPreferences;
+using ::testing::_;
+using ::testing::NiceMock;
+using ::testing::Return;
 
 namespace {
 
@@ -69,19 +69,16 @@ std::string mintToken(int userId) {
 class HandlerTestServer {
 public:
     explicit HandlerTestServer(RecipeHandler& handler) {
-        svr_.Get("/api/recipes/recommend",
-                 [&handler](const httplib::Request& req, httplib::Response& res) {
-                     handler.getRecommendedRecipes(req, res);
-                 });
+        svr_.Get("/api/recipes/recommend", [&handler](const httplib::Request& req, httplib::Response& res) {
+            handler.getRecommendedRecipes(req, res);
+        });
         port_ = svr_.bind_to_any_port("127.0.0.1");
-        if (port_ <= 0)
-            throw std::runtime_error("HandlerTestServer: bind_to_any_port failed");
+        if (port_ <= 0) throw std::runtime_error("HandlerTestServer: bind_to_any_port failed");
         thread_ = std::thread([this] { svr_.listen_after_bind(); });
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (!svr_.is_running() && std::chrono::steady_clock::now() < deadline)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if (!svr_.is_running())
-            throw std::runtime_error("HandlerTestServer: failed to start");
+        if (!svr_.is_running()) throw std::runtime_error("HandlerTestServer: failed to start");
     }
 
     ~HandlerTestServer() {
@@ -98,8 +95,7 @@ private:
 };
 
 /// 候选构造：风味/技法两两不同、复合分严格递减（同 test_recipe_service.cpp 的换批辅助思路）
-RecommendedRecipe makeRec(int id, const std::string& flavor, const std::string& method,
-                          double matchScore) {
+RecommendedRecipe makeRec(int id, const std::string& flavor, const std::string& method, double matchScore) {
     RecommendedRecipe r;
     r.id = id;
     r.name = "推荐菜" + std::to_string(id);
@@ -113,7 +109,7 @@ RecommendedRecipe makeRec(int id, const std::string& flavor, const std::string& 
     r.protein_g = 18;
     r.fat_g = 12;
     r.carbs_g = 30;
-    r.submitted_at = "2026-05-20T00:00:00";   // 早于 7 天窗口，新鲜度加分为 0（各菜一致）
+    r.submitted_at = "2026-05-20T00:00:00"; // 早于 7 天窗口，新鲜度加分为 0（各菜一致）
     r.description = "Test";
     r.prep_time_minutes = 10;
     r.cook_time_minutes = 20;
@@ -125,8 +121,7 @@ RecommendedRecipe makeRec(int id, const std::string& flavor, const std::string& 
 }
 
 PagedRecommendedRecipes makeCandidates(int count) {
-    static const char* kFlavors[] = {"清淡", "麻辣", "酸甜", "蒜香", "酸辣",
-                                     "酱香", "葱香", "鲜香", "椒香", "糟香"};
+    static const char* kFlavors[] = {"清淡", "麻辣", "酸甜", "蒜香", "酸辣", "酱香", "葱香", "鲜香", "椒香", "糟香"};
     static const char* kMethods[] = {"蒸", "炒", "炖", "煮", "拌", "烧", "煸", "炸", "烤", "焖"};
     PagedRecommendedRecipes r;
     for (int i = 0; i < count; ++i)
@@ -153,8 +148,7 @@ protected:
         userRepo_ = mockUser.get();
         invRepo_ = mockInv.get();
 
-        service_ = std::make_unique<RecipeServiceImpl>(
-            std::move(mockRecipe), std::move(mockUser), std::move(mockInv));
+        service_ = std::make_unique<RecipeServiceImpl>(std::move(mockRecipe), std::move(mockUser), std::move(mockInv));
         // 缺 ver 的测试令牌按 0 校验 → mock 返回版本 0（JWT 主动吊销的兼容路径）
         ON_CALL(*userRepo_, getTokenVersion(_)).WillByDefault(Return(std::optional<int>{0}));
         auth_ = std::make_unique<AuthMiddleware>(kTestSecret, *userRepo_);
@@ -166,14 +160,10 @@ protected:
 
     /// 常用桩：库存非空 + 空偏好/无健康档案 + 固定候选集（服务端按全库上限 300 取数）
     void stubDefaults(const PagedRecommendedRecipes& candidates) {
-        EXPECT_CALL(*invRepo_, findInventory(kUserId, 1, 1))
-            .WillRepeatedly(Return(makePagedInventory(1)));
-        EXPECT_CALL(*userRepo_, getPreferences(kUserId))
-            .WillRepeatedly(Return(UserPreferences{}));
-        EXPECT_CALL(*userRepo_, getHealthConditions(kUserId))
-            .WillRepeatedly(Return(std::vector<std::string>{}));
-        EXPECT_CALL(*recipeRepo_, findRecommendedRecipes(kUserId, 1, 300))
-            .WillRepeatedly(Return(candidates));
+        EXPECT_CALL(*invRepo_, findInventory(kUserId, 1, 1)).WillRepeatedly(Return(makePagedInventory(1)));
+        EXPECT_CALL(*userRepo_, getPreferences(kUserId)).WillRepeatedly(Return(UserPreferences{}));
+        EXPECT_CALL(*userRepo_, getHealthConditions(kUserId)).WillRepeatedly(Return(std::vector<std::string>{}));
+        EXPECT_CALL(*recipeRepo_, findRecommendedRecipes(kUserId, 1, 300)).WillRepeatedly(Return(candidates));
     }
 
     httplib::Headers authHeaders() const { return {{"Authorization", token_}}; }
@@ -231,19 +221,16 @@ TEST_F(RecipeRecommendHandlerTest, 大种子改变批次且同种子可复现) {
     const unsigned int kBigSeeds[] = {3000000000u, 3000000001u, 3000000002u};
     bool anyDifferent = false;
     for (unsigned int seed : kBigSeeds) {
-        const std::string url =
-            "/api/recipes/recommend?page=1&size=6&seed=" + std::to_string(seed);
+        const std::string url = "/api/recipes/recommend?page=1&size=6&seed=" + std::to_string(seed);
         auto res = cli.Get(url, authHeaders());
         ASSERT_TRUE(res) << "seed=" << seed;
         ASSERT_EQ(res->status, 200) << "seed=" << seed;
         if (res->body != baseline->body) anyDifferent = true;
     }
-    EXPECT_TRUE(anyDifferent)
-        << "全部大种子退化为首屏批次（seed 解析回归：可能又被 int 中转吞掉了）";
+    EXPECT_TRUE(anyDifferent) << "全部大种子退化为首屏批次（seed 解析回归：可能又被 int 中转吞掉了）";
 
     // 同一大种子两次请求必须逐位一致（可复现性穿过完整 HTTP 链）
-    const std::string url =
-        "/api/recipes/recommend?page=1&size=6&seed=" + std::to_string(kBigSeeds[0]);
+    const std::string url = "/api/recipes/recommend?page=1&size=6&seed=" + std::to_string(kBigSeeds[0]);
     auto first = cli.Get(url, authHeaders());
     auto again = cli.Get(url, authHeaders());
     ASSERT_TRUE(first);

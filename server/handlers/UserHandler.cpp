@@ -10,9 +10,9 @@
 using json = nlohmann::json;
 using namespace gocook::models;
 
-UserHandler::UserHandler(gocook::services::IUserService& service,
-                         AuthMiddleware& auth)
-    : service_(service), auth_(auth) {}
+UserHandler::UserHandler(gocook::services::IUserService& service, AuthMiddleware& auth)
+    : service_(service),
+      auth_(auth) {}
 
 void UserHandler::registerUser(const httplib::Request& req, httplib::Response& res) {
     try {
@@ -65,11 +65,8 @@ void UserHandler::loginUser(const httplib::Request& req, httplib::Response& res)
         auto loginResp = service_.login(request);
 
         res.status = 200;
-        res.body = json{
-            {"token", loginResp.token},
-            {"user_id", loginResp.user_id},
-            {"username", loginResp.username}
-        }.dump();
+        res.body =
+            json{{"token", loginResp.token}, {"user_id", loginResp.user_id}, {"username", loginResp.username}}.dump();
     } catch (const gocook::services::ServiceException& e) {
         setErrorResponse(res, 401, "用户名或密码错误");
     } catch (const std::exception& e) {
@@ -167,18 +164,17 @@ void UserHandler::uploadAvatar(const httplib::Request& req, httplib::Response& r
         std::string ext;
         const auto uploadError = ImageUploadRules::classifyUpload(content, contentType, ext);
         switch (uploadError) {
-            case ImageUploadRules::UploadError::UnsupportedType:
-            case ImageUploadRules::UploadError::TooLarge:
-            case ImageUploadRules::UploadError::ContentMismatch:
-                setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
-                return;
-            case ImageUploadRules::UploadError::None:
-                break;
+        case ImageUploadRules::UploadError::UnsupportedType:
+        case ImageUploadRules::UploadError::TooLarge:
+        case ImageUploadRules::UploadError::ContentMismatch:
+            setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
+            return;
+        case ImageUploadRules::UploadError::None:
+            break;
         }
 
         // 写临时文件（唯一命名规则见 ImageUploadRules.h）
-        auto tempPathOpt = ImageUploadRules::writeTempImageFile(
-            "avatar_" + std::to_string(info.userId), content, ext);
+        auto tempPathOpt = ImageUploadRules::writeTempImageFile("avatar_" + std::to_string(info.userId), content, ext);
         if (!tempPathOpt) {
             setErrorResponse(res, 500, "文件写入失败");
             return;
@@ -339,7 +335,8 @@ void UserHandler::getFavoriteGroups(const httplib::Request& req, httplib::Respon
     try {
         auto groups = service_.getFavoriteGroups(info.userId);
         json arr = json::array();
-        for (const auto& g : groups) arr.push_back(JsonSerializer::toJson(g));
+        for (const auto& g : groups)
+            arr.push_back(JsonSerializer::toJson(g));
         res.status = 200;
         res.body = arr.dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -474,9 +471,8 @@ void UserHandler::setNotificationsReadState(const httplib::Request& req, httplib
         json reqJson = json::parse(req.body);
         if (!reqJson.contains("type") || !reqJson.contains("last_seen_id"))
             throw gocook::services::ServiceException("请求体需包含 type 与 last_seen_id", 400);
-        service_.setNotificationsReadState(info.userId,
-                                           reqJson["type"].get<std::string>(),
-                                           reqJson["last_seen_id"].get<int>());
+        service_.setNotificationsReadState(
+            info.userId, reqJson["type"].get<std::string>(), reqJson["last_seen_id"].get<int>());
         res.status = 200;
         res.body = json{{"message", "已读水位已更新"}}.dump();
     } catch (const gocook::services::ServiceException& e) {
@@ -517,5 +513,3 @@ void UserHandler::deleteNotification(const httplib::Request& req, httplib::Respo
         handleStandardException(e, res);
     }
 }
-
-

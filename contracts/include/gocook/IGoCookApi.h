@@ -3,7 +3,7 @@
 #include <string>
 #include <functional>
 #include <optional>
-#include <nlohmann/json.hpp>      // 仅用于 filters 参数
+#include <nlohmann/json.hpp> // 仅用于 filters 参数
 #include <gocook/DataModels.h>
 
 // ======================== 回调类型定义 ========================
@@ -11,163 +11,126 @@
 using SuccessCallback = std::function<void(bool success, const std::string& error)>;
 
 // 登录专用回调
-using LoginCallback = std::function<void(bool success,
-                                         const gocook::models::LoginResponse& data,
-                                         const std::string& error)>;
+using LoginCallback =
+    std::function<void(bool success, const gocook::models::LoginResponse& data, const std::string& error)>;
 
 // 带整数 id 的回调（通常用于创建资源）
 using IntCallback = std::function<void(bool success, int id, const std::string& error)>;
 
 // 菜谱投稿专用回调
-using SubmitRecipeCallback = std::function<void(bool success,
-                                                const gocook::models::SubmitRecipeResponse& data,
-                                                const std::string& error)>;
+using SubmitRecipeCallback =
+    std::function<void(bool success, const gocook::models::SubmitRecipeResponse& data, const std::string& error)>;
 
 // 用户相关回调
-using UserProfileCallback = std::function<void(bool success,
-                                               const gocook::models::UserProfile& data,
-                                               const std::string& error)>;
+using UserProfileCallback =
+    std::function<void(bool success, const gocook::models::UserProfile& data, const std::string& error)>;
 
-using PreferencesCallback = std::function<void(bool success,
-                                               const gocook::models::UserPreferences& data,
-                                               const std::string& error)>;
+using PreferencesCallback =
+    std::function<void(bool success, const gocook::models::UserPreferences& data, const std::string& error)>;
 
-using HealthProfileCallback = std::function<void(bool success,
-                                                 const gocook::models::HealthProfileResponse& data,
-                                                 const std::string& error)>;
+using HealthProfileCallback =
+    std::function<void(bool success, const gocook::models::HealthProfileResponse& data, const std::string& error)>;
 
-using FavoritesCallback = std::function<void(bool success,
-                                             const gocook::models::PagedFavorites& data,
-                                             const std::string& error)>;
+using FavoritesCallback =
+    std::function<void(bool success, const gocook::models::PagedFavorites& data, const std::string& error)>;
 
-using AvatarUploadCallback = std::function<void(bool success,
-                                                const gocook::models::AvatarUploadResponse& data,
-                                                const std::string& error)>;
+using AvatarUploadCallback =
+    std::function<void(bool success, const gocook::models::AvatarUploadResponse& data, const std::string& error)>;
 
-using RecipeImageCallback = std::function<void(bool success,
-                                               const std::string& imageUrl,
-                                               const std::string& error)>;
+using RecipeImageCallback = std::function<void(bool success, const std::string& imageUrl, const std::string& error)>;
 
 // 收藏分组
-using FavoriteGroupsCallback = std::function<void(bool success,
-                                                  const std::vector<gocook::models::FavoriteGroup>& data,
-                                                  const std::string& error)>;
+using FavoriteGroupsCallback =
+    std::function<void(bool success, const std::vector<gocook::models::FavoriteGroup>& data, const std::string& error)>;
 
-using FavoriteGroupCallback = std::function<void(bool success,
-                                                 const gocook::models::FavoriteGroup& data,
-                                                 const std::string& error)>;
+using FavoriteGroupCallback =
+    std::function<void(bool success, const gocook::models::FavoriteGroup& data, const std::string& error)>;
 
 // 通知
-using PagedNotificationsCallback = std::function<void(bool success,
-                                                      const gocook::models::PagedNotifications& data,
-                                                      const std::string& error)>;
+using PagedNotificationsCallback =
+    std::function<void(bool success, const gocook::models::PagedNotifications& data, const std::string& error)>;
 
-using UnreadSummaryCallback = std::function<void(bool success,
-                                                 const gocook::models::NotificationUnreadSummary& data,
-                                                 const std::string& error)>;
+using UnreadSummaryCallback =
+    std::function<void(bool success, const gocook::models::NotificationUnreadSummary& data, const std::string& error)>;
 
 // 我的评论
-using PagedUserRatingsCallback = std::function<void(bool success,
-                                                    const gocook::models::PagedUserRatings& data,
-                                                    const std::string& error)>;
+using PagedUserRatingsCallback =
+    std::function<void(bool success, const gocook::models::PagedUserRatings& data, const std::string& error)>;
 
 // 菜谱相关回调
-using PagedRecipesCallback = std::function<void(bool success,
-                                                const gocook::models::PagedRecipes& data,
-                                                const std::string& error)>;
+using PagedRecipesCallback =
+    std::function<void(bool success, const gocook::models::PagedRecipes& data, const std::string& error)>;
 
-using PagedRecommendedRecipesCallback = std::function<void(bool success,
-                                                           const gocook::models::PagedRecommendedRecipes& data,
-                                                           const std::string& error)>;
+using PagedRecommendedRecipesCallback =
+    std::function<void(bool success, const gocook::models::PagedRecommendedRecipes& data, const std::string& error)>;
 
-using RecipeDetailCallback = std::function<void(bool success,
-                                                const gocook::models::RecipeDetail& data,
-                                                const std::string& error)>;
+using RecipeDetailCallback =
+    std::function<void(bool success, const gocook::models::RecipeDetail& data, const std::string& error)>;
 
-using RecipeVideosCallback = std::function<void(bool success,
-                                                const std::vector<gocook::models::RecipeVideo>& data,
-                                                const std::string& error)>;
+using RecipeVideosCallback =
+    std::function<void(bool success, const std::vector<gocook::models::RecipeVideo>& data, const std::string& error)>;
 
-using PagedRatingsCallback = std::function<void(bool success,
-                                                const gocook::models::PagedRatings& data,
-                                                const std::string& error)>;
+using PagedRatingsCallback =
+    std::function<void(bool success, const gocook::models::PagedRatings& data, const std::string& error)>;
 
-using MyRecipeRatingCallback = std::function<void(bool success,
-                                                   const std::optional<gocook::models::RecipeRating>& data,
-                                                   const std::string& error)>;
+using MyRecipeRatingCallback = std::function<void(
+    bool success, const std::optional<gocook::models::RecipeRating>& data, const std::string& error)>;
 
-using PagedMyRecipesCallback = std::function<void(bool success,
-                                                  const gocook::models::PagedMyRecipes& data,
-                                                  const std::string& error)>;
+using PagedMyRecipesCallback =
+    std::function<void(bool success, const gocook::models::PagedMyRecipes& data, const std::string& error)>;
 
-using NutritionReportCallback = std::function<void(bool success,
-                                                   const gocook::models::NutritionReport& data,
-                                                   const std::string& error)>;
+using NutritionReportCallback =
+    std::function<void(bool success, const gocook::models::NutritionReport& data, const std::string& error)>;
 
 // 库存管理
-using PagedInventoryCallback = std::function<void(bool success,
-                                                  const gocook::models::PagedInventory& data,
-                                                  const std::string& error)>;
+using PagedInventoryCallback =
+    std::function<void(bool success, const gocook::models::PagedInventory& data, const std::string& error)>;
 
 // 购物清单
-using ShoppingListCallback = std::function<void(bool success,
-                                                const gocook::models::ShoppingList& data,
-                                                const std::string& error)>;
+using ShoppingListCallback =
+    std::function<void(bool success, const gocook::models::ShoppingList& data, const std::string& error)>;
 
-using ShoppingListsCallback = std::function<void(bool success,
-                                                 const std::vector<gocook::models::ShoppingListSummary>& data,
-                                                 const std::string& error)>;
+using ShoppingListsCallback = std::function<void(
+    bool success, const std::vector<gocook::models::ShoppingListSummary>& data, const std::string& error)>;
 
-using BatchShoppingCallback = std::function<void(bool success,
-                                                 const gocook::models::BatchShoppingResponse& data,
-                                                 const std::string& error)>;
+using BatchShoppingCallback =
+    std::function<void(bool success, const gocook::models::BatchShoppingResponse& data, const std::string& error)>;
 
 // 膳食计划
-using MealPlanCalendarCallback = std::function<void(bool success,
-                                                    const gocook::models::PagedCalendarDays& data,
-                                                    const std::string& error)>;
+using MealPlanCalendarCallback =
+    std::function<void(bool success, const gocook::models::PagedCalendarDays& data, const std::string& error)>;
 
-using NutritionTrendCallback = std::function<void(bool success,
-                                                  const gocook::models::NutritionTrendResponse& data,
-                                                  const std::string& error)>;
+using NutritionTrendCallback =
+    std::function<void(bool success, const gocook::models::NutritionTrendResponse& data, const std::string& error)>;
 
-using MealPlansCallback = std::function<void(bool success,
-                                             const gocook::models::MealPlansResponse& data,
-                                             const std::string& error)>;
+using MealPlansCallback =
+    std::function<void(bool success, const gocook::models::MealPlansResponse& data, const std::string& error)>;
 
 // 公告
-using PagedAnnouncementsCallback = std::function<void(bool success,
-                                                      const gocook::models::PagedAnnouncements& data,
-                                                      const std::string& error)>;
+using PagedAnnouncementsCallback =
+    std::function<void(bool success, const gocook::models::PagedAnnouncements& data, const std::string& error)>;
 
 // 管理员相关回调
-using PagedUsersCallback = std::function<void(bool success,
-                                              const gocook::models::PagedUsers& data,
-                                              const std::string& error)>;
+using PagedUsersCallback =
+    std::function<void(bool success, const gocook::models::PagedUsers& data, const std::string& error)>;
 
-using PagedPendingRecipesCallback = std::function<void(bool success,
-                                                       const gocook::models::PagedPendingRecipes& data,
-                                                       const std::string& error)>;
+using PagedPendingRecipesCallback =
+    std::function<void(bool success, const gocook::models::PagedPendingRecipes& data, const std::string& error)>;
 
-using BatchReviewCallback = std::function<void(bool success,
-                                               const gocook::models::BatchReviewResponse& data,
-                                               const std::string& error)>;
+using BatchReviewCallback =
+    std::function<void(bool success, const gocook::models::BatchReviewResponse& data, const std::string& error)>;
 
-using NotificationCallback = std::function<void(bool success,
-                                                const gocook::models::NotificationResponse& data,
-                                                const std::string& error)>;
+using NotificationCallback =
+    std::function<void(bool success, const gocook::models::NotificationResponse& data, const std::string& error)>;
 
-using StatisticsCallback = std::function<void(bool success,
-                                              const gocook::models::StatisticsData& data,
-                                              const std::string& error)>;
+using StatisticsCallback =
+    std::function<void(bool success, const gocook::models::StatisticsData& data, const std::string& error)>;
 
-using PagedAdminLogsCallback = std::function<void(bool success,
-                                                  const gocook::models::PagedAdminLogs& data,
-                                                  const std::string& error)>;
+using PagedAdminLogsCallback =
+    std::function<void(bool success, const gocook::models::PagedAdminLogs& data, const std::string& error)>;
 
-using PagedActivityLogsCallback = std::function<void(bool success,
-                                                     const gocook::models::PagedActivityLogs& data,
-                                                     const std::string& error)>;
+using PagedActivityLogsCallback =
+    std::function<void(bool success, const gocook::models::PagedActivityLogs& data, const std::string& error)>;
 
 /**
  * @brief 客户端 API 抽象接口（服务端 REST API 的客户端门面），
@@ -189,8 +152,7 @@ public:
      * @param request 注册请求，包含用户名、密码和邮箱
      * @param callback 回调 (success, error)
      */
-    virtual void registerUser(const gocook::models::RegisterRequest& request,
-                              SuccessCallback callback) = 0;
+    virtual void registerUser(const gocook::models::RegisterRequest& request, SuccessCallback callback) = 0;
 
     /**
      * @brief 完成注册（两段式注册第二步：邮箱验证码核验）
@@ -198,17 +160,14 @@ public:
      * @param token 邮件中的 6 位数字验证码
      * @param callback 回调 (success, error)
      */
-    virtual void verifyRegistration(const std::string& email,
-                                    const std::string& token,
-                                    SuccessCallback callback) = 0;
+    virtual void verifyRegistration(const std::string& email, const std::string& token, SuccessCallback callback) = 0;
 
     /**
      * @brief 用户登录
      * @param request 登录请求，包含用户名和密码
      * @param callback 回调 (success, LoginResponse, error)
      */
-    virtual void login(const gocook::models::LoginRequest& request,
-                       LoginCallback callback) = 0;
+    virtual void login(const gocook::models::LoginRequest& request, LoginCallback callback) = 0;
 
     // ---------- 忘记密码（公开接口） ----------
     /**
@@ -217,9 +176,7 @@ public:
      * @param email 注册邮箱
      * @param callback 回调 (success, error)；不匹配时返回 400「用户名或邮箱不正确」且不发信
      */
-    virtual void forgotPassword(const std::string& username,
-                                const std::string& email,
-                                SuccessCallback callback) = 0;
+    virtual void forgotPassword(const std::string& username, const std::string& email, SuccessCallback callback) = 0;
 
     /**
      * @brief 重置密码
@@ -227,9 +184,7 @@ public:
      * @param newPassword 新密码
      * @param callback 回调 (success, error)
      */
-    virtual void resetPassword(const std::string& token,
-                               const std::string& newPassword,
-                               SuccessCallback callback) = 0;
+    virtual void resetPassword(const std::string& token, const std::string& newPassword, SuccessCallback callback) = 0;
 
     // ---------- 用户相关（需认证） ----------
     /**
@@ -243,8 +198,7 @@ public:
      * @param profile 用户资料，可部分更新
      * @param callback 回调 (success, updatedProfile, error) 返回最新用户信息
      */
-    virtual void updateProfile(const gocook::models::UpdateProfileRequest& profile,
-                               UserProfileCallback callback) = 0;
+    virtual void updateProfile(const gocook::models::UpdateProfileRequest& profile, UserProfileCallback callback) = 0;
 
     /**
      * @brief 获取当前用户的饮食偏好
@@ -257,8 +211,7 @@ public:
      * @param prefs 偏好数据
      * @param callback 回调 (success, error)
      */
-    virtual void updatePreferences(const gocook::models::UserPreferences& prefs,
-                                   SuccessCallback callback) = 0;
+    virtual void updatePreferences(const gocook::models::UserPreferences& prefs, SuccessCallback callback) = 0;
 
     /**
      * @brief 录入/更新健康指标
@@ -278,16 +231,14 @@ public:
      * @param filePath 本地图片文件路径
      * @param callback 回调 (success, AvatarUploadResponse, error)
      */
-    virtual void uploadAvatar(const std::string& filePath,
-                              AvatarUploadCallback callback) = 0;
+    virtual void uploadAvatar(const std::string& filePath, AvatarUploadCallback callback) = 0;
 
     /**
      * @brief 放弃未保存的暂存头像（幂等删除服务端暂存文件）
      * @param avatarUrl 此前上传返回的暂存 avatar_url
      * @param callback 回调 (success, error)
      */
-    virtual void discardPendingAvatar(const std::string& avatarUrl,
-                                      SuccessCallback callback) = 0;
+    virtual void discardPendingAvatar(const std::string& avatarUrl, SuccessCallback callback) = 0;
 
     /**
      * @brief 上传菜谱封面图片
@@ -295,9 +246,7 @@ public:
      * @param filePath 本地图片文件路径
      * @param callback 回调 (success, imageUrl, error)
      */
-    virtual void uploadRecipeImage(int recipeId,
-                                   const std::string& filePath,
-                                   RecipeImageCallback callback) = 0;
+    virtual void uploadRecipeImage(int recipeId, const std::string& filePath, RecipeImageCallback callback) = 0;
 
     /**
      * @brief 上传菜谱步骤图片
@@ -306,9 +255,8 @@ public:
      * @param filePath 本地图片文件路径
      * @param callback 回调 (success, error)
      */
-    virtual void uploadStepImage(int recipeId, int stepIndex,
-                                 const std::string& filePath,
-                                 RecipeImageCallback callback) = 0;
+    virtual void
+    uploadStepImage(int recipeId, int stepIndex, const std::string& filePath, RecipeImageCallback callback) = 0;
 
     /**
      * @brief 删除待审核菜谱
@@ -321,9 +269,8 @@ public:
      * @param newPassword 新密码
      * @param callback 回调 (success, error)
      */
-    virtual void changePassword(const std::string& currentPassword,
-                                const std::string& newPassword,
-                                SuccessCallback callback) = 0;
+    virtual void
+    changePassword(const std::string& currentPassword, const std::string& newPassword, SuccessCallback callback) = 0;
 
     /**
      * @brief 注销账户
@@ -338,9 +285,7 @@ public:
      * @param group 可选分组名
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getFavorites(int page, int size,
-                              const std::string& group,
-                              FavoritesCallback callback) = 0;
+    virtual void getFavorites(int page, int size, const std::string& group, FavoritesCallback callback) = 0;
 
     // ---------- 收藏分组管理（需认证） ----------
     /**
@@ -363,17 +308,15 @@ public:
      * @param request 新名称
      * @param callback 回调 (success, error)
      */
-    virtual void updateFavoriteGroup(int groupId,
-                                     const gocook::models::UpdateGroupRequest& request,
-                                     SuccessCallback callback) = 0;
+    virtual void
+    updateFavoriteGroup(int groupId, const gocook::models::UpdateGroupRequest& request, SuccessCallback callback) = 0;
 
     /**
      * @brief 删除收藏分组
      * @param groupId 分组ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteFavoriteGroup(int groupId,
-                                     SuccessCallback callback) = 0;
+    virtual void deleteFavoriteGroup(int groupId, SuccessCallback callback) = 0;
 
     /**
      * @brief 批量更新收藏项属性（分组、可见性；单条更新 = 单元素列表）
@@ -399,9 +342,7 @@ public:
      * @param type 可选通知类型：`review`/`interaction`（v2.23 枚举收口），空串表示不过滤
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getNotifications(int page, int size,
-                                  const std::string& type,
-                                  PagedNotificationsCallback callback) = 0;
+    virtual void getNotifications(int page, int size, const std::string& type, PagedNotificationsCallback callback) = 0;
 
     /**
      * @brief 获取未读汇总（消息中心角标：各分类未读数 + 有无新公告）
@@ -415,24 +356,21 @@ public:
      * @param lastSeenId 客户端看到的当前最大通知 id
      * @param callback 回调 (success, error)
      */
-    virtual void setNotificationsReadState(const std::string& type, int lastSeenId,
-                                           SuccessCallback callback) = 0;
+    virtual void setNotificationsReadState(const std::string& type, int lastSeenId, SuccessCallback callback) = 0;
 
     /**
      * @brief 上报公告已读水位（进入系统通知页即已读；服务端幂等合并）
      * @param lastSeenId 客户端看到的当前最大公告 id
      * @param callback 回调 (success, error)
      */
-    virtual void setAnnouncementsReadState(int lastSeenId,
-                                           SuccessCallback callback) = 0;
+    virtual void setAnnouncementsReadState(int lastSeenId, SuccessCallback callback) = 0;
 
     /**
      * @brief 删除通知
      * @param notificationId 通知ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteNotification(int notificationId,
-                                    SuccessCallback callback) = 0;
+    virtual void deleteNotification(int notificationId, SuccessCallback callback) = 0;
 
     // ---------- 菜谱相关 ----------
     /**
@@ -442,9 +380,7 @@ public:
      * @param filters 可选筛选条件，格式为 JSON 对象
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getPublicRecipes(int page, int size,
-                                  const nlohmann::json& filters,
-                                  PagedRecipesCallback callback) = 0;
+    virtual void getPublicRecipes(int page, int size, const nlohmann::json& filters, PagedRecipesCallback callback) = 0;
 
     /**
      * @brief 智能推荐菜谱（需认证，根据用户偏好和库存）
@@ -455,8 +391,8 @@ public:
      *             候选范围随库规模增长；同 seed 同数据可复现）；0 = 确定性首屏
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getRecommendedRecipes(int page, int size, unsigned int seed,
-                                       PagedRecommendedRecipesCallback callback) = 0;
+    virtual void
+    getRecommendedRecipes(int page, int size, unsigned int seed, PagedRecommendedRecipesCallback callback) = 0;
 
     /**
      * @brief 关键词搜索菜谱（可选认证）
@@ -467,7 +403,8 @@ public:
      * @param callback 回调 (success, pagedResult, error)
      */
     virtual void searchRecipes(const std::string& keyword,
-                               int page, int size,
+                               int page,
+                               int size,
                                const nlohmann::json& filters,
                                PagedRecipesCallback callback) = 0;
 
@@ -476,16 +413,14 @@ public:
      * @param recipeId 菜谱ID
      * @param callback 回调 (success, detail, error)
      */
-    virtual void getRecipeDetail(int recipeId,
-                                 RecipeDetailCallback callback) = 0;
+    virtual void getRecipeDetail(int recipeId, RecipeDetailCallback callback) = 0;
 
     /**
      * @brief 获取菜谱关联视频列表
      * @param recipeId 菜谱ID
      * @param callback 回调 (success, videos, error)
      */
-    virtual void getRecipeVideos(int recipeId,
-                                 RecipeVideosCallback callback) = 0;
+    virtual void getRecipeVideos(int recipeId, RecipeVideosCallback callback) = 0;
 
     /**
      * @brief 获取菜谱的评分与评论列表（分页）
@@ -494,24 +429,21 @@ public:
      * @param size 每页数量
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getRecipeRatings(int recipeId, int page, int size,
-                                  PagedRatingsCallback callback) = 0;
+    virtual void getRecipeRatings(int recipeId, int page, int size, PagedRatingsCallback callback) = 0;
 
     /**
      * @brief 获取当前用户对某个菜谱的评分（需认证）
      * @param recipeId 菜谱ID
      * @param callback 回调 (success, optionalRating, error)
      */
-    virtual void getMyRecipeRating(int recipeId,
-                                   MyRecipeRatingCallback callback) = 0;
+    virtual void getMyRecipeRating(int recipeId, MyRecipeRatingCallback callback) = 0;
 
     /**
      * @brief 投稿新菜谱（需认证）
      * @param recipeData 菜谱数据
      * @param callback 回调 (success, SubmitRecipeResponse, error)
      */
-    virtual void submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData,
-                              SubmitRecipeCallback callback) = 0;
+    virtual void submitRecipe(const gocook::models::SubmitRecipeRequest& recipeData, SubmitRecipeCallback callback) = 0;
 
     /**
      * @brief 获取当前用户的投稿列表（分页，需认证）
@@ -520,9 +452,8 @@ public:
      * @param status 可选，按状态筛选，传空字符串表示返回全部
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getMySubmittedRecipes(int page, int size,
-                                       const std::string& status,
-                                       PagedMyRecipesCallback callback) = 0;
+    virtual void
+    getMySubmittedRecipes(int page, int size, const std::string& status, PagedMyRecipesCallback callback) = 0;
 
     /**
      * @brief 编辑未审核的菜谱（需认证）
@@ -530,9 +461,8 @@ public:
      * @param updates 更新的字段
      * @param callback 回调 (success, error)
      */
-    virtual void editRecipe(int recipeId,
-                            const gocook::models::EditRecipeRequest& updates,
-                            SuccessCallback callback) = 0;
+    virtual void
+    editRecipe(int recipeId, const gocook::models::EditRecipeRequest& updates, SuccessCallback callback) = 0;
 
     /**
      * @brief 切换菜谱收藏状态（需认证）
@@ -552,9 +482,8 @@ public:
      * @param request 评分与评论请求体
      * @param callback 回调 (success, error)
      */
-    virtual void rateRecipe(int recipeId,
-                            const gocook::models::RateRecipeRequest& request,
-                            SuccessCallback callback) = 0;
+    virtual void
+    rateRecipe(int recipeId, const gocook::models::RateRecipeRequest& request, SuccessCallback callback) = 0;
 
     /**
      * @brief 修改评论（需认证）
@@ -563,7 +492,8 @@ public:
      * @param request 修改内容
      * @param callback 回调 (success, error)
      */
-    virtual void updateRating(int recipeId, int ratingId,
+    virtual void updateRating(int recipeId,
+                              int ratingId,
                               const gocook::models::RateRecipeRequest& request,
                               SuccessCallback callback) = 0;
 
@@ -573,8 +503,7 @@ public:
      * @param ratingId 评论ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteRating(int recipeId, int ratingId,
-                              SuccessCallback callback) = 0;
+    virtual void deleteRating(int recipeId, int ratingId, SuccessCallback callback) = 0;
 
     /**
      * @brief 获取当前用户的所有评论列表（分页）
@@ -582,16 +511,14 @@ public:
      * @param size 每页数量
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getMyRatings(int page, int size,
-                              PagedUserRatingsCallback callback) = 0;
+    virtual void getMyRatings(int page, int size, PagedUserRatingsCallback callback) = 0;
 
     /**
      * @brief 获取独立营养报告
      * @param recipeId 菜谱ID
      * @param callback 回调 (success, NutritionReport, error)
      */
-    virtual void getRecipeNutrition(int recipeId,
-                                    NutritionReportCallback callback) = 0;
+    virtual void getRecipeNutrition(int recipeId, NutritionReportCallback callback) = 0;
 
     // ---------- 库存管理（需认证） ----------
     /**
@@ -601,17 +528,14 @@ public:
      * @param keyword 食材名模糊过滤词（v2.14 库存页过滤框；空串 = 不过滤）
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getInventory(int page, int size,
-                              const std::string& keyword,
-                              PagedInventoryCallback callback) = 0;
+    virtual void getInventory(int page, int size, const std::string& keyword, PagedInventoryCallback callback) = 0;
 
     /**
      * @brief 添加库存项（需认证；同名同单位自动累加，不同单位新增行）
      * @param item 库存项
      * @param callback 回调 (success, id, error) 返回库存项 ID
      */
-    virtual void upsertInventory(const gocook::models::UpsertInventoryRequest& item,
-                                 IntCallback callback) = 0;
+    virtual void upsertInventory(const gocook::models::UpsertInventoryRequest& item, IntCallback callback) = 0;
 
     /**
      * @brief 编辑库存项（需认证；PUT /api/inventory/:id，按 id 整行替换）
@@ -619,17 +543,15 @@ public:
      * @param item 替换后的库存项数据
      * @param callback 回调 (success, error)
      */
-    virtual void updateInventoryItem(int itemId,
-                                     const gocook::models::UpsertInventoryRequest& item,
-                                     SuccessCallback callback) = 0;
+    virtual void
+    updateInventoryItem(int itemId, const gocook::models::UpsertInventoryRequest& item, SuccessCallback callback) = 0;
 
     /**
      * @brief 删除库存项（需认证）
      * @param itemId 库存项ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteInventoryItem(int itemId,
-                                     SuccessCallback callback) = 0;
+    virtual void deleteInventoryItem(int itemId, SuccessCallback callback) = 0;
 
     // ---------- 购物清单（多清单模型，需认证） ----------
     /**
@@ -651,16 +573,14 @@ public:
      * @param listId 清单ID
      * @param callback 回调 (success, ShoppingList, error)
      */
-    virtual void getShoppingListDetail(int listId,
-                                       ShoppingListCallback callback) = 0;
+    virtual void getShoppingListDetail(int listId, ShoppingListCallback callback) = 0;
 
     /**
      * @brief 删除购物清单
      * @param listId 清单ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteShoppingList(int listId,
-                                    SuccessCallback callback) = 0;
+    virtual void deleteShoppingList(int listId, SuccessCallback callback) = 0;
 
     /**
      * @brief 更新购物清单项状态
@@ -669,7 +589,8 @@ public:
      * @param request 更新请求（checked）
      * @param callback 回调 (success, error)
      */
-    virtual void updateShoppingListItem(int listId, int itemId,
+    virtual void updateShoppingListItem(int listId,
+                                        int itemId,
                                         const gocook::models::UpdateShoppingItemRequest& request,
                                         SuccessCallback callback) = 0;
 
@@ -680,8 +601,7 @@ public:
      * @param callback 回调 (success, error)
      *                 已勾选条目的库存回退由服务端在同一事务内完成（删除 = 取消勾选 + 删行）
      */
-    virtual void deleteShoppingListItem(int listId, int itemId,
-                                        SuccessCallback callback) = 0;
+    virtual void deleteShoppingListItem(int listId, int itemId, SuccessCallback callback) = 0;
 
     /**
      * @brief 批量添加购物清单项
@@ -711,8 +631,7 @@ public:
      * @param planData 计划数据
      * @param callback 回调 (success, planId, error)
      */
-    virtual void createMealPlan(const gocook::models::MealPlanRequest& planData,
-                                IntCallback callback) = 0;
+    virtual void createMealPlan(const gocook::models::MealPlanRequest& planData, IntCallback callback) = 0;
 
     /**
      * @brief 获取指定日期范围的膳食计划（需认证）
@@ -722,10 +641,8 @@ public:
      * @param size 每页数量
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getMealPlans(const std::string& startDate,
-                              const std::string& endDate,
-                              int page, int size,
-                              MealPlansCallback callback) = 0;
+    virtual void getMealPlans(
+        const std::string& startDate, const std::string& endDate, int page, int size, MealPlansCallback callback) = 0;
 
     /**
      * @brief 获取膳食计划日历视图详情
@@ -737,7 +654,8 @@ public:
      */
     virtual void getMealPlanDetail(const std::string& startDate,
                                    const std::string& endDate,
-                                   int page, int size,
+                                   int page,
+                                   int size,
                                    MealPlanCalendarCallback callback) = 0;
 
     /**
@@ -746,17 +664,15 @@ public:
      * @param updates 可更新字段
      * @param callback 回调 (success, error)
      */
-    virtual void updateMealPlan(int planId,
-                                const gocook::models::MealPlanRequest& updates,
-                                SuccessCallback callback) = 0;
+    virtual void
+    updateMealPlan(int planId, const gocook::models::MealPlanRequest& updates, SuccessCallback callback) = 0;
 
     /**
      * @brief 删除膳食计划项（需认证）
      * @param planId 计划项ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteMealPlan(int planId,
-                                SuccessCallback callback) = 0;
+    virtual void deleteMealPlan(int planId, SuccessCallback callback) = 0;
 
     /**
      * @brief 获取营养摄入趋势
@@ -764,9 +680,8 @@ public:
      * @param endDate 结束日期
      * @param callback 回调 (success, trendData, error)
      */
-    virtual void getNutritionTrend(const std::string& startDate,
-                                   const std::string& endDate,
-                                   NutritionTrendCallback callback) = 0;
+    virtual void
+    getNutritionTrend(const std::string& startDate, const std::string& endDate, NutritionTrendCallback callback) = 0;
 
     // ---------- 公告（公开） ----------
     /**
@@ -775,8 +690,7 @@ public:
      * @param size 每页数量
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getAnnouncements(int page, int size,
-                                  PagedAnnouncementsCallback callback) = 0;
+    virtual void getAnnouncements(int page, int size, PagedAnnouncementsCallback callback) = 0;
 
     // ---------- 管理员功能（需管理员权限） ----------
     /**
@@ -786,17 +700,14 @@ public:
      * @param filters 可选筛选条件
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getUsers(int page, int size,
-                          const nlohmann::json& filters,
-                          PagedUsersCallback callback) = 0;
+    virtual void getUsers(int page, int size, const nlohmann::json& filters, PagedUsersCallback callback) = 0;
 
     /**
      * @brief 创建用户账户（管理员）
      * @param userData 新用户数据
      * @param callback 回调 (success, error)
      */
-    virtual void createUser(const gocook::models::CreateUserRequest& userData,
-                            SuccessCallback callback) = 0;
+    virtual void createUser(const gocook::models::CreateUserRequest& userData, SuccessCallback callback) = 0;
 
     /**
      * @brief 修改用户信息（管理员）
@@ -804,9 +715,7 @@ public:
      * @param updates 可更新字段
      * @param callback 回调 (success, error)
      */
-    virtual void updateUser(int userId,
-                            const gocook::models::UpdateUserRequest& updates,
-                            SuccessCallback callback) = 0;
+    virtual void updateUser(int userId, const gocook::models::UpdateUserRequest& updates, SuccessCallback callback) = 0;
 
     /**
      * @brief 冻结/解封用户（管理员）
@@ -814,17 +723,15 @@ public:
      * @param request 状态设置请求
      * @param callback 回调 (success, error)
      */
-    virtual void setUserStatus(int userId,
-                               const gocook::models::SetUserStatusRequest& request,
-                               SuccessCallback callback) = 0;
+    virtual void
+    setUserStatus(int userId, const gocook::models::SetUserStatusRequest& request, SuccessCallback callback) = 0;
 
     /**
      * @brief 删除用户（管理员）
      * @param userId 用户ID
      * @param callback 回调 (success, error)
      */
-    virtual void deleteUser(int userId,
-                            SuccessCallback callback) = 0;
+    virtual void deleteUser(int userId, SuccessCallback callback) = 0;
 
     /**
      * @brief 获取待审核菜谱列表（管理员）
@@ -832,16 +739,14 @@ public:
      * @param size 每页数量
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getPendingRecipes(int page, int size,
-                                   PagedPendingRecipesCallback callback) = 0;
+    virtual void getPendingRecipes(int page, int size, PagedPendingRecipesCallback callback) = 0;
 
     /**
      * @brief 审核通过菜谱（管理员）
      * @param recipeId 菜谱ID
      * @param callback 回调 (success, error)
      */
-    virtual void approveRecipe(int recipeId,
-                               SuccessCallback callback) = 0;
+    virtual void approveRecipe(int recipeId, SuccessCallback callback) = 0;
 
     /**
      * @brief 审核拒绝菜谱（管理员）
@@ -849,9 +754,8 @@ public:
      * @param request 拒绝请求，包含拒绝原因
      * @param callback 回调 (success, error)
      */
-    virtual void rejectRecipe(int recipeId,
-                              const gocook::models::RejectRecipeRequest& request,
-                              SuccessCallback callback) = 0;
+    virtual void
+    rejectRecipe(int recipeId, const gocook::models::RejectRecipeRequest& request, SuccessCallback callback) = 0;
 
     /**
      * @brief 批量审核菜谱（管理员）
@@ -866,8 +770,7 @@ public:
      * @param request 公告请求体
      * @param callback 回调 (success, error)
      */
-    virtual void publishAnnouncement(const gocook::models::AnnouncementRequest& request,
-                                     SuccessCallback callback) = 0;
+    virtual void publishAnnouncement(const gocook::models::AnnouncementRequest& request, SuccessCallback callback) = 0;
 
     /**
      * @brief 发送系统通知（管理员）
@@ -891,10 +794,8 @@ public:
      * @param userId 可选操作者ID筛选，传0表示不过滤
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getAdminLogs(int page, int size,
-                              const std::string& type,
-                              int userId,
-                              PagedAdminLogsCallback callback) = 0;
+    virtual void
+    getAdminLogs(int page, int size, const std::string& type, int userId, PagedAdminLogsCallback callback) = 0;
 
     /**
      * @brief 查询全局用户行为日志（管理员）
@@ -904,10 +805,8 @@ public:
      * @param action 可选行为类型筛选，传空字符串表示不过滤
      * @param callback 回调 (success, pagedResult, error)
      */
-    virtual void getActivityLogs(int page, int size,
-                                 int userId,
-                                 const std::string& action,
-                                 PagedActivityLogsCallback callback) = 0;
+    virtual void
+    getActivityLogs(int page, int size, int userId, const std::string& action, PagedActivityLogsCallback callback) = 0;
 
     // ---------- 测试辅助（调试用） ----------
     /**
@@ -930,5 +829,4 @@ public:
      * @brief 设置 401 未授权回调（由前端 ViewModel 注入）
      */
     virtual void setUnauthorizedHandler(std::function<void()> handler) = 0;
-
 };

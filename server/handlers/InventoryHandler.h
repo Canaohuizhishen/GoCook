@@ -1,14 +1,13 @@
 #pragma once
 
 #include <httplib/httplib.h>
-#include <gocook/IServices.h>          // 依赖抽象 IInventoryService
+#include <gocook/IServices.h> // 依赖抽象 IInventoryService
 #include <nlohmann/json.hpp>
 #include "../middleware/auth_middleware.h"
 
 class InventoryHandler {
 public:
-    explicit InventoryHandler(gocook::services::IInventoryService& service,
-                              AuthMiddleware& auth);
+    explicit InventoryHandler(gocook::services::IInventoryService& service, AuthMiddleware& auth);
 
     // 获取当前用户的库存（需要 token 验证，分页）
     void getInventory(const httplib::Request& req, httplib::Response& res);
@@ -38,6 +37,6 @@ public:
     void exportShoppingList(const httplib::Request& req, httplib::Response& res);
 
 private:
-    gocook::services::IInventoryService& service_;   // 业务抽象
-    AuthMiddleware& auth_;                           // 认证中间件
+    gocook::services::IInventoryService& service_; // 业务抽象
+    AuthMiddleware& auth_;                         // 认证中间件
 };

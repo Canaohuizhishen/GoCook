@@ -28,11 +28,11 @@ namespace {
 
 // 构造真实图片魔数前缀的测试内容
 const std::string kJpegBytes = "\xFF\xD8\xFF\xE0\x00\x10JFIF";
-const std::string kPngBytes  = "\x89PNG\r\n\x1a\n" + std::string("\0", 1) + "data";
-const std::string kGifBytes  = "GIF89a...";
-const std::string kBmpBytes  = "BM...";
-const std::string kSvgText   = "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>";
-const std::string kGzipSvgz  = "\x1F\x8B\x08\x00\x00\x00\x00\x00gzip-svg";
+const std::string kPngBytes = "\x89PNG\r\n\x1a\n" + std::string("\0", 1) + "data";
+const std::string kGifBytes = "GIF89a...";
+const std::string kBmpBytes = "BM...";
+const std::string kSvgText = "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>";
+const std::string kGzipSvgz = "\x1F\x8B\x08\x00\x00\x00\x00\x00gzip-svg";
 
 std::string readAll(const std::string& path) {
     std::ifstream ifs(path, std::ios::binary);
@@ -64,7 +64,7 @@ TEST(ImageUploadRulesTest, MIME到扩展名映射未知回退jpg) {
     EXPECT_EQ(".svg", ImageUploadRules::imageTypeToExtension("image/svg+xml"));
     EXPECT_EQ(".jpg", ImageUploadRules::imageTypeToExtension("image/jpeg"));
     EXPECT_EQ(".jpg", ImageUploadRules::imageTypeToExtension("image/jpg"));
-    EXPECT_EQ(".jpg", ImageUploadRules::imageTypeToExtension("image/webp"));  // 理论不可达（白名单拦截）
+    EXPECT_EQ(".jpg", ImageUploadRules::imageTypeToExtension("image/webp")); // 理论不可达（白名单拦截）
 }
 
 TEST(ImageUploadRulesTest, extractMimeType剥参数与trim) {
@@ -86,14 +86,11 @@ TEST(ImageUploadRulesTest, extractMimeType大小写不敏感) {
     // （handler 调用链中 extractMimeType 先行归一，classifyUpload 按归一后值比对）
     std::string ext;
     EXPECT_EQ(UploadError::None,
-              ImageUploadRules::classifyUpload(kPngBytes,
-                                               ImageUploadRules::extractMimeType("IMAGE/PNG"),
-                                               ext));
+              ImageUploadRules::classifyUpload(kPngBytes, ImageUploadRules::extractMimeType("IMAGE/PNG"), ext));
     EXPECT_EQ(".png", ext);
 
     // 未归一化的声明仍被拒（归一职责在 extractMimeType 单点）
-    EXPECT_EQ(UploadError::UnsupportedType,
-              ImageUploadRules::classifyUpload(kPngBytes, "IMAGE/PNG", ext));
+    EXPECT_EQ(UploadError::UnsupportedType, ImageUploadRules::classifyUpload(kPngBytes, "IMAGE/PNG", ext));
 }
 
 TEST(ImageUploadRulesTest, 魔数识别各真实格式) {
@@ -140,8 +137,7 @@ TEST(ImageUploadRulesTest, classify宽容修正不绕过恶意svg) {
     // 声明 jpeg、内容为带 onload 的 svg → 仍 ContentMismatch（宽容修正不是 XSS 后门）
     const std::string evil = "<svg xmlns=\"http://www.w3.org/2000/svg\" onload=\"alert(1)\"/>";
     std::string ext = "UNTOUCHED";
-    EXPECT_EQ(UploadError::ContentMismatch,
-              ImageUploadRules::classifyUpload(evil, "image/jpeg", ext));
+    EXPECT_EQ(UploadError::ContentMismatch, ImageUploadRules::classifyUpload(evil, "image/jpeg", ext));
     EXPECT_EQ("UNTOUCHED", ext);
 }
 
@@ -165,19 +161,16 @@ TEST(ImageUploadRulesTest, classify拒绝未白名单与不可识别内容) {
     std::string ext = "UNTOUCHED";
 
     // 声明类型不在白名单（webp）→ UnsupportedType，扩展名不动
-    EXPECT_EQ(UploadError::UnsupportedType,
-              ImageUploadRules::classifyUpload(kJpegBytes, "image/webp", ext));
+    EXPECT_EQ(UploadError::UnsupportedType, ImageUploadRules::classifyUpload(kJpegBytes, "image/webp", ext));
     EXPECT_EQ("UNTOUCHED", ext);
 
     // 伪装格式：声明 png、内容不可识别 → ContentMismatch
-    EXPECT_EQ(UploadError::ContentMismatch,
-              ImageUploadRules::classifyUpload("not-an-image", "image/png", ext));
+    EXPECT_EQ(UploadError::ContentMismatch, ImageUploadRules::classifyUpload("not-an-image", "image/png", ext));
     EXPECT_EQ("UNTOUCHED", ext);
 
     // 声明 svg、内容带脚本 → ContentMismatch（stored-XSS 载体拦截）
     const std::string evil = "<svg><script>alert(1)</script></svg>";
-    EXPECT_EQ(UploadError::ContentMismatch,
-              ImageUploadRules::classifyUpload(evil, "image/svg+xml", ext));
+    EXPECT_EQ(UploadError::ContentMismatch, ImageUploadRules::classifyUpload(evil, "image/svg+xml", ext));
 }
 
 TEST(ImageUploadRulesTest, 大小上限为5MB) {
@@ -189,21 +182,17 @@ TEST(ImageUploadRulesTest, classify超限先于嗅探拒绝) {
     const std::string big(ImageUploadRules::kMaxImageBytes + 1, 'A');
 
     // 超限 + 声明合法：TooLarge（不做全量嗅探，扩展名不动）
-    EXPECT_EQ(UploadError::TooLarge,
-              ImageUploadRules::classifyUpload(big, "image/png", ext));
+    EXPECT_EQ(UploadError::TooLarge, ImageUploadRules::classifyUpload(big, "image/png", ext));
     EXPECT_EQ("UNTOUCHED", ext);
 
     // 超限 + 内容不可识别：仍 TooLarge（嗅探排在大小检查之后）
-    EXPECT_EQ(UploadError::TooLarge,
-              ImageUploadRules::classifyUpload(big, "image/svg+xml", ext));
+    EXPECT_EQ(UploadError::TooLarge, ImageUploadRules::classifyUpload(big, "image/svg+xml", ext));
 
     // 错误优先级：声明不在白名单（webp）→ UnsupportedType（白名单先于大小检查）
-    EXPECT_EQ(UploadError::UnsupportedType,
-              ImageUploadRules::classifyUpload(big, "image/webp", ext));
+    EXPECT_EQ(UploadError::UnsupportedType, ImageUploadRules::classifyUpload(big, "image/webp", ext));
 
     // 边界：恰好 5MB + 合法魔数 → None（上限为严格大于）
-    const std::string atLimit = kJpegBytes
-        + std::string(ImageUploadRules::kMaxImageBytes - kJpegBytes.size(), 'X');
+    const std::string atLimit = kJpegBytes + std::string(ImageUploadRules::kMaxImageBytes - kJpegBytes.size(), 'X');
     EXPECT_EQ(UploadError::None, ImageUploadRules::classifyUpload(atLimit, "image/jpeg", ext));
     EXPECT_EQ(".jpg", ext);
 }
@@ -215,7 +204,7 @@ TEST(ImageUploadRulesTest, writeTempImageFile落盘可读回) {
     EXPECT_TRUE(std::filesystem::exists(*pathOpt));
 
     EXPECT_EQ("file-content", readAll(*pathOpt));
-    std::filesystem::remove(*pathOpt);  // 清理临时文件
+    std::filesystem::remove(*pathOpt); // 清理临时文件
 }
 
 TEST(ImageUploadRulesTest, 上传错误文案单一来源且与契约一致) {
@@ -223,10 +212,8 @@ TEST(ImageUploadRulesTest, 上传错误文案单一来源且与契约一致) {
     // 字面量与 docs/api-spec.md 1.4 错误表保持一致
     EXPECT_STREQ("不支持的图片格式，请使用 JPG/PNG/GIF/BMP/SVG（注：Qt 客户端不支持 WebP）",
                  ImageUploadRules::uploadErrorMessage(UploadError::UnsupportedType));
-    EXPECT_STREQ("图片大小不能超过5MB",
-                 ImageUploadRules::uploadErrorMessage(UploadError::TooLarge));
-    EXPECT_STREQ("图片内容与格式不符，请重新选择",
-                 ImageUploadRules::uploadErrorMessage(UploadError::ContentMismatch));
+    EXPECT_STREQ("图片大小不能超过5MB", ImageUploadRules::uploadErrorMessage(UploadError::TooLarge));
+    EXPECT_STREQ("图片内容与格式不符，请重新选择", ImageUploadRules::uploadErrorMessage(UploadError::ContentMismatch));
     EXPECT_STREQ("请选择图片", ImageUploadRules::kEmptyImageMessage);
     // None 不是错误态：返回空串（调用方不应使用）
     EXPECT_STREQ("", ImageUploadRules::uploadErrorMessage(UploadError::None));

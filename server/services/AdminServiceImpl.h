@@ -17,16 +17,13 @@ public:
 
     // ---------- 用户管理 ----------
     // 获取用户列表（分页，可带筛选条件）
-    gocook::models::PagedUsers getUsers(int page, int size,
-                                        const nlohmann::json& filters) override;
+    gocook::models::PagedUsers getUsers(int page, int size, const nlohmann::json& filters) override;
     // 创建用户账户
     void createUser(const gocook::models::CreateUserRequest& userData) override;
     // 修改用户信息
-    void updateUser(int userId,
-                    const gocook::models::UpdateUserRequest& updates) override;
+    void updateUser(int userId, const gocook::models::UpdateUserRequest& updates) override;
     // 冻结/解封用户
-    void setUserStatus(int userId,
-                       const gocook::models::SetUserStatusRequest& request) override;
+    void setUserStatus(int userId, const gocook::models::SetUserStatusRequest& request) override;
     // 删除用户
     void deleteUser(int userId) override;
 
@@ -36,18 +33,16 @@ public:
     // 审核通过菜谱
     void approveRecipe(int recipeId) override;
     // 审核拒绝菜谱（携带拒绝原因）
-    void rejectRecipe(int recipeId,
-                      const gocook::models::RejectRecipeRequest& request) override;
+    void rejectRecipe(int recipeId, const gocook::models::RejectRecipeRequest& request) override;
     // 批量审核菜谱，返回成功/失败统计
-    gocook::models::BatchReviewResponse batchReviewRecipes(
-        const gocook::models::BatchReviewRequest& request) override;
+    gocook::models::BatchReviewResponse batchReviewRecipes(const gocook::models::BatchReviewRequest& request) override;
 
     // ---------- 公告与通知 ----------
     // 发布系统公告
     void publishAnnouncement(const gocook::models::AnnouncementRequest& request) override;
     // 发送系统通知
-    gocook::models::NotificationResponse sendNotification(
-        const gocook::models::NotificationRequest& notification) override;
+    gocook::models::NotificationResponse
+    sendNotification(const gocook::models::NotificationRequest& notification) override;
 
     // ---------- 统计与日志 ----------
     // 获取运营数据统计（暂未实现，始终抛 501）
@@ -55,15 +50,13 @@ public:
         throw gocook::services::ServiceException("功能暂未实现", 501);
     }
     // 查询管理员操作日志（暂未实现，始终抛 501）
-    gocook::models::PagedAdminLogs getAdminLogs(int page, int size,
-                                                const std::string& type = "",
-                                                int userId = 0) override {
+    gocook::models::PagedAdminLogs
+    getAdminLogs(int page, int size, const std::string& type = "", int userId = 0) override {
         throw gocook::services::ServiceException("功能暂未实现", 501);
     }
     // 查询全局用户行为日志（暂未实现，始终抛 501）
-    gocook::models::PagedActivityLogs getActivityLogs(int page, int size,
-                                                      int userId = 0,
-                                                      const std::string& action = "") override {
+    gocook::models::PagedActivityLogs
+    getActivityLogs(int page, int size, int userId = 0, const std::string& action = "") override {
         throw gocook::services::ServiceException("功能暂未实现", 501);
     }
 

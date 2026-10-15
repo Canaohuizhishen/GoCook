@@ -53,14 +53,12 @@
 
 namespace {
 
-bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
-{
+bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (!done.load()) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
@@ -68,14 +66,12 @@ bool waitUntil(const std::atomic<bool>& done, int timeoutMs = 5000)
 }
 
 // 轮询等待计数器到达目标值（“请求已到达桩”判据；配合桩内延迟构造“在途”窗口）
-bool waitForCount(const std::atomic<int>& count, int target, int timeoutMs = 5000)
-{
+bool waitForCount(const std::atomic<int>& count, int target, int timeoutMs = 5000) {
     QElapsedTimer timer;
     timer.start();
     while (count.load() < target) {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        if (timer.elapsed() > timeoutMs)
-            return false;
+        if (timer.elapsed() > timeoutMs) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     return true;
@@ -116,30 +112,25 @@ public:
     std::atomic<int> deleteRecipeStatus{200}; // 可切换：200 成功 / 500 失败
 
     // 最近一次收藏写请求体（PATCH /favorites/batch；单条/批量移动共用，用于断言 N=1 与全量 id）
-    std::string lastFavoriteWriteBody()
-    {
+    std::string lastFavoriteWriteBody() {
         std::lock_guard<std::mutex> lk(writeMx);
         return lastWriteBody;
     }
 
-    ListReq lastFavoriteListReq()
-    {
+    ListReq lastFavoriteListReq() {
         std::lock_guard<std::mutex> lk(reqMx);
         return favoriteListReqs.empty() ? ListReq{} : favoriteListReqs.back();
     }
-    ListReq lastSearchReq()
-    {
+    ListReq lastSearchReq() {
         std::lock_guard<std::mutex> lk(reqMx);
         return searchReqs.empty() ? ListReq{} : searchReqs.back();
     }
-    RecommendReq lastRecommendReq()
-    {
+    RecommendReq lastRecommendReq() {
         std::lock_guard<std::mutex> lk(reqMx);
         return recommendReqs.empty() ? RecommendReq{} : recommendReqs.back();
     }
 
-    FavoriteStubServer()
-    {
+    FavoriteStubServer() {
         svr.Get("/api/users/me/favorites", [this](const httplib::Request& req, httplib::Response& res) {
             favoritesListReqCount++;
             const int page = std::stoi(req.get_param_value("page"));
@@ -151,27 +142,28 @@ public:
             }
             // 总数按筛选分组区分（模拟服务端“筛选下的总数”语义）；data 简化为固定 1 条占位，
             // 用例只断言续页请求参数与 VM 状态流转
-            int total = 3;   // 全部 = 默认收藏夹(2) + 家常菜(1)
-            if (group == "默认收藏夹") total = 2;
-            else if (group == "家常菜") total = 1;
-            else if (!group.empty()) total = 0;
+            int total = 3; // 全部 = 默认收藏夹(2) + 家常菜(1)
+            if (group == "默认收藏夹")
+                total = 2;
+            else if (group == "家常菜")
+                total = 1;
+            else if (!group.empty())
+                total = 0;
             const int totalPages = (total + size - 1) / size;
             res.status = 200;
             res.set_content(
-                "{\"pagination\":{\"page\":" + std::to_string(page) +
-                ",\"size\":" + std::to_string(size) +
-                ",\"total\":" + std::to_string(total) +
-                ",\"total_pages\":" + std::to_string(totalPages) + "},"
-                "\"data\":[{\"id\":11,\"recipe_id\":1,\"name\":\"番茄炒蛋\",\"group_name\":\"默认收藏夹\"}]}",
+                "{\"pagination\":{\"page\":" + std::to_string(page) + ",\"size\":" + std::to_string(size) +
+                    ",\"total\":" + std::to_string(total) + ",\"total_pages\":" + std::to_string(totalPages) +
+                    "},"
+                    "\"data\":[{\"id\":11,\"recipe_id\":1,\"name\":\"番茄炒蛋\",\"group_name\":\"默认收藏夹\"}]}",
                 "application/json");
         });
         svr.Get("/api/users/me/favorites/groups", [this](const httplib::Request&, httplib::Response& res) {
             groupsReqCount++;
             res.status = 200;
-            res.set_content(
-                R"([{"id":1,"name":"默认收藏夹","sort_order":0,"count":2},)"
-                R"({"id":2,"name":"家常菜","sort_order":1,"count":1}])",
-                "application/json");
+            res.set_content(R"([{"id":1,"name":"默认收藏夹","sort_order":0,"count":2},)"
+                            R"({"id":2,"name":"家常菜","sort_order":1,"count":1}])",
+                            "application/json");
         });
         svr.Post("/api/recipes/1/favorite", [this](const httplib::Request&, httplib::Response& res) {
             favoriteWriteReqCount++;
@@ -211,17 +203,15 @@ public:
                 searchReqs.push_back({page, size, "", keyword});
             }
             // 竞态用例用：含“慢”的关键词延迟返回，模拟旧词响应晚到新词之后
-            if (keyword.find("慢") != std::string::npos)
-                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (keyword.find("慢") != std::string::npos) std::this_thread::sleep_for(std::chrono::milliseconds(500));
             // total_pages 固定 2：保证首屏 hasMore=true 以允许续页请求；
             // data 回显 keyword 作 name：竞态用例据此断言“展示的是哪个词的结果”
             res.status = 200;
-            res.set_content(
-                "{\"pagination\":{\"page\":" + std::to_string(page) +
-                ",\"size\":" + std::to_string(size) +
-                ",\"total\":10,\"total_pages\":2},"
-                "\"data\":[{\"id\":1,\"name\":\"" + keyword + "\"}]}",
-                "application/json");
+            res.set_content("{\"pagination\":{\"page\":" + std::to_string(page) + ",\"size\":" + std::to_string(size) +
+                                ",\"total\":10,\"total_pages\":2},"
+                                "\"data\":[{\"id\":1,\"name\":\"" +
+                                keyword + "\"}]}",
+                            "application/json");
         });
 
         // 推荐（换一批）：记录 page/size/seed 供参数断言；返回最小推荐体（1 条占位）
@@ -230,21 +220,21 @@ public:
             rec.page = std::stoi(req.get_param_value("page"));
             rec.size = std::stoi(req.get_param_value("size"));
             rec.seedPresent = req.has_param("seed");
-            if (rec.seedPresent)
-                rec.seed = static_cast<unsigned int>(std::stoul(req.get_param_value("seed")));
+            if (rec.seedPresent) rec.seed = static_cast<unsigned int>(std::stoul(req.get_param_value("seed")));
             recommendReqCount++;
             {
                 std::lock_guard<std::mutex> lk(reqMx);
                 recommendReqs.push_back(rec);
             }
             res.status = 200;
-            res.set_content(
-                "{\"health_filter_applied\":false,"
-                "\"pagination\":{\"page\":" + std::to_string(rec.page) +
-                ",\"size\":" + std::to_string(rec.size) + ",\"total\":1,\"total_pages\":1},"
-                "\"data\":[{\"id\":1,\"name\":\"清蒸鲈鱼\",\"match_score\":0.5,"
-                "\"health_notice\":\"\",\"match_status\":{\"available_ingredients\":[],\"missing_ingredients\":[]}}]}",
-                "application/json");
+            res.set_content("{\"health_filter_applied\":false,"
+                            "\"pagination\":{\"page\":" +
+                                std::to_string(rec.page) + ",\"size\":" + std::to_string(rec.size) +
+                                ",\"total\":1,\"total_pages\":1},"
+                                "\"data\":[{\"id\":1,\"name\":\"清蒸鲈鱼\",\"match_score\":0.5,"
+                                "\"health_notice\":\"\",\"match_status\":{\"available_ingredients\":[],\"missing_"
+                                "ingredients\":[]}}]}",
+                            "application/json");
         });
 
         // ---- M 系列：我的投稿 / 我的评论 / 删除菜谱 ----
@@ -256,13 +246,11 @@ public:
             const int size = std::stoi(req.get_param_value("size"));
             // total_pages 固定 2：保证首屏 hasMore=true，M1 据此断言 clearMyContent 将其复位
             res.status = 200;
-            res.set_content(
-                "{\"pagination\":{\"page\":" + std::to_string(page) +
-                ",\"size\":" + std::to_string(size) +
-                ",\"total\":2,\"total_pages\":2},"
-                "\"data\":[{\"id\":7,\"name\":\"红烧排骨\",\"status\":\"approved\","
-                "\"submitted_at\":\"2026-09-01 10:00:00\",\"updated_at\":\"2026-09-02 10:00:00\"}]}",
-                "application/json");
+            res.set_content("{\"pagination\":{\"page\":" + std::to_string(page) + ",\"size\":" + std::to_string(size) +
+                                ",\"total\":2,\"total_pages\":2},"
+                                "\"data\":[{\"id\":7,\"name\":\"红烧排骨\",\"status\":\"approved\","
+                                "\"submitted_at\":\"2026-09-01 10:00:00\",\"updated_at\":\"2026-09-02 10:00:00\"}]}",
+                            "application/json");
         });
         svr.Get("/api/users/me/ratings", [this](const httplib::Request& req, httplib::Response& res) {
             myRatingsReqCount++;
@@ -271,14 +259,12 @@ public:
             const int page = std::stoi(req.get_param_value("page"));
             const int size = std::stoi(req.get_param_value("size"));
             res.status = 200;
-            res.set_content(
-                "{\"pagination\":{\"page\":" + std::to_string(page) +
-                ",\"size\":" + std::to_string(size) +
-                ",\"total\":2,\"total_pages\":2},"
-                "\"data\":[{\"rating_id\":1,\"recipe_id\":2,\"recipe_name\":\"番茄炒蛋\","
-                "\"rating\":5,\"comment\":\"好吃\","
-                "\"created_at\":\"2026-09-01 10:00:00\",\"updated_at\":\"2026-09-01 10:00:00\"}]}",
-                "application/json");
+            res.set_content("{\"pagination\":{\"page\":" + std::to_string(page) + ",\"size\":" + std::to_string(size) +
+                                ",\"total\":2,\"total_pages\":2},"
+                                "\"data\":[{\"rating_id\":1,\"recipe_id\":2,\"recipe_name\":\"番茄炒蛋\","
+                                "\"rating\":5,\"comment\":\"好吃\","
+                                "\"created_at\":\"2026-09-01 10:00:00\",\"updated_at\":\"2026-09-01 10:00:00\"}]}",
+                            "application/json");
         });
         svr.Delete(R"(/api/recipes/(\d+))", [this](const httplib::Request&, httplib::Response& res) {
             deleteRecipeReqCount++;
@@ -289,25 +275,21 @@ public:
         });
 
         port = svr.bind_to_any_port("127.0.0.1");
-        if (port <= 0)
-            throw std::runtime_error("FavoriteStubServer: bind_to_any_port failed");
+        if (port <= 0) throw std::runtime_error("FavoriteStubServer: bind_to_any_port failed");
         th = std::thread([this]() { svr.listen_after_bind(); });
 
         // 就绪轮询：listen 失败只发生在子线程（主线程无法 catch），轮询 is_running()
         // 显式暴露启动失败；同时消除“端口已绑定但尚未开始监听”的竞态窗口
         for (int i = 0; i < 200; ++i) {
-            if (svr.is_running())
-                return;
+            if (svr.is_running()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         throw std::runtime_error("FavoriteStubServer: failed to start");
     }
 
-    ~FavoriteStubServer()
-    {
+    ~FavoriteStubServer() {
         svr.stop();
-        if (th.joinable())
-            th.join();
+        if (th.joinable()) th.join();
     }
 
     std::string baseUrl() const { return "http://127.0.0.1:" + std::to_string(port); }
@@ -316,9 +298,9 @@ private:
     httplib::Server svr;
     int port = 0;
     std::thread th;
-    std::mutex writeMx;              // 保护收藏写请求体（服务端线程写入，测试线程读取）
+    std::mutex writeMx; // 保护收藏写请求体（服务端线程写入，测试线程读取）
     std::string lastWriteBody;
-    std::mutex reqMx;                // 保护三组请求流水（服务端线程写入，测试线程读取）
+    std::mutex reqMx; // 保护三组请求流水（服务端线程写入，测试线程读取）
     std::vector<ListReq> favoriteListReqs;
     std::vector<ListReq> searchReqs;
     std::vector<RecommendReq> recommendReqs;
@@ -326,8 +308,7 @@ private:
 
 class RecipeVmTest : public ::testing::Test {
 protected:
-    void SetUp() override
-    {
+    void SetUp() override {
         api.setMaxRetries(0);
         api.setToken(QString()); // 每个用例从未登录开始
     }
@@ -336,8 +317,7 @@ protected:
 };
 
 // ==================== R1：clearFavorites 同时清空列表与分组 ====================
-TEST_F(RecipeVmTest, clearFavorites清空列表与分组)
-{
+TEST_F(RecipeVmTest, clearFavorites清空列表与分组) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -367,8 +347,7 @@ TEST_F(RecipeVmTest, clearFavorites清空列表与分组)
 }
 
 // ==================== R2：toggleFavorite 成功信号 ====================
-TEST_F(RecipeVmTest, toggleFavorite成功发信号)
-{
+TEST_F(RecipeVmTest, toggleFavorite成功发信号) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -376,8 +355,10 @@ TEST_F(RecipeVmTest, toggleFavorite成功发信号)
     RecipeViewModel vm(&api);
     std::atomic<bool> successFlag{false};
     int gotRecipeId = -1;
-    QObject::connect(&vm, &RecipeViewModel::favoriteToggleSuccess,
-                     [&](int recipeId, bool) { gotRecipeId = recipeId; successFlag = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteToggleSuccess, [&](int recipeId, bool) {
+        gotRecipeId = recipeId;
+        successFlag = true;
+    });
 
     vm.toggleFavorite(1, 0);
     ASSERT_TRUE(waitUntil(successFlag)) << "收藏成功信号超时";
@@ -388,8 +369,7 @@ TEST_F(RecipeVmTest, toggleFavorite成功发信号)
 }
 
 // ==================== R3：toggleFavorite 失败信号（页面据此回滚） ====================
-TEST_F(RecipeVmTest, toggleFavorite失败发错误信号)
-{
+TEST_F(RecipeVmTest, toggleFavorite失败发错误信号) {
     FavoriteStubServer stub;
     stub.favoriteWriteStatus = 500;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -398,8 +378,10 @@ TEST_F(RecipeVmTest, toggleFavorite失败发错误信号)
     RecipeViewModel vm(&api);
     std::atomic<bool> errorFlag{false};
     std::string gotError;
-    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed,
-                     [&](const QString& e) { gotError = e.toStdString(); errorFlag = true; });
+    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString& e) {
+        gotError = e.toStdString();
+        errorFlag = true;
+    });
 
     vm.toggleFavorite(1, 0);
     ASSERT_TRUE(waitUntil(errorFlag)) << "收藏失败信号超时";
@@ -410,8 +392,7 @@ TEST_F(RecipeVmTest, toggleFavorite失败发错误信号)
 }
 
 // ==================== T1：favoritesAllCount = Σ 分组 count 且不随筛选覆盖 ====================
-TEST_F(RecipeVmTest, favoritesAllCount等于分组之和且不随筛选变化)
-{
+TEST_F(RecipeVmTest, favoritesAllCount等于分组之和且不随筛选变化) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -441,8 +422,7 @@ TEST_F(RecipeVmTest, favoritesAllCount等于分组之和且不随筛选变化)
 }
 
 // ==================== T2：删除分组后 favoritesAllCount 同步减少 ====================
-TEST_F(RecipeVmTest, 删除分组后favoritesAllCount同步减少)
-{
+TEST_F(RecipeVmTest, 删除分组后favoritesAllCount同步减少) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -453,8 +433,8 @@ TEST_F(RecipeVmTest, 删除分组后favoritesAllCount同步减少)
     std::string failMsg;
     QObject::connect(&vm, &RecipeViewModel::favoriteGroupsChanged, [&]() { groupsChanged = true; });
     QObject::connect(&vm, &RecipeViewModel::favoriteGroupDeleted, [&]() { deleted = true; });
-    QObject::connect(&vm, &RecipeViewModel::favoriteOperationFailed,
-                     [&](const QString& e) { failMsg = e.toStdString(); });
+    QObject::connect(
+        &vm, &RecipeViewModel::favoriteOperationFailed, [&](const QString& e) { failMsg = e.toStdString(); });
 
     vm.loadFavoriteGroups();
     ASSERT_TRUE(waitUntil(groupsChanged)) << "加载分组超时";
@@ -462,7 +442,7 @@ TEST_F(RecipeVmTest, 删除分组后favoritesAllCount同步减少)
 
     // 本用例同时回归防护“无体 DELETE 缺 Content-Length 被服务端 httplib 阻塞”：
     // HttpGoCookApi::sendRequest 会为无体 DELETE 补最小 JSON 体，服务端能读完并正常响应
-    vm.deleteFavoriteGroup(2);   // 家常菜 count=1：乐观移除后应立即减少
+    vm.deleteFavoriteGroup(2); // 家常菜 count=1：乐观移除后应立即减少
     EXPECT_EQ(vm.favoritesAllCount(), 2) << "乐观删除后计数应同步减少";
 
     ASSERT_TRUE(waitUntil(deleted)) << "删除分组超时，失败信号消息: " << failMsg;
@@ -474,8 +454,7 @@ TEST_F(RecipeVmTest, 删除分组后favoritesAllCount同步减少)
 }
 
 // ==================== T3：loadMoreFavorites 续页沿用分组与页大小 ====================
-TEST_F(RecipeVmTest, loadMoreFavorites续页沿用分组与页大小)
-{
+TEST_F(RecipeVmTest, loadMoreFavorites续页沿用分组与页大小) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -502,8 +481,7 @@ TEST_F(RecipeVmTest, loadMoreFavorites续页沿用分组与页大小)
 }
 
 // ==================== T4：searchNextPage 续页沿用首屏页大小 ====================
-TEST_F(RecipeVmTest, searchNextPage续页沿用首屏页大小)
-{
+TEST_F(RecipeVmTest, searchNextPage续页沿用首屏页大小) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -529,8 +507,7 @@ TEST_F(RecipeVmTest, searchNextPage续页沿用首屏页大小)
 }
 
 // ==================== T5：batchMoveFavorites 单请求原子化（替代原客户端计数器聚合） ====================
-TEST_F(RecipeVmTest, batchMoveFavorites一次请求发favoriteMoved)
-{
+TEST_F(RecipeVmTest, batchMoveFavorites一次请求发favoriteMoved) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -549,8 +526,7 @@ TEST_F(RecipeVmTest, batchMoveFavorites一次请求发favoriteMoved)
     EXPECT_FALSE(failed.load()) << "全部成功不得发失败信号";
     EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1) << "两个 id 必须聚合为一次请求（原实现发 N 次）";
 
-    const QJsonDocument doc = QJsonDocument::fromJson(
-        QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
+    const QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
     const QJsonArray bodyIds = doc.object()["favorite_ids"].toArray();
     ASSERT_EQ(bodyIds.size(), 2) << "请求体应携带全部收藏 id";
     EXPECT_EQ(bodyIds[0].toInt(), 11);
@@ -562,8 +538,7 @@ TEST_F(RecipeVmTest, batchMoveFavorites一次请求发favoriteMoved)
 }
 
 // ==================== T6：batchMoveFavorites 失败=原子失败（不发 favoriteMoved） ====================
-TEST_F(RecipeVmTest, batchMoveFavorites失败只发favoriteOperationFailed)
-{
+TEST_F(RecipeVmTest, batchMoveFavorites失败只发favoriteOperationFailed) {
     FavoriteStubServer stub;
     stub.favoriteWriteStatus = 500;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -588,8 +563,7 @@ TEST_F(RecipeVmTest, batchMoveFavorites失败只发favoriteOperationFailed)
 }
 
 // ==================== T7：moveFavorite 单条=N=1 复用批量端点 ====================
-TEST_F(RecipeVmTest, moveFavorite单条请求N等于1)
-{
+TEST_F(RecipeVmTest, moveFavorite单条请求N等于1) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -603,8 +577,7 @@ TEST_F(RecipeVmTest, moveFavorite单条请求N等于1)
     ASSERT_TRUE(waitUntil(moved)) << "favoriteMoved 超时";
     EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1);
 
-    const QJsonDocument doc = QJsonDocument::fromJson(
-        QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
+    const QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
     const QJsonArray bodyIds = doc.object()["favorite_ids"].toArray();
     ASSERT_EQ(bodyIds.size(), 1) << "单条移动应携带单元素 favorite_ids（N=1 复用）";
     EXPECT_EQ(bodyIds[0].toInt(), 21);
@@ -614,8 +587,7 @@ TEST_F(RecipeVmTest, moveFavorite单条请求N等于1)
 }
 
 // ==================== T8：batchRemoveFavorites 空列表守卫（不发请求、无信号） ====================
-TEST_F(RecipeVmTest, batchRemoveFavorites空列表不发请求)
-{
+TEST_F(RecipeVmTest, batchRemoveFavorites空列表不发请求) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -645,8 +617,7 @@ TEST_F(RecipeVmTest, batchRemoveFavorites空列表不发请求)
 }
 
 // ==================== T9：batchRemoveFavorites 非空列表=单请求成功（正路径） ====================
-TEST_F(RecipeVmTest, batchRemoveFavorites非空列表一次请求发favoriteRemoved)
-{
+TEST_F(RecipeVmTest, batchRemoveFavorites非空列表一次请求发favoriteRemoved) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -665,8 +636,7 @@ TEST_F(RecipeVmTest, batchRemoveFavorites非空列表一次请求发favoriteRemo
     EXPECT_FALSE(failed.load()) << "全部成功不得发失败信号";
     EXPECT_EQ(stub.favoriteWriteReqCount.load(), 1) << "两个 id 必须聚合为一次请求";
 
-    const QJsonDocument doc = QJsonDocument::fromJson(
-        QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
+    const QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(stub.lastFavoriteWriteBody()));
     const QJsonArray bodyIds = doc.object()["favorite_ids"].toArray();
     ASSERT_EQ(bodyIds.size(), 2) << "请求体应携带全部收藏 id";
     EXPECT_EQ(bodyIds[0].toInt(), 11);
@@ -677,8 +647,7 @@ TEST_F(RecipeVmTest, batchRemoveFavorites非空列表一次请求发favoriteRemo
 }
 
 // ==================== T10：batchRemoveFavorites 失败只发 favoriteOperationFailed ====================
-TEST_F(RecipeVmTest, batchRemoveFavorites失败只发favoriteOperationFailed)
-{
+TEST_F(RecipeVmTest, batchRemoveFavorites失败只发favoriteOperationFailed) {
     FavoriteStubServer stub;
     stub.favoriteWriteStatus = 500;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
@@ -703,8 +672,7 @@ TEST_F(RecipeVmTest, batchRemoveFavorites失败只发favoriteOperationFailed)
 }
 
 // ==================== S1：在途期间换词——旧词迟到响应被静默丢弃，结果保留新词 ====================
-TEST_F(RecipeVmTest, 搜索在途期间换词旧响应被丢弃新词必达)
-{
+TEST_F(RecipeVmTest, 搜索在途期间换词旧响应被丢弃新词必达) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -713,8 +681,7 @@ TEST_F(RecipeVmTest, 搜索在途期间换词旧响应被丢弃新词必达)
     std::atomic<bool> fastLanded{false};
     std::atomic<bool> errorEmitted{false};
     QObject::connect(&vm, &RecipeViewModel::searchResultsChanged, [&]() {
-        if (!vm.searchResults().isEmpty())
-            fastLanded = true;
+        if (!vm.searchResults().isEmpty()) fastLanded = true;
     });
     QObject::connect(&vm, &RecipeViewModel::searchErrorOccurred, [&](const QString&) { errorEmitted = true; });
 
@@ -743,16 +710,15 @@ TEST_F(RecipeVmTest, 搜索在途期间换词旧响应被丢弃新词必达)
 }
 
 // ==================== S2：resetSearch 作废在途——清空后旧响应不得再落数据 ====================
-TEST_F(RecipeVmTest, resetSearch作废在途旧响应不再落数据)
-{
+TEST_F(RecipeVmTest, resetSearch作废在途旧响应不再落数据) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
     RecipeViewModel vm(&api);
 
-    vm.searchRecipes(QStringLiteral("慢词"), 1, 5);   // 服务端延迟 500ms
-    vm.resetSearch();                                  // 清空并作废在途
+    vm.searchRecipes(QStringLiteral("慢词"), 1, 5); // 服务端延迟 500ms
+    vm.resetSearch();                               // 清空并作废在途
 
     // 等到慢词响应窗口过去后断言：结果保持为空、空态标记保持未执行、加载标记已复位
     QElapsedTimer timer;
@@ -768,8 +734,7 @@ TEST_F(RecipeVmTest, resetSearch作废在途旧响应不再落数据)
 }
 
 // ==================== M1：clearMyContent 清空我的投稿/我的评论列表与分页状态 ====================
-TEST_F(RecipeVmTest, clearMyContent清空两列表与分页状态)
-{
+TEST_F(RecipeVmTest, clearMyContent清空两列表与分页状态) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -779,12 +744,10 @@ TEST_F(RecipeVmTest, clearMyContent清空两列表与分页状态)
     std::atomic<bool> recipesLoaded{false};
     std::atomic<bool> ratingsLoaded{false};
     QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() {
-        if (!vm.myRecipes().isEmpty())
-            recipesLoaded = true;
+        if (!vm.myRecipes().isEmpty()) recipesLoaded = true;
     });
     QObject::connect(&vm, &RecipeViewModel::myRatingsChanged, [&]() {
-        if (!vm.myRatings().isEmpty())
-            ratingsLoaded = true;
+        if (!vm.myRatings().isEmpty()) ratingsLoaded = true;
     });
 
     vm.loadMyRecipes(1, "");
@@ -833,8 +796,7 @@ TEST_F(RecipeVmTest, clearMyContent清空两列表与分页状态)
 }
 
 // ==================== M2：登出 → 游客进页——守卫拦截不发请求、无残留 ====================
-TEST_F(RecipeVmTest, 登出后游客载入被守卫拦截且无残留)
-{
+TEST_F(RecipeVmTest, 登出后游客载入被守卫拦截且无残留) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -844,12 +806,10 @@ TEST_F(RecipeVmTest, 登出后游客载入被守卫拦截且无残留)
     std::atomic<bool> recipesLoaded{false};
     std::atomic<bool> ratingsLoaded{false};
     QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() {
-        if (!vm.myRecipes().isEmpty())
-            recipesLoaded = true;
+        if (!vm.myRecipes().isEmpty()) recipesLoaded = true;
     });
     QObject::connect(&vm, &RecipeViewModel::myRatingsChanged, [&]() {
-        if (!vm.myRatings().isEmpty())
-            ratingsLoaded = true;
+        if (!vm.myRatings().isEmpty()) ratingsLoaded = true;
     });
 
     // 登录态：先加载出数据
@@ -899,18 +859,16 @@ TEST_F(RecipeVmTest, 登出后游客载入被守卫拦截且无残留)
 }
 
 // ==================== M3：会话切换后 loadMyRecipes 过期响应被丢弃 ====================
-TEST_F(RecipeVmTest, loadMyRecipes会话切换后过期响应被丢弃)
-{
+TEST_F(RecipeVmTest, loadMyRecipes会话切换后过期响应被丢弃) {
     FavoriteStubServer stub;
-    stub.myRecipesDelayMs = 400;   // 请求到达桩后延迟响应，制造"在途"窗口
+    stub.myRecipesDelayMs = 400; // 请求到达桩后延迟响应，制造"在途"窗口
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
     RecipeViewModel vm(&api);
     std::atomic<bool> loadingReset{false};
     QObject::connect(&vm, &RecipeViewModel::myRecipesLoadingChanged, [&]() {
-        if (!vm.myRecipesLoading())
-            loadingReset = true;
+        if (!vm.myRecipesLoading()) loadingReset = true;
     });
 
     vm.loadMyRecipes(1, "");
@@ -927,18 +885,16 @@ TEST_F(RecipeVmTest, loadMyRecipes会话切换后过期响应被丢弃)
 }
 
 // ==================== M4：会话切换后 loadMyRatings 过期响应被丢弃 ====================
-TEST_F(RecipeVmTest, loadMyRatings会话切换后过期响应被丢弃)
-{
+TEST_F(RecipeVmTest, loadMyRatings会话切换后过期响应被丢弃) {
     FavoriteStubServer stub;
-    stub.myRatingsDelayMs = 400;   // 请求到达桩后延迟响应，制造"在途"窗口
+    stub.myRatingsDelayMs = 400; // 请求到达桩后延迟响应，制造"在途"窗口
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
 
     RecipeViewModel vm(&api);
     std::atomic<bool> loadingReset{false};
     QObject::connect(&vm, &RecipeViewModel::myRatingsLoadingChanged, [&]() {
-        if (!vm.myRatingsLoading())
-            loadingReset = true;
+        if (!vm.myRatingsLoading()) loadingReset = true;
     });
 
     vm.loadMyRatings();
@@ -954,8 +910,7 @@ TEST_F(RecipeVmTest, loadMyRatings会话切换后过期响应被丢弃)
 }
 
 // ==================== M5：deleteRecipe 失败回滚不得在会话切换后复活旧列表 ====================
-TEST_F(RecipeVmTest, deleteRecipe会话切换后失败不回滚复活旧列表)
-{
+TEST_F(RecipeVmTest, deleteRecipe会话切换后失败不回滚复活旧列表) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -965,7 +920,7 @@ TEST_F(RecipeVmTest, deleteRecipe会话切换后失败不回滚复活旧列表)
     std::atomic<bool> deleteFailed{false};
     QObject::connect(&vm, &RecipeViewModel::myRecipesChanged, [&]() {
         if (!vm.myRecipes().isEmpty())
-            recipesLoaded = true;   // 入口清空也会发 Changed，用"非空"区分加载完成（对齐 S1 写法）
+            recipesLoaded = true; // 入口清空也会发 Changed，用"非空"区分加载完成（对齐 S1 写法）
     });
     QObject::connect(&vm, &RecipeViewModel::deleteFailed, [&](const QString&) { deleteFailed = true; });
 
@@ -1001,8 +956,7 @@ TEST_F(RecipeVmTest, deleteRecipe会话切换后失败不回滚复活旧列表)
 }
 
 // ==================== JP1：推荐首载按批次尺寸且不携带种子 ====================
-TEST_F(RecipeVmTest, 推荐首载按批次尺寸且不携带种子)
-{
+TEST_F(RecipeVmTest, 推荐首载按批次尺寸且不携带种子) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -1010,8 +964,7 @@ TEST_F(RecipeVmTest, 推荐首载按批次尺寸且不携带种子)
     RecipeViewModel vm(&api);
     std::atomic<bool> loaded{false};
     QObject::connect(&vm, &RecipeViewModel::recipesChanged, [&]() {
-        if (!vm.recipes().isEmpty())
-            loaded = true;   // 入口清空也会发 Changed，用“非空”区分加载完成（对齐 S1 写法）
+        if (!vm.recipes().isEmpty()) loaded = true; // 入口清空也会发 Changed，用“非空”区分加载完成（对齐 S1 写法）
     });
 
     vm.loadRecommendedRecipes(1);
@@ -1029,8 +982,7 @@ TEST_F(RecipeVmTest, 推荐首载按批次尺寸且不携带种子)
 }
 
 // ==================== JP2：推荐换一批携带非零种子且逐次刷新 ====================
-TEST_F(RecipeVmTest, 推荐换一批携带非零种子且逐次不同)
-{
+TEST_F(RecipeVmTest, 推荐换一批携带非零种子且逐次不同) {
     FavoriteStubServer stub;
     api.setBaseUrl(QString::fromStdString(stub.baseUrl()));
     api.setToken(QStringLiteral("token-A"));
@@ -1038,8 +990,7 @@ TEST_F(RecipeVmTest, 推荐换一批携带非零种子且逐次不同)
     RecipeViewModel vm(&api);
     std::atomic<int> loadedCount{0};
     QObject::connect(&vm, &RecipeViewModel::recipesChanged, [&]() {
-        if (!vm.recipes().isEmpty())
-            loadedCount++;
+        if (!vm.recipes().isEmpty()) loadedCount++;
     });
 
     vm.shuffleRecommended();

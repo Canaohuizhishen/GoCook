@@ -38,8 +38,7 @@
  * 新一轮开启或显式作废都会使旧票据失效——旧响应到达时 isCurrent 为假，
  * 静默丢弃。保证"最后一次输入必达、过期响应不闪回"。
  */
-class RequestEpoch
-{
+class RequestEpoch {
 public:
     /// 默认构造：代次从 0 起（禁用拷贝：代次计数器只应有一个所有者）
     RequestEpoch() = default;
@@ -59,7 +58,7 @@ public:
     bool isCurrent(int ticket) const { return ticket == m_epoch; }
 
 private:
-    int m_epoch = 0;   ///< 当前代次（只增不减）
+    int m_epoch = 0; ///< 当前代次（只增不减）
 };
 
 /**
@@ -68,24 +67,18 @@ private:
  * 语义：响应到达时若当前 token 与发送时快照不一致（登出/换号），该响应
  * 属于旧账号——静默丢弃，防止旧账号数据串入当前界面（跨账号串台防线）。
  */
-class SessionSnapshot
-{
+class SessionSnapshot {
 public:
     /// 捕获当前会话（发送请求前调用；游客的空 token 同样成立）
-    static SessionSnapshot capture(const IGoCookApi* api)
-    {
-        return SessionSnapshot(api->authToken());
-    }
+    static SessionSnapshot capture(const IGoCookApi* api) { return SessionSnapshot(api->authToken()); }
 
     /// 会话是否仍是发送时那个（false = 旧账号响应，应静默丢弃）
-    bool isCurrent(const IGoCookApi* api) const
-    {
-        return api->authToken() == m_token;
-    }
+    bool isCurrent(const IGoCookApi* api) const { return api->authToken() == m_token; }
 
 private:
     /// 私有构造：只经 capture 创建（快照必须来自发送时刻，不允许事后拼装）
-    explicit SessionSnapshot(std::string token) : m_token(std::move(token)) {}
+    explicit SessionSnapshot(std::string token)
+        : m_token(std::move(token)) {}
 
-    std::string m_token;   ///< 发送时刻的会话 token
+    std::string m_token; ///< 发送时刻的会话 token
 };

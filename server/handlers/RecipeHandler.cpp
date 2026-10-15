@@ -16,7 +16,8 @@ using namespace gocook::services;
 using namespace gocook::models;
 
 RecipeHandler::RecipeHandler(IRecipeService& service, AuthMiddleware& auth)
-    : service_(service), auth_(auth) {}
+    : service_(service),
+      auth_(auth) {}
 
 nlohmann::json RecipeHandler::parseFilterParams(const httplib::Request& req) {
     nlohmann::json filters;
@@ -105,8 +106,7 @@ void RecipeHandler::getRecipeDetail(const httplib::Request& req, httplib::Respon
         // 可选认证：有 token 时查询当前用户收藏状态
         int userId = 0;
         auto tokenInfo = auth_.authenticate(req.get_header_value("Authorization"));
-        if (tokenInfo.valid)
-            userId = tokenInfo.userId;
+        if (tokenInfo.valid) userId = tokenInfo.userId;
         auto detail = service_.getRecipeDetail(recipeId, userId);
         res.set_header("Content-Type", "application/json");
         res.status = 200;
@@ -123,7 +123,8 @@ void RecipeHandler::getRecipeVideos(const httplib::Request& req, httplib::Respon
         int recipeId = std::stoi(req.matches[1]);
         auto videos = service_.getRecipeVideos(recipeId);
         json arr = json::array();
-        for (const auto& v : videos) arr.push_back(JsonSerializer::toJson(v));
+        for (const auto& v : videos)
+            arr.push_back(JsonSerializer::toJson(v));
         res.set_header("Content-Type", "application/json");
         res.status = 200;
         res.body = arr.dump();
@@ -173,8 +174,7 @@ void RecipeHandler::submitRecipe(const httplib::Request& req, httplib::Response&
                 step.order = stepJson.value("order", 0);
                 step.description = stepJson.value("description", "");
                 step.image_url = stepJson.value("image_url", "");
-                if (stepJson.contains("duration"))
-                    step.duration = stepJson["duration"].get<int>();
+                if (stepJson.contains("duration")) step.duration = stepJson["duration"].get<int>();
                 request.steps.push_back(step);
             }
         }
@@ -243,8 +243,7 @@ void RecipeHandler::editRecipe(const httplib::Request& req, httplib::Response& r
                 step.order = stepJson.value("order", 0);
                 step.description = stepJson.value("description", "");
                 step.image_url = stepJson.value("image_url", "");
-                if (stepJson.contains("duration"))
-                    step.duration = stepJson["duration"].get<int>();
+                if (stepJson.contains("duration")) step.duration = stepJson["duration"].get<int>();
                 updates.steps.push_back(step);
             }
         }
@@ -425,18 +424,17 @@ void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Resp
         std::string ext;
         const auto uploadError = ImageUploadRules::classifyUpload(content, contentType, ext);
         switch (uploadError) {
-            case ImageUploadRules::UploadError::UnsupportedType:
-            case ImageUploadRules::UploadError::TooLarge:
-            case ImageUploadRules::UploadError::ContentMismatch:
-                setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
-                return;
-            case ImageUploadRules::UploadError::None:
-                break;
+        case ImageUploadRules::UploadError::UnsupportedType:
+        case ImageUploadRules::UploadError::TooLarge:
+        case ImageUploadRules::UploadError::ContentMismatch:
+            setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
+            return;
+        case ImageUploadRules::UploadError::None:
+            break;
         }
 
         // 写临时文件（唯一命名规则见 ImageUploadRules.h）
-        auto tempPathOpt = ImageUploadRules::writeTempImageFile(
-            "recipe_" + std::to_string(recipeId), content, ext);
+        auto tempPathOpt = ImageUploadRules::writeTempImageFile("recipe_" + std::to_string(recipeId), content, ext);
         if (!tempPathOpt) {
             setErrorResponse(res, 500, "文件写入失败");
             return;
@@ -447,9 +445,7 @@ void RecipeHandler::uploadRecipeImage(const httplib::Request& req, httplib::Resp
 
         res.status = 200;
         res.set_header("Content-Type", "application/json");
-        res.body = json{
-            {"image_url", imageUrl}
-        }.dump();
+        res.body = json{{"image_url", imageUrl}}.dump();
 
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
@@ -477,19 +473,18 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
         std::string ext;
         const auto uploadError = ImageUploadRules::classifyUpload(content, contentType, ext);
         switch (uploadError) {
-            case ImageUploadRules::UploadError::UnsupportedType:
-            case ImageUploadRules::UploadError::TooLarge:
-            case ImageUploadRules::UploadError::ContentMismatch:
-                setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
-                return;
-            case ImageUploadRules::UploadError::None:
-                break;
+        case ImageUploadRules::UploadError::UnsupportedType:
+        case ImageUploadRules::UploadError::TooLarge:
+        case ImageUploadRules::UploadError::ContentMismatch:
+            setErrorResponse(res, 400, ImageUploadRules::uploadErrorMessage(uploadError));
+            return;
+        case ImageUploadRules::UploadError::None:
+            break;
         }
 
         // 写临时文件（唯一命名规则见 ImageUploadRules.h）
         auto tempPathOpt = ImageUploadRules::writeTempImageFile(
-            "recipe_" + std::to_string(recipeId) + "_step_" + std::to_string(stepIndex),
-            content, ext);
+            "recipe_" + std::to_string(recipeId) + "_step_" + std::to_string(stepIndex), content, ext);
         if (!tempPathOpt) {
             setErrorResponse(res, 500, "文件写入失败");
             return;
@@ -500,7 +495,7 @@ void RecipeHandler::uploadStepImage(const httplib::Request& req, httplib::Respon
 
         res.status = 200;
         res.set_header("Content-Type", "application/json");
-        res.body = json{ {"image_url", imageUrl}, {"message", "步骤图已上传"} }.dump();
+        res.body = json{{"image_url", imageUrl}, {"message", "步骤图已上传"}}.dump();
 
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
@@ -517,7 +512,7 @@ void RecipeHandler::deleteRecipe(const httplib::Request& req, httplib::Response&
         service_.deleteRecipe(info.userId, recipeId);
         res.status = 200;
         res.set_header("Content-Type", "application/json");
-        res.body = json{ {"message", "菜谱已删除"} }.dump();
+        res.body = json{{"message", "菜谱已删除"}}.dump();
     } catch (const ServiceException& e) {
         handleStandardException(e, res);
     } catch (const std::exception& e) {

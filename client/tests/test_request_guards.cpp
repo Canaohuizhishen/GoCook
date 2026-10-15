@@ -12,26 +12,24 @@
 #include "RequestGuards.h"
 #include "HttpGoCookApi.h"
 
-TEST(RequestEpochTest, 新一轮票据有效旧票据失效)
-{
+TEST(RequestEpochTest, 新一轮票据有效旧票据失效) {
     RequestEpoch epoch;
     const int t1 = epoch.begin();
     EXPECT_EQ(epoch.current(), t1);
     EXPECT_TRUE(epoch.isCurrent(t1));
 
-    const int t2 = epoch.begin();   // 开启新一轮
-    EXPECT_FALSE(epoch.isCurrent(t1));   // 旧轮次票据失效
+    const int t2 = epoch.begin();      // 开启新一轮
+    EXPECT_FALSE(epoch.isCurrent(t1)); // 旧轮次票据失效
     EXPECT_TRUE(epoch.isCurrent(t2));
 
-    epoch.invalidate();   // 作废全部在途（登出/清空场景）
+    epoch.invalidate(); // 作废全部在途（登出/清空场景）
     EXPECT_FALSE(epoch.isCurrent(t2));
 }
 
-TEST(RequestEpochTest, 续页沿用当前轮次票据)
-{
+TEST(RequestEpochTest, 续页沿用当前轮次票据) {
     RequestEpoch epoch;
     const int t1 = epoch.begin();
-    const int follow = epoch.current();   // 续页不开启新轮次
+    const int follow = epoch.current(); // 续页不开启新轮次
     EXPECT_EQ(follow, t1);
     EXPECT_TRUE(epoch.isCurrent(follow));
 
@@ -40,8 +38,7 @@ TEST(RequestEpochTest, 续页沿用当前轮次票据)
     EXPECT_FALSE(epoch.isCurrent(follow));
 }
 
-TEST(SessionSnapshotTest, 会话未变判定为当前)
-{
+TEST(SessionSnapshotTest, 会话未变判定为当前) {
     HttpGoCookApi api;
     api.setToken("token-a");
     const auto snap = SessionSnapshot::capture(&api);
@@ -53,24 +50,22 @@ TEST(SessionSnapshotTest, 会话未变判定为当前)
     EXPECT_TRUE(guestSnap.isCurrent(&guestApi));
 }
 
-TEST(SessionSnapshotTest, 换号后旧快照失效)
-{
+TEST(SessionSnapshotTest, 换号后旧快照失效) {
     HttpGoCookApi api;
     api.setToken("token-a");
     const auto snap = SessionSnapshot::capture(&api);
 
-    api.setToken("token-b");   // 换号
+    api.setToken("token-b"); // 换号
     EXPECT_FALSE(snap.isCurrent(&api));
 
-    api.setToken("");   // 登出同样视为会话切换
+    api.setToken(""); // 登出同样视为会话切换
     EXPECT_FALSE(snap.isCurrent(&api));
 }
 
-TEST(SessionSnapshotTest, 游客快照在登录后失效)
-{
-    HttpGoCookApi api;   // 游客（空 token）
+TEST(SessionSnapshotTest, 游客快照在登录后失效) {
+    HttpGoCookApi api; // 游客（空 token）
     const auto snap = SessionSnapshot::capture(&api);
 
-    api.setToken("token-a");   // 登录：空 → 非空同样是会话切换
+    api.setToken("token-a"); // 登录：空 → 非空同样是会话切换
     EXPECT_FALSE(snap.isCurrent(&api));
 }

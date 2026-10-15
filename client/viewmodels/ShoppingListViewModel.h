@@ -19,21 +19,22 @@
  *   3. 条目勾选连点合并：点击立即乐观落本地；按条目合并末态（同条目覆盖、不同条目各自入队），
  *      FIFO 串行逐条发送；服务端确认后落定，失败回滚到已确认态（契约详见 updateShoppingListItem）。
  */
-class ShoppingListViewModel : public QObject
-{
+class ShoppingListViewModel : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList shoppingLists READ shoppingLists NOTIFY shoppingListsChanged)
-    Q_PROPERTY(QVariantMap currentList READ currentList NOTIFY currentListChanged)   ///< 清单详情（加载详情 / 建单成功时写入）
-    Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)   ///< 有请求在途（在途请求计数 > 0 派生）
-    Q_PROPERTY(bool creating READ creating NOTIFY creatingChanged)   ///< 建清单请求在途
+    Q_PROPERTY(
+        QVariantMap currentList READ currentList NOTIFY currentListChanged) ///< 清单详情（加载详情 / 建单成功时写入）
+    Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)       ///< 有请求在途（在途请求计数 > 0 派生）
+    Q_PROPERTY(bool creating READ creating NOTIFY creatingChanged)          ///< 建清单请求在途
 
 public:
-    explicit ShoppingListViewModel(IGoCookApi *api, QObject *parent = nullptr);   ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
+    explicit ShoppingListViewModel(IGoCookApi* api,
+                                   QObject* parent = nullptr); ///< api：API 门面（生产 HttpGoCookApi；测试注入桩）
 
     // getter 组：返回同名 Q_PROPERTY 的值（语义见属性行）；仅特殊实现单独注明。
     QVariantList shoppingLists() const;
     QVariantMap currentList() const;
-    bool isLoading() const { return m_pendingRequests > 0; }   ///< 特殊实现：在途请求计数派生
+    bool isLoading() const { return m_pendingRequests > 0; } ///< 特殊实现：在途请求计数派生
     bool creating() const;
 
     // 清单操作
@@ -103,19 +104,19 @@ private:
     /// 以 currentList 全量重建已确认基线，并把在途/待发乐观值回贴（防整表替换覆盖在途点击）
     void rebuildConfirmedAndReapplyOptimistic();
 
-    IGoCookApi *m_api;   ///< API 门面（构造注入）
-    QVariantList m_shoppingLists;   ///< 清单列表数据
-    QVariantMap m_currentList;   ///< 清单详情数据
-    int m_pendingRequests = 0;   ///< 在途请求计数（isLoading 据此翻转）
-    bool m_creating = false;   ///< 建单请求在途
+    IGoCookApi* m_api;            ///< API 门面（构造注入）
+    QVariantList m_shoppingLists; ///< 清单列表数据
+    QVariantMap m_currentList;    ///< 清单详情数据
+    int m_pendingRequests = 0;    ///< 在途请求计数（isLoading 据此翻转）
+    bool m_creating = false;      ///< 建单请求在途
     QSet<int> m_pendingDeleteIds; ///< 乐观删除中但 API 尚未返回的 listId
 
     /// 勾选连点合并 + 串行队列（契约详见 updateShoppingListItem 注释）
-    QHash<int, bool> m_pendingChecks;      ///< 待发送：itemId → 期望状态（同条目末态覆盖）
-    QHash<int, int> m_pendingItemListIds;  ///< 待发送：itemId → 所属 listId（发送时取用，防跨清单误发）
-    QList<int> m_pendingQueue;             ///< 待发送条目 FIFO 顺序（与 m_pendingChecks 同步增删）
-    int m_inFlightItemId = -1;             ///< 在途更新请求的条目 id（-1 = 无；串行至多一个）
-    bool m_inFlightChecked = false;        ///< 在途请求的期望状态（详情重载回贴显示用）
-    QHash<int, bool> m_confirmedChecks;    ///< itemId → 服务端已确认状态（失败回滚基线；整表替换时重建）
-    QSet<int> m_deletingItemIds;      ///< 删除请求在途的条目 id（重复点击去重）
+    QHash<int, bool> m_pendingChecks;     ///< 待发送：itemId → 期望状态（同条目末态覆盖）
+    QHash<int, int> m_pendingItemListIds; ///< 待发送：itemId → 所属 listId（发送时取用，防跨清单误发）
+    QList<int> m_pendingQueue;            ///< 待发送条目 FIFO 顺序（与 m_pendingChecks 同步增删）
+    int m_inFlightItemId = -1;            ///< 在途更新请求的条目 id（-1 = 无；串行至多一个）
+    bool m_inFlightChecked = false;       ///< 在途请求的期望状态（详情重载回贴显示用）
+    QHash<int, bool> m_confirmedChecks;   ///< itemId → 服务端已确认状态（失败回滚基线；整表替换时重建）
+    QSet<int> m_deletingItemIds;          ///< 删除请求在途的条目 id（重复点击去重）
 };

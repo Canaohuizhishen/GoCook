@@ -16,14 +16,16 @@ public:
     public:
         // 移动语义（getConnection 按值 return 时必须）：接管别人的连接，自己不留
         ConnectionGuard(ConnectionGuard&& other) noexcept
-            : conn_(other.conn_), pool_(other.pool_), raw_(std::move(other.raw_)) {
+            : conn_(other.conn_),
+              pool_(other.pool_),
+              raw_(std::move(other.raw_)) {
             other.conn_ = nullptr;
             other.pool_ = nullptr;
         }
 
         ConnectionGuard& operator=(ConnectionGuard&& other) noexcept {
             if (this != &other) {
-                if (raw_ && pool_) pool_->returnConnection(std::move(raw_));   // 先还掉自己手里的
+                if (raw_ && pool_) pool_->returnConnection(std::move(raw_)); // 先还掉自己手里的
                 conn_ = other.conn_;
                 pool_ = other.pool_;
                 raw_ = std::move(other.raw_);
@@ -34,10 +36,10 @@ public:
         }
 
         ~ConnectionGuard() {
-            if (raw_ && pool_) pool_->returnConnection(std::move(raw_));   // 析构必然归还
+            if (raw_ && pool_) pool_->returnConnection(std::move(raw_)); // 析构必然归还
         }
 
-        ConnectionGuard(const ConnectionGuard&) = delete;        // 禁止拷贝（一个连接不能被两份持有）
+        ConnectionGuard(const ConnectionGuard&) = delete; // 禁止拷贝（一个连接不能被两份持有）
         ConnectionGuard& operator=(const ConnectionGuard&) = delete;
 
         pqxx::connection& operator*() const { return *conn_; }
@@ -45,9 +47,10 @@ public:
 
     private:
         friend class ConnectionPool;
-        ConnectionGuard(pqxx::connection* conn, ConnectionPool* pool,
-                        std::unique_ptr<pqxx::connection> raw)
-            : conn_(conn), pool_(pool), raw_(std::move(raw)) {}
+        ConnectionGuard(pqxx::connection* conn, ConnectionPool* pool, std::unique_ptr<pqxx::connection> raw)
+            : conn_(conn),
+              pool_(pool),
+              raw_(std::move(raw)) {}
 
         pqxx::connection* conn_ = nullptr;
         ConnectionPool* pool_ = nullptr;
@@ -61,18 +64,18 @@ public:
     /// 池空且满（存活连接数到上限）→ 阻塞等待归还，默认超时 5 秒，超时抛 ServiceException
     ConnectionGuard getConnection(std::chrono::milliseconds timeout = std::chrono::milliseconds(5000));
 
-    ConnectionPool(const ConnectionPool&) = delete;        // 禁止拷贝（连接池是全局唯一资源，不能复制）
+    ConnectionPool(const ConnectionPool&) = delete; // 禁止拷贝（连接池是全局唯一资源，不能复制）
     ConnectionPool& operator=(const ConnectionPool&) = delete;
 
 private:
-    void returnConnection(std::unique_ptr<pqxx::connection> conn);   // 归还：放回空闲队列 + 唤醒等待者
-    std::unique_ptr<pqxx::connection> createConnection();            // 新建一条 libpq 连接（TCP 握手 + 认证）
+    void returnConnection(std::unique_ptr<pqxx::connection> conn); // 归还：放回空闲队列 + 唤醒等待者
+    std::unique_ptr<pqxx::connection> createConnection();          // 新建一条 libpq 连接（TCP 握手 + 认证）
 
-    std::string connStr_;                                            // 连接串（dbname=... user=... password=...）
-    int maxSize_;                                                    // 池大小上限 = 数据库并发上限
-    int activeCount_ = 0;                // 存活连接总数 = 池内空闲 + 借出中；归还不减、废弃死连接才减，恒 ≤ maxSize_
+    std::string connStr_; // 连接串（dbname=... user=... password=...）
+    int maxSize_;         // 池大小上限 = 数据库并发上限
+    int activeCount_ = 0; // 存活连接总数 = 池内空闲 + 借出中；归还不减、废弃死连接才减，恒 ≤ maxSize_
 
-    mutable std::mutex mutex_;           // 保护线程共享数据结构 activeCount_ 和 pool_
-    std::condition_variable cv_;         // 让"没借到连接的线程"安全地睡觉（阻塞），直到"归还连接的线程"把它叫醒
-    std::deque<std::unique_ptr<pqxx::connection>> pool_;   // 空闲连接队列
+    mutable std::mutex mutex_;   // 保护线程共享数据结构 activeCount_ 和 pool_
+    std::condition_variable cv_; // 让"没借到连接的线程"安全地睡觉（阻塞），直到"归还连接的线程"把它叫醒
+    std::deque<std::unique_ptr<pqxx::connection>> pool_; // 空闲连接队列
 };

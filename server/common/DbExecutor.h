@@ -29,7 +29,8 @@ inline int safeTotalPages(int total, int size) noexcept {
 }
 
 template <typename Pool, typename Func>
-auto executeDb(Pool& pool, Func&& func,
+auto executeDb(Pool& pool,
+               Func&& func,
                const std::string& errorMsg,
                const std::source_location loc = std::source_location::current()) -> decltype(auto) {
     // 编译期模拟调用，推导 lambda 返回值类型
@@ -37,8 +38,7 @@ auto executeDb(Pool& pool, Func&& func,
 
     // 编译器检查返回类型是否正确：
     // 1. 禁止返回引用（事务析构后悬垂）
-    static_assert(!std::is_reference_v<FuncResult>,
-                  "executeDb: lambda 必须按值返回——引用在事务/result 销毁后悬空");
+    static_assert(!std::is_reference_v<FuncResult>, "executeDb: lambda 必须按值返回——引用在事务/result 销毁后悬空");
 
     // 2. 禁止返回裸指针如 c_str()（remove_cv_t 剥去 const 干扰后检测）
     static_assert(!std::is_pointer_v<std::remove_cv_t<FuncResult>>,
@@ -54,19 +54,19 @@ auto executeDb(Pool& pool, Func&& func,
                   "executeDb: lambda 不得返回 pqxx::field——它只是 result 行内字段的视图，"
                   "result 销毁后悬空，请先取值（as<T>()）再返回");
 
-    auto conn = pool.getConnection();                    // 借连接异常（含 503）原样上抛，不翻译
+    auto conn = pool.getConnection(); // 借连接异常（含 503）原样上抛，不翻译
     try {
         pqxx::work txn(*conn);
         if constexpr (std::is_void_v<FuncResult>) {
-            func(txn);                                   // 写操作：lambda 不返回值
+            func(txn); // 写操作：lambda 不返回值
             txn.commit();
         } else {
-            auto result = func(txn);                     // 查询：lambda 返回映射结果
+            auto result = func(txn); // 查询：lambda 返回映射结果
             txn.commit();
             return result;
         }
     } catch (const gocook::services::ServiceException&) {
-        throw;                                           // 业务异常原样上抛
+        throw; // 业务异常原样上抛
     } catch (const std::exception& e) {
         LOG_WARN("数据库操作出错（调用点 %s）：%s", loc.function_name(), e.what());
         throw gocook::services::ServiceException(errorMsg);

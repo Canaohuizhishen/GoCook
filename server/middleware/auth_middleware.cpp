@@ -1,11 +1,11 @@
 #include "auth_middleware.h"
 #include "../common/Logger.h"
-#include <chrono>   // 用于检查 Token 过期时间
+#include <chrono> // 用于检查 Token 过期时间
 
 using namespace gocook::models;
 
 TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
-    TokenInfo info;  // valid 默认为 false
+    TokenInfo info; // valid 默认为 false
 
     // 1. 检查 Authorization 头是否存在，且以 "Bearer " 开头
     if (auth_header.empty() || auth_header.find("Bearer ") != 0) {
@@ -20,9 +20,7 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
         auto decoded = jwt::decode(token);
 
         // 4. 验证签名、算法和签发者
-        auto verifier = jwt::verify()
-                            .allow_algorithm(jwt::algorithm::hs256{secret_})
-                            .with_issuer("GoCook");
+        auto verifier = jwt::verify().allow_algorithm(jwt::algorithm::hs256{secret_}).with_issuer("GoCook");
         verifier.verify(decoded);
 
         // 5. 显式检查过期时间（jwt-cpp 内部已验证，此处防御性再查）
@@ -39,7 +37,7 @@ TokenInfo AuthMiddleware::authenticate(const std::string& auth_header) const {
         // 6. 提取负荷中的用户信息
         info.userId = std::stoi(decoded.get_payload_claim("userId").as_string());
         info.username = decoded.get_payload_claim("username").as_string();
-        info.role = decoded.get_payload_claim("role").as_string();   // 提取角色
+        info.role = decoded.get_payload_claim("role").as_string(); // 提取角色
 
         // 7. 会话版本校验（JWT 主动吊销）：与 users.token_version 比对。
         //    - ver 缺失按 0（兼容部署前签发的旧格式令牌，改密前仍有效）

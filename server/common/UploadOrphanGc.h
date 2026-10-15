@@ -33,20 +33,19 @@ namespace UploadOrphanGc {
 
 /// 单轮清扫统计（scanned = 目录条目总数；kept 含"二次核对救回"的候选）
 struct GcResult {
-    size_t scanned = 0;  ///< 目录条目总数
-    size_t skipped = 0;  ///< 非普通文件（目录 / 符号链接 / 特殊文件）
-    size_t kept    = 0;  ///< 保留（被引用 / 未过宽限期 / 二次核对救回）
-    size_t deleted = 0;  ///< 已回收
-    size_t failed  = 0;  ///< 删除失败（下轮重试）
+    size_t scanned = 0; ///< 目录条目总数
+    size_t skipped = 0; ///< 非普通文件（目录 / 符号链接 / 特殊文件）
+    size_t kept = 0;    ///< 保留（被引用 / 未过宽限期 / 二次核对救回）
+    size_t deleted = 0; ///< 已回收
+    size_t failed = 0;  ///< 删除失败（下轮重试）
 };
 
 /// 阶段一（纯函数，可单测）：收集候选 = 常规文件 && 文件名不在 referenced
 /// && mtime 早于 now-minAge。不执行任何删除；非普通文件计入 skipped。
-inline std::vector<std::filesystem::path> collectCandidates(
-    const std::string& dir,
-    const std::set<std::string>& referenced,
-    std::chrono::seconds minAge,
-    GcResult& stats) {
+inline std::vector<std::filesystem::path> collectCandidates(const std::string& dir,
+                                                            const std::set<std::string>& referenced,
+                                                            std::chrono::seconds minAge,
+                                                            GcResult& stats) {
     std::vector<std::filesystem::path> candidates;
     std::error_code ec;
     std::filesystem::directory_iterator it(dir, ec);
@@ -60,7 +59,7 @@ inline std::vector<std::filesystem::path> collectCandidates(
         std::error_code fec;
         const auto status = entry.symlink_status(fec);
         if (fec || status.type() != std::filesystem::file_type::regular) {
-            ++stats.skipped;  // 目录/符号链接/特殊文件一律不动
+            ++stats.skipped; // 目录/符号链接/特殊文件一律不动
             continue;
         }
         const std::string filename = entry.path().filename().string();
@@ -75,7 +74,7 @@ inline std::vector<std::filesystem::path> collectCandidates(
         }
         const auto age = std::chrono::duration_cast<std::chrono::seconds>(now - mtime);
         if (age < minAge) {
-            ++stats.kept;  // 宽限期内（保护"上传→保存"慢路径）
+            ++stats.kept; // 宽限期内（保护"上传→保存"慢路径）
             continue;
         }
         candidates.push_back(entry.path());
@@ -91,7 +90,7 @@ inline void removeCandidates(const std::vector<std::filesystem::path>& candidate
     for (const auto& path : candidates) {
         const std::string filename = path.filename().string();
         if (referencedAfter.count(filename)) {
-            ++stats.kept;  // 收集与删除之间被绑定（保存）——救回
+            ++stats.kept; // 收集与删除之间被绑定（保存）——救回
             continue;
         }
         std::error_code ec;
@@ -111,19 +110,20 @@ inline void removeCandidates(const std::vector<std::filesystem::path>& candidate
 /// 收集 users.avatar_url 中托管的头像文件名（仅 /uploads/avatars/ 前缀；
 /// http(s) 外部链接不参与引用判定）。
 inline std::set<std::string> referencedAvatarFilenames(ConnectionPool& db) {
-    return executeDb(db, [](pqxx::work& txn) -> std::set<std::string> {
-        LOG_DEBUG("[SQL] SELECT avatar_url FROM users WHERE avatar_url LIKE '/uploads/avatars/%'");
-        pqxx::result rows = txn.exec(
-            "SELECT avatar_url FROM users WHERE avatar_url LIKE '/uploads/avatars/%'");
-        std::set<std::string> names;
-        for (const auto& row : rows) {
-            const std::string url = row["avatar_url"].as<std::string>("");
-            const auto pos = url.find_last_of('/');
-            if (pos != std::string::npos && pos + 1 < url.size())
-                names.insert(url.substr(pos + 1));
-        }
-        return names;
-    }, "数据库操作失败");
+    return executeDb(
+        db,
+        [](pqxx::work& txn) -> std::set<std::string> {
+            LOG_DEBUG("[SQL] SELECT avatar_url FROM users WHERE avatar_url LIKE '/uploads/avatars/%'");
+            pqxx::result rows = txn.exec("SELECT avatar_url FROM users WHERE avatar_url LIKE '/uploads/avatars/%'");
+            std::set<std::string> names;
+            for (const auto& row : rows) {
+                const std::string url = row["avatar_url"].as<std::string>("");
+                const auto pos = url.find_last_of('/');
+                if (pos != std::string::npos && pos + 1 < url.size()) names.insert(url.substr(pos + 1));
+            }
+            return names;
+        },
+        "数据库操作失败");
 }
 
 /// 组装（供 main 后台任务调用）：双快照 + 两阶段清扫，返回统计。

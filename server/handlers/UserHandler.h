@@ -1,7 +1,7 @@
 #pragma once
 
 #include <httplib/httplib.h>
-#include <gocook/IServices.h>          // 依赖抽象 IUserService
+#include <gocook/IServices.h> // 依赖抽象 IUserService
 #include <nlohmann/json.hpp>
 #include <string>
 #include "../middleware/auth_middleware.h"
@@ -10,8 +10,7 @@ using json = nlohmann::json;
 
 class UserHandler {
 public:
-    explicit UserHandler(gocook::services::IUserService& service,
-                         AuthMiddleware& auth);
+    explicit UserHandler(gocook::services::IUserService& service, AuthMiddleware& auth);
 
     // 注册新用户（公开接口；两段式注册第一步：发送验证码邮件）
     void registerUser(const httplib::Request& req, httplib::Response& res);
@@ -66,6 +65,6 @@ public:
     void deleteNotification(const httplib::Request& req, httplib::Response& res);
 
 private:
-    gocook::services::IUserService& service_;   // 业务抽象，不接触数据库
-    AuthMiddleware& auth_;                     // 认证中间件
+    gocook::services::IUserService& service_; // 业务抽象，不接触数据库
+    AuthMiddleware& auth_;                    // 认证中间件
 };

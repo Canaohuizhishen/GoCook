@@ -22,8 +22,7 @@
 namespace {
 
 /// 断言校验被拒：抛 ServiceException(400) 且消息为预期精确文案
-template <typename Fn>
-void expectRejected(Fn&& fn, const std::string& expectedMsg) {
+template <typename Fn> void expectRejected(Fn&& fn, const std::string& expectedMsg) {
     try {
         fn();
         FAIL() << "期望 ServiceException(400) 但未抛出";
@@ -33,7 +32,9 @@ void expectRejected(Fn&& fn, const std::string& expectedMsg) {
     }
 }
 
-nlohmann::json parseJson(const char* s) { return nlohmann::json::parse(s); }
+nlohmann::json parseJson(const char* s) {
+    return nlohmann::json::parse(s);
+}
 
 } // namespace
 
@@ -45,26 +46,22 @@ TEST(ValidationTest, 批量更新全字段合法通过) {
 }
 
 TEST(ValidationTest, 批量更新仅必填字段合法通过) {
-    EXPECT_TRUE(Validation::validateBatchUpdateFavoritesRequest(
-        parseJson(R"({"favorite_ids":[1]})")));
+    EXPECT_TRUE(Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"favorite_ids":[1]})")));
 }
 
 TEST(ValidationTest, 批量更新缺favorite_ids被拒) {
-    expectRejected(
-        [] { Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"group_id":3})")); },
-        "缺少 favorite_ids 字段");
+    expectRejected([] { Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"group_id":3})")); },
+                   "缺少 favorite_ids 字段");
 }
 
 TEST(ValidationTest, 批量更新顶层非对象按缺字段被拒) {
-    expectRejected(
-        [] { Validation::validateBatchUpdateFavoritesRequest(parseJson("[1,2]")); },
-        "缺少 favorite_ids 字段");
+    expectRejected([] { Validation::validateBatchUpdateFavoritesRequest(parseJson("[1,2]")); },
+                   "缺少 favorite_ids 字段");
 }
 
 TEST(ValidationTest, 批量更新favorite_ids非数组被拒) {
-    expectRejected(
-        [] { Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"favorite_ids":"1"})")); },
-        "favorite_ids 必须为整数数组");
+    expectRejected([] { Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"favorite_ids":"1"})")); },
+                   "favorite_ids 必须为整数数组");
 }
 
 TEST(ValidationTest, 批量更新favorite_ids元素非整数被拒) {
@@ -72,9 +69,8 @@ TEST(ValidationTest, 批量更新favorite_ids元素非整数被拒) {
                              R"({"favorite_ids":[1.5]})",
                              R"({"favorite_ids":[true]})",
                              R"({"favorite_ids":[null]})"}) {
-        expectRejected(
-            [body] { Validation::validateBatchUpdateFavoritesRequest(parseJson(body)); },
-            "favorite_ids 必须为整数数组");
+        expectRejected([body] { Validation::validateBatchUpdateFavoritesRequest(parseJson(body)); },
+                       "favorite_ids 必须为整数数组");
     }
 }
 
@@ -83,37 +79,33 @@ TEST(ValidationTest, 批量更新favorite_ids元素越界被拒) {
     for (const char* body : {R"({"favorite_ids":[3000000000]})",
                              R"({"favorite_ids":[-3000000000]})",
                              R"({"favorite_ids":[18446744073709551615]})"}) {
-        expectRejected(
-            [body] { Validation::validateBatchUpdateFavoritesRequest(parseJson(body)); },
-            "favorite_ids 必须为整数数组");
+        expectRejected([body] { Validation::validateBatchUpdateFavoritesRequest(parseJson(body)); },
+                       "favorite_ids 必须为整数数组");
     }
 }
 
 TEST(ValidationTest, 批量更新负id在int范围内放行由SQL静默跳过) {
-    EXPECT_TRUE(Validation::validateBatchUpdateFavoritesRequest(
-        parseJson(R"({"favorite_ids":[-5]})")));
+    EXPECT_TRUE(Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"favorite_ids":[-5]})")));
 }
 
 TEST(ValidationTest, 批量更新group_id非整数被拒) {
     expectRejected(
-        [] { Validation::validateBatchUpdateFavoritesRequest(
-                 parseJson(R"({"favorite_ids":[1],"group_id":"3"})")); },
+        [] { Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"favorite_ids":[1],"group_id":"3"})")); },
         "group_id 必须为整数");
 }
 
 TEST(ValidationTest, 批量更新group_id越界被拒) {
     expectRejected(
-        [] { Validation::validateBatchUpdateFavoritesRequest(
-                 parseJson(R"({"favorite_ids":[1],"group_id":3000000000})")); },
+        [] {
+            Validation::validateBatchUpdateFavoritesRequest(parseJson(R"({"favorite_ids":[1],"group_id":3000000000})"));
+        },
         "group_id 必须为整数");
 }
 
 TEST(ValidationTest, 批量更新is_public非布尔被拒) {
-    for (const char* body : {R"({"favorite_ids":[1],"is_public":1})",
-                             R"({"favorite_ids":[1],"is_public":"false"})"}) {
-        expectRejected(
-            [body] { Validation::validateBatchUpdateFavoritesRequest(parseJson(body)); },
-            "is_public 必须为布尔值");
+    for (const char* body : {R"({"favorite_ids":[1],"is_public":1})", R"({"favorite_ids":[1],"is_public":"false"})"}) {
+        expectRejected([body] { Validation::validateBatchUpdateFavoritesRequest(parseJson(body)); },
+                       "is_public 必须为布尔值");
     }
 }
 
@@ -126,18 +118,14 @@ TEST(ValidationTest, 批量更新空列表与无更新字段属服务层语义�
 // ==================== 批量删除收藏（3.6） ====================
 
 TEST(ValidationTest, 批量删除合法通过) {
-    EXPECT_TRUE(Validation::validateBatchDeleteFavoritesRequest(
-        parseJson(R"({"favorite_ids":[1,2,3]})")));
+    EXPECT_TRUE(Validation::validateBatchDeleteFavoritesRequest(parseJson(R"({"favorite_ids":[1,2,3]})")));
 }
 
 TEST(ValidationTest, 批量删除缺favorite_ids被拒) {
-    expectRejected(
-        [] { Validation::validateBatchDeleteFavoritesRequest(parseJson("{}")); },
-        "缺少 favorite_ids 字段");
+    expectRejected([] { Validation::validateBatchDeleteFavoritesRequest(parseJson("{}")); }, "缺少 favorite_ids 字段");
 }
 
 TEST(ValidationTest, 批量删除favorite_ids非数组被拒) {
-    expectRejected(
-        [] { Validation::validateBatchDeleteFavoritesRequest(parseJson(R"({"favorite_ids":1})")); },
-        "favorite_ids 必须为整数数组");
+    expectRejected([] { Validation::validateBatchDeleteFavoritesRequest(parseJson(R"({"favorite_ids":1})")); },
+                   "favorite_ids 必须为整数数组");
 }

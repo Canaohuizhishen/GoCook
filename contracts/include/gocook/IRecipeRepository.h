@@ -24,8 +24,7 @@ public:
      * @param filters 筛选条件（JSON 对象，如技法/口味/食材类型等）
      * @return 分页的菜谱摘要列表
      */
-    virtual models::PagedRecipes findPublicRecipes(int page, int size,
-                                                   const nlohmann::json& filters) = 0;
+    virtual models::PagedRecipes findPublicRecipes(int page, int size, const nlohmann::json& filters) = 0;
 
     /**
      * @brief 按关键词搜索菜谱（分页，可带筛选条件）。
@@ -35,9 +34,8 @@ public:
      * @param filters 筛选条件（JSON 对象）
      * @return 分页的菜谱摘要列表
      */
-    virtual models::PagedRecipes searchRecipes(const std::string& keyword,
-                                               int page, int size,
-                                               const nlohmann::json& filters) = 0;
+    virtual models::PagedRecipes
+    searchRecipes(const std::string& keyword, int page, int size, const nlohmann::json& filters) = 0;
 
     /**
      * @brief 查询智能推荐菜谱（结合用户偏好与库存）。
@@ -51,9 +49,7 @@ public:
      * @param size 每页数量
      * @return 分页的推荐菜谱（含匹配度与库存匹配详情）
      */
-    virtual models::PagedRecommendedRecipes findRecommendedRecipes(int userId,
-                                                                    int page,
-                                                                    int size) = 0;
+    virtual models::PagedRecommendedRecipes findRecommendedRecipes(int userId, int page, int size) = 0;
 
     /**
      * @brief 按 ID 查询菜谱详情。
@@ -77,12 +73,10 @@ public:
      * @param size 每页数量
      * @return 分页的评分评论列表
      */
-    virtual models::PagedRatings findRatings(int recipeId, int page,
-                                             int size) = 0;
+    virtual models::PagedRatings findRatings(int recipeId, int page, int size) = 0;
 
     /// 检查是否存在食材和步骤完全一致的已审核菜谱（内容查重）
-    virtual bool existsByContent(const nlohmann::json& ingredients,
-                                  const nlohmann::json& steps) = 0;
+    virtual bool existsByContent(const nlohmann::json& ingredients, const nlohmann::json& steps) = 0;
 
     /**
      * @brief 创建菜谱投稿。
@@ -92,9 +86,8 @@ public:
      *        ingredients_breakdown + health_notes）；无法计算时传空对象 "{}"
      * @return 投稿响应（含新菜谱 ID 与状态）
      */
-    virtual models::SubmitRecipeResponse create(
-        int userId, const models::SubmitRecipeRequest& data,
-        const nlohmann::json& nutritionInfo) = 0;
+    virtual models::SubmitRecipeResponse
+    create(int userId, const models::SubmitRecipeRequest& data, const nlohmann::json& nutritionInfo) = 0;
 
     /**
      * @brief 查询当前用户的投稿列表（分页）。
@@ -104,8 +97,8 @@ public:
      * @param status 状态筛选："pending"/"approved"/"rejected"，空串表示全部
      * @return 分页的投稿列表
      */
-    virtual models::PagedMyRecipes findMySubmittedRecipes(
-        int userId, int page, int size, const std::string& status) = 0;
+    virtual models::PagedMyRecipes
+    findMySubmittedRecipes(int userId, int page, int size, const std::string& status) = 0;
 
     /**
      * @brief 更新未审核菜谱。
@@ -116,9 +109,10 @@ public:
      *        nullopt（实现应保留库中已有 nutrition_info，编辑不因计算不可用而清空营养）
      * @return 更新后的状态（"pending"）
      */
-    virtual std::string update(int userId, int recipeId,
-                                const models::EditRecipeRequest& updates,
-                                const std::optional<nlohmann::json>& nutritionInfo) = 0;
+    virtual std::string update(int userId,
+                               int recipeId,
+                               const models::EditRecipeRequest& updates,
+                               const std::optional<nlohmann::json>& nutritionInfo) = 0;
 
     /**
      * @brief 切换菜谱收藏状态（未收藏则收藏，已收藏则取消）。
@@ -127,9 +121,7 @@ public:
      * @param groupId 可选目标分组 ID，不传使用默认分组
      * @param isPublic 可选可见性，nullopt 表示保持默认
      */
-    virtual void toggleFavorite(int userId, int recipeId,
-                                std::optional<int> groupId,
-                                std::optional<bool> isPublic) = 0;
+    virtual void toggleFavorite(int userId, int recipeId, std::optional<int> groupId, std::optional<bool> isPublic) = 0;
 
     /**
      * @brief 写入评分与评论。
@@ -137,8 +129,7 @@ public:
      * @param recipeId 菜谱 ID
      * @param req 评分（1-5）与评论内容
      */
-    virtual void rateRecipe(int userId, int recipeId,
-                            const models::RateRecipeRequest& req) = 0;
+    virtual void rateRecipe(int userId, int recipeId, const models::RateRecipeRequest& req) = 0;
 
     /**
      * @brief 修改评论。
@@ -147,8 +138,7 @@ public:
      * @param ratingId 评论 ID
      * @param req 新的评分与评论内容
      */
-    virtual void updateRating(int userId, int recipeId, int ratingId,
-                              const models::RateRecipeRequest& req) = 0;
+    virtual void updateRating(int userId, int recipeId, int ratingId, const models::RateRecipeRequest& req) = 0;
 
     /**
      * @brief 删除评论。
@@ -164,8 +154,7 @@ public:
      * @param recipeId 菜谱 ID
      * @return 评分记录；未评分时返回 nullopt
      */
-    virtual std::optional<models::RecipeRating> findMyRating(
-        int userId, int recipeId) = 0;
+    virtual std::optional<models::RecipeRating> findMyRating(int userId, int recipeId) = 0;
 
     /**
      * @brief 查询当前用户的全部评论列表（分页）。
@@ -174,8 +163,7 @@ public:
      * @param size 每页数量
      * @return 分页的评论列表
      */
-    virtual models::PagedUserRatings findMyRatings(int userId, int page,
-                                                   int size) = 0;
+    virtual models::PagedUserRatings findMyRatings(int userId, int page, int size) = 0;
 
     /**
      * @brief 查询菜谱独立营养报告。
@@ -187,14 +175,12 @@ public:
     /// 更新菜谱封面图片：先校验作者归属（非作者 403）与菜谱存在（不存在 404），
     /// 将 imagePath 文件复制到 uploads 目录后返回可访问的 image_url；
     /// 所有失败路径清理临时源文件与已复制的目标文件。
-    virtual std::string updateRecipeImage(int userId, int recipeId,
-                                          const std::string& imagePath) = 0;
+    virtual std::string updateRecipeImage(int userId, int recipeId, const std::string& imagePath) = 0;
 
     /// 更新菜谱某一步骤的图片：先校验作者归属（非作者 403）/存在性（404）/步骤索引（越界 400），
     /// 读 steps JSONB → 改 [stepIndex].image_url → 写回，返回 image_url；
     /// 所有失败路径清理临时源文件与已复制的目标文件。
-    virtual std::string updateStepImage(int userId, int recipeId, int stepIndex,
-                                        const std::string& imagePath) = 0;
+    virtual std::string updateStepImage(int userId, int recipeId, int stepIndex, const std::string& imagePath) = 0;
 
     /// 删除待审核菜谱（仅 status != 'approved' 的菜谱可删除），同时清理图片文件
     virtual void deleteRecipe(int userId, int recipeId) = 0;

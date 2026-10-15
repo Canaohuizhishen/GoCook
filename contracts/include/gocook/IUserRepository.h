@@ -12,10 +12,10 @@ inline constexpr int EMAIL_CODE_EXPIRY_MINUTES = 15;
 
 /// 用户认证信息（用于登录验证与鉴权）
 struct UserAuthInfo {
-    int id = 0;                    ///< 用户 ID
-    std::string username;          ///< 用户名
-    std::string passwordHash;      ///< 密码哈希（不可逆存储）
-    std::string role;              ///< 角色：user / moderator / super_admin
+    int id = 0;               ///< 用户 ID
+    std::string username;     ///< 用户名
+    std::string passwordHash; ///< 密码哈希（不可逆存储）
+    std::string role;         ///< 角色：user / moderator / super_admin
 };
 
 /**
@@ -48,9 +48,7 @@ public:
      * @param passwordHash 密码哈希
      * @param email 邮箱地址
      */
-    virtual void createUser(const std::string& username,
-                            const std::string& passwordHash,
-                            const std::string& email) = 0;
+    virtual void createUser(const std::string& username, const std::string& passwordHash, const std::string& email) = 0;
 
     /**
      * @brief 创建/覆盖待验证注册记录（两段式注册第一步；邮箱唯一，过期时间由 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 统一计算）。
@@ -70,8 +68,8 @@ public:
      * @param token 6 位数字验证码
      * @return 验证结果（成功 / 验证码无效 / 用户名被占 / 邮箱已被注册）
      */
-    virtual models::RegistrationOutcome createUserFromPendingRegistration(
-        const std::string& email, const std::string& token) = 0;
+    virtual models::RegistrationOutcome createUserFromPendingRegistration(const std::string& email,
+                                                                          const std::string& token) = 0;
 
     /**
      * @brief 按 ID 查询用户公开资料。
@@ -84,8 +82,7 @@ public:
     virtual std::optional<int> findIdByEmail(const std::string& email) = 0;
 
     /// 通过用户名+邮箱联合查找用户 ID（用于忘记密码验证身份）
-    virtual std::optional<int> findIdByUsernameAndEmail(const std::string& username,
-                                                        const std::string& email) = 0;
+    virtual std::optional<int> findIdByUsernameAndEmail(const std::string& username, const std::string& email) = 0;
 
     /// 创建密码重置令牌（过期时间由 SQL 层按 EMAIL_CODE_EXPIRY_MINUTES 统一计算）
     virtual void createPasswordResetToken(int userId, const std::string& token) = 0;
@@ -97,17 +94,15 @@ public:
     virtual void markResetTokenUsed(const std::string& token) = 0;
 
     /// 在同一事务中重置密码并标记令牌为已用（防止令牌重放；同时自增 token_version 吊销全部旧 JWT）
-    virtual void resetPasswordAndMarkTokenUsed(int userId,
-                                                const std::string& newPasswordHash,
-                                                const std::string& token) = 0;
+    virtual void
+    resetPasswordAndMarkTokenUsed(int userId, const std::string& newPasswordHash, const std::string& token) = 0;
 
     /**
      * @brief 更新用户个人资料（含头像绑定：avatar_url 有值时换绑并在提交后回收被顶替文件）。
      * @param userId 用户 ID
      * @param profile 待更新的资料字段（可选字段为空表示不修改）
      */
-    virtual void updateProfile(int userId,
-                               const models::UpdateProfileRequest& profile) = 0;
+    virtual void updateProfile(int userId, const models::UpdateProfileRequest& profile) = 0;
 
     /// 获取用户密码哈希（用于修改密码时验证原密码）
     virtual std::string getPasswordHash(int userId) = 0;
@@ -121,8 +116,7 @@ public:
      * @param userId 用户 ID
      * @param newPasswordHash 新密码哈希
      */
-    virtual void changePassword(int userId,
-                                const std::string& newPasswordHash) = 0;
+    virtual void changePassword(int userId, const std::string& newPasswordHash) = 0;
 
     /**
      * @brief 注销账户（删除用户及关联数据）。
@@ -136,8 +130,7 @@ public:
      * @param filePath 待上传的本地图片路径
      * @return 头像响应（avatar_url 暂存引用）
      */
-    virtual models::AvatarUploadResponse uploadAvatar(
-        int userId, const std::string& filePath) = 0;
+    virtual models::AvatarUploadResponse uploadAvatar(int userId, const std::string& filePath) = 0;
 
     /**
      * @brief 查询用户饮食偏好。
@@ -151,8 +144,7 @@ public:
      * @param userId 用户 ID
      * @param prefs 新的偏好数据
      */
-    virtual void updatePreferences(int userId,
-                                   const models::UserPreferences& prefs) = 0;
+    virtual void updatePreferences(int userId, const models::UserPreferences& prefs) = 0;
 
     /**
      * @brief 查询用户健康条件列表。
@@ -167,8 +159,7 @@ public:
      * @param req 身高体重与健康条件
      * @return 更新后的健康指标（含忌口建议）
      */
-    virtual models::HealthProfileResponse updateHealthProfile(
-        int userId, const models::HealthProfileRequest& req) = 0;
+    virtual models::HealthProfileResponse updateHealthProfile(int userId, const models::HealthProfileRequest& req) = 0;
 
     /**
      * @brief 查询健康指标。
@@ -185,8 +176,7 @@ public:
      * @param group 分组名筛选，空串表示所有分组
      * @return 分页的收藏列表
      */
-    virtual models::PagedFavorites getFavorites(int userId, int page, int size,
-                                                const std::string& group) = 0;
+    virtual models::PagedFavorites getFavorites(int userId, int page, int size, const std::string& group) = 0;
 
     /**
      * @brief 查询收藏分组列表。
@@ -201,8 +191,7 @@ public:
      * @param req 分组名
      * @return 创建的分组对象
      */
-    virtual models::FavoriteGroup createFavoriteGroup(
-        int userId, const models::CreateGroupRequest& req) = 0;
+    virtual models::FavoriteGroup createFavoriteGroup(int userId, const models::CreateGroupRequest& req) = 0;
 
     /**
      * @brief 更新收藏分组。
@@ -210,8 +199,7 @@ public:
      * @param groupId 分组 ID
      * @param req 新分组名
      */
-    virtual void updateFavoriteGroup(int userId, int groupId,
-                                     const models::UpdateGroupRequest& req) = 0;
+    virtual void updateFavoriteGroup(int userId, int groupId, const models::UpdateGroupRequest& req) = 0;
 
     /**
      * @brief 删除收藏分组。
@@ -225,16 +213,14 @@ public:
      * @param userId 用户 ID
      * @param req 待更新的收藏 ID 列表与属性
      */
-    virtual void batchUpdateFavorites(
-        int userId, const models::BatchUpdateFavoritesRequest& req) = 0;
+    virtual void batchUpdateFavorites(int userId, const models::BatchUpdateFavoritesRequest& req) = 0;
 
     /**
      * @brief 批量删除收藏。
      * @param userId 用户 ID
      * @param req 待删除的收藏 ID 列表
      */
-    virtual void batchDeleteFavorites(
-        int userId, const models::BatchDeleteFavoritesRequest& req) = 0;
+    virtual void batchDeleteFavorites(int userId, const models::BatchDeleteFavoritesRequest& req) = 0;
 
     /**
      * @brief 查询通知列表（分页）。
@@ -245,9 +231,7 @@ public:
      *             响应 is_read 由「行 id > 该分类已读水位」动态计算（非存储列）
      * @return 分页的通知列表
      */
-    virtual models::PagedNotifications getNotifications(int userId, int page,
-                                                        int size,
-                                                        const std::string& type) = 0;
+    virtual models::PagedNotifications getNotifications(int userId, int page, int size, const std::string& type) = 0;
 
     /**
      * @brief 查询未读汇总（消息中心角标：各分类未读数 + 有无新公告）。
@@ -264,8 +248,7 @@ public:
      * @param channel 频道："review" / "interaction" / "announcement"
      * @param lastSeenId 客户端看到的当前最大 id
      */
-    virtual void updateReadWatermark(int userId, const std::string& channel,
-                                     int lastSeenId) = 0;
+    virtual void updateReadWatermark(int userId, const std::string& channel, int lastSeenId) = 0;
 
     /**
      * @brief 删除通知。

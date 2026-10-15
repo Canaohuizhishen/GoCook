@@ -14,8 +14,7 @@
 class AdminHandler {
 public:
     // 构造函数，注入管理服务抽象与认证中间件
-    explicit AdminHandler(gocook::services::IAdminService& service,
-                          AuthMiddleware& auth);
+    explicit AdminHandler(gocook::services::IAdminService& service, AuthMiddleware& auth);
 
     // 用户管理
     // 获取用户列表（分页，可带筛选条件）
@@ -55,8 +54,7 @@ public:
 
 private:
     // 校验当前用户角色是否在允许列表中，不满足时写入 403 响应并返回 false
-    bool requireRole(const httplib::Request& req, httplib::Response& res,
-                     const std::vector<std::string>& allowedRoles);
+    bool requireRole(const httplib::Request& req, httplib::Response& res, const std::vector<std::string>& allowedRoles);
     gocook::services::IAdminService& service_; ///< 管理服务抽象
     AuthMiddleware& auth_;                     ///< 认证中间件
 };

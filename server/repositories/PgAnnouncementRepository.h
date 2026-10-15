@@ -11,7 +11,8 @@
 class PgAnnouncementRepository : public gocook::repository::IAnnouncementRepository {
 public:
     // 构造函数，注入数据库连接池引用
-    explicit PgAnnouncementRepository(ConnectionPool& db) : db_(db) {}
+    explicit PgAnnouncementRepository(ConnectionPool& db)
+        : db_(db) {}
 
     // 查询公告列表（分页）
     gocook::models::PagedAnnouncements findAll(int page, int size) override;

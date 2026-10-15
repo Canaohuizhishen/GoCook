@@ -21,83 +21,78 @@ using namespace gocook::models;
 using namespace gocook::services;
 
 namespace {
-    // 把名单食材 join 成 UI 文案（“、”分隔，顺序 = 名单顺序）
-    std::string joinAvoidanceNames(const std::vector<std::string>& names) {
-        std::string s;
-        for (size_t i = 0; i < names.size(); ++i) {
-            if (i) s += "、";
-            s += names[i];
-        }
-        return s;
+// 把名单食材 join 成 UI 文案（“、”分隔，顺序 = 名单顺序）
+std::string joinAvoidanceNames(const std::vector<std::string>& names) {
+    std::string s;
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (i) s += "、";
+        s += names[i];
     }
+    return s;
+}
 
-    void populateAvoidanceSuggestions(
-        const std::vector<std::string>& conditions,
-        std::vector<AvoidanceItem>& out)
-    {
-        for (const auto& c : conditions) {
-            // 食材名单一律取自 HealthConditionLists.h（唯一事实源，杜绝手抄漂移）；
-            // reason 文案属 UI 文案层，本地维护。
-            const auto& hard = gocook::health::hardExcludedFor(c);
-            const auto& soft = gocook::health::softAdvisedFor(c);
-            if (c == "高血压") {
-                if (!hard.empty())
-                    out.push_back({joinAvoidanceNames(hard), "高盐加工品，推荐结果将直接排除含此类食材的菜谱"});
-                if (!soft.empty())
-                    out.push_back({joinAvoidanceNames(soft), "调味高钠，系统仅提示少放，不屏蔽菜谱"});
-            } else if (c == "高血脂") {
-                if (!hard.empty())
-                    out.push_back({joinAvoidanceNames(hard), "高脂食材，推荐结果将直接排除含此类食材的菜谱"});
-            } else if (c == "糖尿病") {
-                if (!hard.empty())
-                    out.push_back({joinAvoidanceNames(hard), "高糖成品酱料，推荐结果将直接排除含此类食材的菜谱"});
-                if (!soft.empty())
-                    out.push_back({joinAvoidanceNames(soft), "调味糖源可少放或不放，系统仅提示不屏蔽"});
-            } else if (c == "胃炎") {
-                // 引擎不对胃炎做食材级过滤（辛辣/生冷无法映射食材黑名单）——纯建议口径，不声称排除
-                out.push_back({"辛辣食物", "刺激胃黏膜，可能加重炎症（系统仅作建议，不做菜谱排除）"});
-                out.push_back({"生冷食物", "不易消化，增加胃负担（系统仅作建议，不做菜谱排除）"});
-                out.push_back({"酒精", "刺激胃黏膜，应避免饮酒（系统仅作建议，不做菜谱排除）"});
-            } else if (c == "痛风") {
-                if (!hard.empty())
-                    out.push_back({joinAvoidanceNames(hard), "高嘌呤/高风险食材，推荐结果将直接排除含此类食材的菜谱"});
-            }
-        }
-    }
-
-    /// 生成 6 位数字验证码（CSPRNG，范围 100000-999999；密码重置与注册验证共用）
-    std::string generateNumericCode() {
-        unsigned char randomBytes[4];
-        if (RAND_bytes(randomBytes, sizeof(randomBytes)) != 1) {
-            throw ServiceException("无法生成安全令牌");
-        }
-        uint32_t val = (static_cast<uint32_t>(randomBytes[0]) << 24)
-                     | (static_cast<uint32_t>(randomBytes[1]) << 16)
-                     | (static_cast<uint32_t>(randomBytes[2]) << 8)
-                     | static_cast<uint32_t>(randomBytes[3]);
-        return std::to_string((val % 900000) + 100000);
-    }
-
-    /// 开发模式（SMTP 未配置）：邮件内容（含验证码）打印到服务端日志（[DEV MAIL]，docker logs 可见），不发信
-    void logDevMail(const std::string& to, const std::string& subject, const std::string& body) {
-        LOG_WARN("[DEV MAIL] SMTP 未配置，邮件未真实发送\n收件人：%s\n主题：%s\n正文：\n%s",
-                 to.c_str(), subject.c_str(), body.c_str());
-    }
-
-    /// 发送邮件：SMTP 已配置 → 真发（失败抛 500——注册/重置各链路一致，响应层无可区分差异）；
-    /// 未配置（开发模式）→ 邮件正文打印到服务端日志，接口响应保持统一。
-    void sendMailOrLog(const std::string& to, const std::string& subject, const std::string& body) {
-        if (EmailSender::isConfigured()) {
-            if (!EmailSender::sendEmail(to, subject, body)) {
-                LOG_ERROR("向 %s 发送邮件失败（SMTP 错误）：%s", to.c_str(), subject.c_str());
-                throw ServiceException("邮件发送失败，请稍后再试或联系管理员", 500);
-            }
-            LOG_INFO("邮件已发送至 %s：%s", to.c_str(), subject.c_str());
-        } else {
-            logDevMail(to, subject, body);
+void populateAvoidanceSuggestions(const std::vector<std::string>& conditions, std::vector<AvoidanceItem>& out) {
+    for (const auto& c : conditions) {
+        // 食材名单一律取自 HealthConditionLists.h（唯一事实源，杜绝手抄漂移）；
+        // reason 文案属 UI 文案层，本地维护。
+        const auto& hard = gocook::health::hardExcludedFor(c);
+        const auto& soft = gocook::health::softAdvisedFor(c);
+        if (c == "高血压") {
+            if (!hard.empty())
+                out.push_back({joinAvoidanceNames(hard), "高盐加工品，推荐结果将直接排除含此类食材的菜谱"});
+            if (!soft.empty()) out.push_back({joinAvoidanceNames(soft), "调味高钠，系统仅提示少放，不屏蔽菜谱"});
+        } else if (c == "高血脂") {
+            if (!hard.empty())
+                out.push_back({joinAvoidanceNames(hard), "高脂食材，推荐结果将直接排除含此类食材的菜谱"});
+        } else if (c == "糖尿病") {
+            if (!hard.empty())
+                out.push_back({joinAvoidanceNames(hard), "高糖成品酱料，推荐结果将直接排除含此类食材的菜谱"});
+            if (!soft.empty()) out.push_back({joinAvoidanceNames(soft), "调味糖源可少放或不放，系统仅提示不屏蔽"});
+        } else if (c == "胃炎") {
+            // 引擎不对胃炎做食材级过滤（辛辣/生冷无法映射食材黑名单）——纯建议口径，不声称排除
+            out.push_back({"辛辣食物", "刺激胃黏膜，可能加重炎症（系统仅作建议，不做菜谱排除）"});
+            out.push_back({"生冷食物", "不易消化，增加胃负担（系统仅作建议，不做菜谱排除）"});
+            out.push_back({"酒精", "刺激胃黏膜，应避免饮酒（系统仅作建议，不做菜谱排除）"});
+        } else if (c == "痛风") {
+            if (!hard.empty())
+                out.push_back({joinAvoidanceNames(hard), "高嘌呤/高风险食材，推荐结果将直接排除含此类食材的菜谱"});
         }
     }
 }
+
+/// 生成 6 位数字验证码（CSPRNG，范围 100000-999999；密码重置与注册验证共用）
+std::string generateNumericCode() {
+    unsigned char randomBytes[4];
+    if (RAND_bytes(randomBytes, sizeof(randomBytes)) != 1) {
+        throw ServiceException("无法生成安全令牌");
+    }
+    uint32_t val = (static_cast<uint32_t>(randomBytes[0]) << 24) | (static_cast<uint32_t>(randomBytes[1]) << 16) |
+                   (static_cast<uint32_t>(randomBytes[2]) << 8) | static_cast<uint32_t>(randomBytes[3]);
+    return std::to_string((val % 900000) + 100000);
+}
+
+/// 开发模式（SMTP 未配置）：邮件内容（含验证码）打印到服务端日志（[DEV MAIL]，docker logs 可见），不发信
+void logDevMail(const std::string& to, const std::string& subject, const std::string& body) {
+    LOG_WARN("[DEV MAIL] SMTP 未配置，邮件未真实发送\n收件人：%s\n主题：%s\n正文：\n%s",
+             to.c_str(),
+             subject.c_str(),
+             body.c_str());
+}
+
+/// 发送邮件：SMTP 已配置 → 真发（失败抛 500——注册/重置各链路一致，响应层无可区分差异）；
+/// 未配置（开发模式）→ 邮件正文打印到服务端日志，接口响应保持统一。
+void sendMailOrLog(const std::string& to, const std::string& subject, const std::string& body) {
+    if (EmailSender::isConfigured()) {
+        if (!EmailSender::sendEmail(to, subject, body)) {
+            LOG_ERROR("向 %s 发送邮件失败（SMTP 错误）：%s", to.c_str(), subject.c_str());
+            throw ServiceException("邮件发送失败，请稍后再试或联系管理员", 500);
+        }
+        LOG_INFO("邮件已发送至 %s：%s", to.c_str(), subject.c_str());
+    } else {
+        logDevMail(to, subject, body);
+    }
+}
+} // namespace
 
 std::string UserServiceImpl::generateToken(int userId, const std::string& username, const std::string& role) {
     auto now = std::chrono::system_clock::now();
@@ -129,7 +124,8 @@ std::string UserServiceImpl::hashPassword(const std::string& plain) {
 
     // 2. 把随机字节“格式化”成 bcrypt 能识别的盐字符串
     char salt[BCRYPT_OUTPUT_SIZE];
-    char *salt_result = _crypt_gensalt_blowfish_rn("$2a$", 10, reinterpret_cast<const char*>(random_bytes), 16, salt, sizeof(salt));
+    char* salt_result =
+        _crypt_gensalt_blowfish_rn("$2a$", 10, reinterpret_cast<const char*>(random_bytes), 16, salt, sizeof(salt));
     if (!salt_result) {
         throw ServiceException("无法生成密码盐值");
     }
@@ -138,7 +134,7 @@ std::string UserServiceImpl::hashPassword(const std::string& plain) {
 
     // 3. 核心哈希动作：用上面生成的盐，对明文密码做 blowfish 加密（单向散列）
     char hash[BCRYPT_OUTPUT_SIZE];
-    char *hash_result = _crypt_blowfish_rn(plain.c_str(), salt, hash, sizeof(hash));
+    char* hash_result = _crypt_blowfish_rn(plain.c_str(), salt, hash, sizeof(hash));
     if (!hash_result) {
         throw ServiceException("密码哈希计算失败");
     }
@@ -152,7 +148,7 @@ std::string UserServiceImpl::hashPassword(const std::string& plain) {
 bool UserServiceImpl::validatePassword(const std::string& plain, const std::string& hash) {
     char output[BCRYPT_OUTPUT_SIZE];
     // 函数内部会（直接截取 hash 的前22位字符）自动解析 hash 里的 "$2a$"、"10"、"盐"，然后用它们去加密 plain，得到的结果用于后续的比较
-    char *result = _crypt_blowfish_rn(plain.c_str(), hash.c_str(), output, sizeof(output));
+    char* result = _crypt_blowfish_rn(plain.c_str(), hash.c_str(), output, sizeof(output));
     if (!result) {
         return false;
     }
@@ -177,9 +173,10 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     // 邮箱已注册：接口响应保持统一（不泄露注册状态），差异只体现在邮件内容上（防枚举）；
     // 邮件发送失败在两种分支都会抛 500，响应层不产生可区分的差异。
     if (userRepo_->existsByEmail(request.email)) {
-        sendMailOrLog(request.email, "GoCook 注册提示",
-            "此邮箱已关联 GoCook 账户。请直接登录；如果忘记密码，可在登录页尝试找回密码。\n"
-            "如非本人操作，请忽略此邮件。");
+        sendMailOrLog(request.email,
+                      "GoCook 注册提示",
+                      "此邮箱已关联 GoCook 账户。请直接登录；如果忘记密码，可在登录页尝试找回密码。\n"
+                      "如非本人操作，请忽略此邮件。");
         return;
     }
 
@@ -187,22 +184,25 @@ void UserServiceImpl::registerUser(const RegisterRequest& request) {
     std::string token = generateNumericCode();
     std::string hashed = hashPassword(request.password);
     userRepo_->upsertPendingRegistration(request.username, hashed, request.email, token);
-    sendMailOrLog(request.email, "GoCook 注册验证码",
-        "您正在注册 GoCook 账户，验证码为：" + token + "（" + std::to_string(gocook::repository::EMAIL_CODE_EXPIRY_MINUTES) + " 分钟内有效）。\n"
-        "请在注册页面输入该验证码完成注册。如非本人操作，请忽略此邮件。");
+    sendMailOrLog(request.email,
+                  "GoCook 注册验证码",
+                  "您正在注册 GoCook 账户，验证码为：" + token + "（" +
+                      std::to_string(gocook::repository::EMAIL_CODE_EXPIRY_MINUTES) +
+                      " 分钟内有效）。\n"
+                      "请在注册页面输入该验证码完成注册。如非本人操作，请忽略此邮件。");
 }
 
 void UserServiceImpl::verifyRegistration(const std::string& email, const std::string& token) {
     // 两段式注册第二步：验证码核验通过后原子建号；此阶段可返回具体错误（持码人已证明邮箱归属）
     switch (userRepo_->createUserFromPendingRegistration(email, token)) {
-        case RegistrationOutcome::Success:
-            return;
-        case RegistrationOutcome::InvalidCode:
-            throw ServiceException("验证码无效或已过期", 400);
-        case RegistrationOutcome::UsernameTaken:
-            throw ServiceException("用户名已被占用，请更换用户名后重新注册", 409);
-        case RegistrationOutcome::EmailTaken:
-            throw ServiceException("该邮箱已被注册，请直接登录", 409);
+    case RegistrationOutcome::Success:
+        return;
+    case RegistrationOutcome::InvalidCode:
+        throw ServiceException("验证码无效或已过期", 400);
+    case RegistrationOutcome::UsernameTaken:
+        throw ServiceException("用户名已被占用，请更换用户名后重新注册", 409);
+    case RegistrationOutcome::EmailTaken:
+        throw ServiceException("该邮箱已被注册，请直接登录", 409);
     }
     throw ServiceException("注册验证失败");
 }
@@ -234,13 +234,11 @@ UserProfile UserServiceImpl::getCurrentUser(int userId) {
 
 // ==================== 密码重置 ====================
 
-void UserServiceImpl::requestPasswordReset(const std::string& username,
-                                           const std::string& email) {
+void UserServiceImpl::requestPasswordReset(const std::string& username, const std::string& email) {
     // 1. 校验用户名与邮箱是否匹配（双重验证）
     auto userIdOpt = userRepo_->findIdByUsernameAndEmail(username, email);
     if (!userIdOpt.has_value()) {
-        LOG_WARN("密码重置请求未找到匹配账户：username='%s' email='%s'",
-                 username.c_str(), email.c_str());
+        LOG_WARN("密码重置请求未找到匹配账户：username='%s' email='%s'", username.c_str(), email.c_str());
         throw ServiceException("用户名或邮箱不正确", 400);
     }
 
@@ -255,7 +253,8 @@ void UserServiceImpl::requestPasswordReset(const std::string& username,
     //    - SMTP 已配置 → 真发；发送失败抛 500（真实错误，不静默降级回开发模式）
     //    - SMTP 未配置（开发模式）→ 邮件正文（含验证码）经 [DEV MAIL] 打印到服务端日志，响应与生产同形
     //    正文经 buildPasswordResetEmailBody 单源构建——真发与日志打印同一字符串
-    sendMailOrLog(email, "GoCook - 密码重置",
+    sendMailOrLog(email,
+                  "GoCook - 密码重置",
                   EmailSender::buildPasswordResetEmailBody(token, gocook::repository::EMAIL_CODE_EXPIRY_MINUTES));
 }
 
@@ -289,8 +288,8 @@ void UserServiceImpl::resetPassword(const std::string& token, const std::string&
 }
 UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileRequest& profile) {
     // 校验：至少需提供一个字段
-    if (!profile.display_name.has_value() && !profile.avatar_url.has_value() &&
-        !profile.email.has_value() && !profile.phone.has_value()) {
+    if (!profile.display_name.has_value() && !profile.avatar_url.has_value() && !profile.email.has_value() &&
+        !profile.phone.has_value()) {
         throw ServiceException("没有提供需要更新的字段", 400);
     }
 
@@ -337,9 +336,7 @@ UserProfile UserServiceImpl::updateProfile(int userId, const UpdateProfileReques
 }
 /// \note 主动吊销：修改密码时自增 token_version（见 IUserRepository::changePassword），
 ///       全部旧 JWT（含当前设备）立即失效，需用新密码重新登录。
-void UserServiceImpl::changePassword(int userId,
-                                      const std::string& currentPassword,
-                                      const std::string& newPassword) {
+void UserServiceImpl::changePassword(int userId, const std::string& currentPassword, const std::string& newPassword) {
     // 1. 获取当前密码哈希
     std::string currentHash = userRepo_->getPasswordHash(userId);
 
@@ -475,17 +472,14 @@ void UserServiceImpl::deleteFavoriteGroup(int userId, int groupId) {
     userRepo_->deleteFavoriteGroup(userId, groupId);
 }
 void UserServiceImpl::batchUpdateFavorites(int userId, const BatchUpdateFavoritesRequest& req) {
-    if (req.favorite_ids.empty())
-        throw ServiceException("favorite_ids 不能为空", 400);
-    if (!req.group_id.has_value() && !req.is_public.has_value())
-        throw ServiceException("缺少更新字段", 400);
+    if (req.favorite_ids.empty()) throw ServiceException("favorite_ids 不能为空", 400);
+    if (!req.group_id.has_value() && !req.is_public.has_value()) throw ServiceException("缺少更新字段", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     userRepo_->batchUpdateFavorites(userId, req);
 }
 void UserServiceImpl::batchDeleteFavorites(int userId, const BatchDeleteFavoritesRequest& req) {
-    if (req.favorite_ids.empty())
-        throw ServiceException("favorite_ids 不能为空", 400);
+    if (req.favorite_ids.empty()) throw ServiceException("favorite_ids 不能为空", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     userRepo_->batchDeleteFavorites(userId, req);
@@ -502,17 +496,14 @@ NotificationUnreadSummary UserServiceImpl::getUnreadSummary(int userId) {
 }
 void UserServiceImpl::setNotificationsReadState(int userId, const std::string& type, int lastSeenId) {
     // 参数先收口（对齐“空列表在 findById 之前收口”惯例：非法入参不查库）
-    if (type != "review" && type != "interaction")
-        throw ServiceException("不支持的通知类型", 400);
-    if (lastSeenId < 0)
-        throw ServiceException("last_seen_id 不能为负", 400);
+    if (type != "review" && type != "interaction") throw ServiceException("不支持的通知类型", 400);
+    if (lastSeenId < 0) throw ServiceException("last_seen_id 不能为负", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     userRepo_->updateReadWatermark(userId, type, lastSeenId);
 }
 void UserServiceImpl::setAnnouncementsReadState(int userId, int lastSeenId) {
-    if (lastSeenId < 0)
-        throw ServiceException("last_seen_id 不能为负", 400);
+    if (lastSeenId < 0) throw ServiceException("last_seen_id 不能为负", 400);
     auto user = userRepo_->findById(userId);
     if (!user.has_value()) throw ServiceException("用户不存在", 404);
     userRepo_->updateReadWatermark(userId, "announcement", lastSeenId);
