@@ -3,6 +3,14 @@
 Qt QML 桌面客户端 + C++ httplib 服务端 + PostgreSQL。C/S 架构，智能推荐（库存匹配 + 健康过滤）、库存与购物清单闭环、评分评论、营养报告。
 
 <p align="center">
+  <a href="https://github.com/Canaohuizhishen/GoCook/actions/workflows/ci.yml"><img src="https://github.com/Canaohuizhishen/GoCook/actions/workflows/ci.yml/badge.svg?branch=dev" alt="CI"></a>
+  <a href="https://github.com/Canaohuizhishen/GoCook/actions/workflows/codeql.yml"><img src="https://github.com/Canaohuizhishen/GoCook/actions/workflows/codeql.yml/badge.svg?branch=dev" alt="CodeQL"></a>
+  <a href="https://github.com/Canaohuizhishen/GoCook/actions/workflows/lint.yml"><img src="https://github.com/Canaohuizhishen/GoCook/actions/workflows/lint.yml/badge.svg?branch=dev" alt="Lint"></a>
+  <a href="https://github.com/Canaohuizhishen/GoCook/actions/workflows/gitleaks.yml"><img src="https://github.com/Canaohuizhishen/GoCook/actions/workflows/gitleaks.yml/badge.svg?branch=dev" alt="gitleaks"></a>
+  <a href="https://codecov.io/gh/Canaohuizhishen/GoCook"><img src="https://codecov.io/gh/Canaohuizhishen/GoCook/branch/dev/graph/badge.svg" alt="coverage"></a>
+</p>
+
+<p align="center">
   <a href="docs/media/GoCook_演示_终版_1080p.mp4">
     <img src="docs/media/GoCook_封面_1920x1080.png" alt="GoCook — 菜谱管理与智能烹饪推荐系统" width="720">
   </a>
@@ -444,3 +452,24 @@ cmake --build build --target docs      # 等价命令（走 CMake 目标）
 | 断网进收藏页 | 有旧数据 → 静默显示旧数据；无数据 → 页面中心「网络连接失败」+ 重试 |
 | 断网进库存页 | 有快照 → 静默显示快照（零提示，与联网状态无异；过滤态按过滤词本地过滤；断网重启仍可用）；无快照 → 页面中心离线视图 + 刷新（文案按失败类型透传：网络层错误「网络连接失败，请检查网络」/ 服务器繁忙「服务器繁忙，请稍后重试」/ 其它服务端文案）；非瞬时失败且有数据 → 页内提示；网络恢复自动重拉（联网即同步）；退避重试兜底：网络层错误与服务器繁忙（503） |
 | 新页面要实现离线视图 | 复用 `NetworkOfflineView` 组件 + ViewModel 加 `xxxLoadFailed` 属性（参考收藏页模式） |
+
+---
+
+## 七、持续集成（CI）
+
+仓库用 GitHub Actions 跑一套「教学版全套 CI」——push 到 `dev` 或提 PR 即自动触发。各工作流分工：
+
+| 工作流 | 做什么 | 触发 |
+|---|---|---|
+| `ci.yml` · build-test | 全量构建 + 483 用例（ctest 串行）+ QML offscreen 冒烟 | push / PR `dev` |
+| `ci.yml` · coverage | Debug + `--coverage` 插桩 → gcovr 汇总（job summary + artifact + Codecov） | push / PR `dev` |
+| `ci.yml` · e2e | 起真实 server + 灌库 → 真链路 E2E 用例 | push `dev` / 手动 |
+| `lint.yml` | clang-format 门禁 + clang-tidy（报告模式，不拦截） | push / PR `dev` |
+| `codeql.yml` | CodeQL C/C++ 安全扫描 | push `dev` + 每周一 + 手动 |
+| `gitleaks.yml` | 密钥扫描（检出即红） | push / PR |
+| `release.yml` | tag `v*` → 打包 server 二进制发 Release；构建镜像推 ghcr.io | tag `v*` / push `dev` / 手动 |
+| `dependabot.yml` | 依赖自动升级 PR（Actions / Docker / compose） | 每周 |
+
+顶部徽章：CI / CodeQL / Lint / gitleaks 四项来自各工作流自带状态，覆盖率来自 Codecov。
+
+> 需要在 **GitHub 网页 / Codecov** 上完成的设置（Rulesets 必需检查、Security 开关、Codecov 接入）无法由代码完成，操作步骤见 **[docs/CI_平台设置指引.md](docs/CI_平台设置指引.md)**。

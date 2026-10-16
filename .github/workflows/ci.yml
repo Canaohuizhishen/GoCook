@@ -190,6 +190,9 @@ jobs:
     name: 覆盖率（gcov + gcovr）
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write   # Codecov OIDC 免令牌上传需要（接入步骤见 docs/CI_平台设置指引.md）
     services:
       postgres:
         image: postgres:15
@@ -292,6 +295,13 @@ jobs:
             build/coverage.xml
             build/coverage/
           if-no-files-found: warn
+
+      - name: 上传覆盖率到 Codecov（OIDC 免令牌；公开仓库）
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./build/coverage.xml
+          use_oidc: true
+          fail_ci_if_error: false   # 覆盖率服务波动不拖垮 CI（教学版非阻塞；排障见 docs/CI_平台设置指引.md）
 
   # ============================================================
   # 端到端：起真实 server 二进制 + 灌库 → GOCOOK_E2E_BASE 激活 2 例 E2E 用例
