@@ -36,7 +36,7 @@ jobs:
       security-events: write   # 上传 SARIF 结果需要
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Qt 6.11（构建 client 需要）
         uses: jurplel/install-qt-action@v4

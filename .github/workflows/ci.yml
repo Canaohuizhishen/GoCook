@@ -70,7 +70,7 @@ jobs:
           --health-retries 5
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ---------- 工具链 ----------
 
@@ -209,7 +209,7 @@ jobs:
           --health-retries 5
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Qt 6.11（qt5compat 为必需附加模块）
         uses: jurplel/install-qt-action@v4
@@ -328,7 +328,7 @@ jobs:
           --health-retries 5
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Qt 6.11（test_client 需要）
         uses: jurplel/install-qt-action@v4
