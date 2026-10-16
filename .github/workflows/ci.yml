@@ -174,7 +174,7 @@ jobs:
       - name: 测试结果写入 commit / PR 检查
         if: always()
         continue-on-error: true   # 报告步骤不拦截构建：失败与否以 ctest 退出码为准
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: ctest (JUnit)
           path: build/test-results.xml
