@@ -1,0 +1,139 @@
+# ============================================================
+# GoCook Release — 打 tag 发二进制 + 构建镜像推 ghcr.io
+# ============================================================
+# 教学版全套 CI · 第 4 批。
+#
+#   release-server：push tag v* → 构建 server（Release 优化，BUILD_TESTING=OFF）→
+#     打包 tar.gz（server 二进制 + libpqxx 动态库 + 运行说明）→ 创建 GitHub Release
+#   docker-ghcr：buildx 构建 Dockerfile 镜像 → ghcr.io/<owner>/gocook-server
+#     tag → <tag> / latest；dev push → dev / sha-<短SHA>；也可手动 dispatch 先验证
+#
+# 说明：
+#   - 本机 Docker Hub 直连超时（走 daocloud 缓存层绕行），故镜像构建只在 CI 实测、不在本机跑
+#   - release-server 仅 tag 触发；docker-ghcr 在 dev push 也会重建（保持 :dev 新鲜；
+#     不设 paths 过滤——它同样会连累 tag 触发，如需再加需拆 workflow）
+# ============================================================
+name: Release
+
+on:
+  push:
+    branches: [dev]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # 发布类任务不互相取消
+
+jobs:
+  release-server:
+    name: 打包 server 二进制 → GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write   # 创建 Release 需要
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装系统依赖与工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-14 g++-14 ninja-build pkg-config \
+            libpq-dev libssl-dev python3-pip
+          sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
+
+      - name: 源码构建 libpqxx 8.0.1（对齐 Dockerfile 构建阶段）
+        run: |
+          git clone --depth 1 --branch 8.0.1 https://github.com/jtv/libpqxx.git /tmp/libpqxx
+          cmake -B /tmp/libpqxx/build -G Ninja -S /tmp/libpqxx \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTING=OFF -DBUILD_DOC=OFF
+          cmake --build /tmp/libpqxx/build --parallel 4
+          sudo cmake --install /tmp/libpqxx/build
+          sudo ldconfig
+
+      - name: 构建 server（Release，BUILD_TESTING=OFF）
+        run: |
+          cmake -B build -G Ninja -S . \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build --target server --parallel 4
+          strip build/server/server
+
+      - name: 打包 tar.gz（二进制 + libpqxx 动态库 + 运行说明）
+        run: |
+          mkdir -p dist/gocook-server
+          cp build/server/server dist/gocook-server/
+          cp /usr/local/lib/libpqxx*.so* dist/gocook-server/ 2>/dev/null || true
+          cat > dist/gocook-server/运行说明.txt <<'EOF'
+          GoCook server — 运行说明
+          ========================
+          依赖（apt）：libpq5 libssl3
+          运行：
+            export GOCOOK_DB_CONN_STRING="dbname=gocookdb user=gocook password=<pw> host=<host> port=5432"
+            export GOCOOK_JWT_SECRET="$(openssl rand -base64 32)"
+            export GOCOOK_PORT=8080
+            LD_LIBRARY_PATH=. ./server
+          说明：
+            - 包内附带 libpqxx 动态库（Ubuntu 仓库为 7.x，本项目需 8.x）——
+              启动时建议 LD_LIBRARY_PATH=. 或把 libpqxx*.so* 复制到系统库目录后 ldconfig
+            - 建表/种子 SQL 见仓库 server/sql/（reset_db.sh 为推荐入口）
+          EOF
+          tar -czf "dist/gocook-server-${GITHUB_REF_NAME}-linux-x86_64.tar.gz" -C dist gocook-server
+          ls -lh dist/
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz --generate-notes --title "GoCook ${GITHUB_REF_NAME}"
+
+  docker-ghcr:
+    name: 构建镜像 → ghcr.io
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write   # 推送 ghcr 镜像需要
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 ghcr.io（用仓库自带的 GITHUB_TOKEN，不涉及任何外部令牌）
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 生成镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # ghcr 镜像名必须全小写（owner 大小写混排会导致 push 报 invalid reference）
+          images: ghcr.io/canaohuizhishen/gocook-server
+          tags: |
+            type=ref,event=tag
+            type=ref,event=branch
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

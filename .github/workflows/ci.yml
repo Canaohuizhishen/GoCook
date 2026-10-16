@@ -2,7 +2,7 @@
 # GoCook CI — 构建 + 全量测试 + QML 冒烟
 # ============================================================
 # 教学版全套 CI（分批迭代：批 1 骨架 → 批 2 lint → 批 3 覆盖率/安全）。本文件含
-# build-test 与 coverage 两个 job；lint / codeql / gitleaks / release 见同目录其它工作流。
+# build-test / coverage / e2e 三个 job；lint / codeql / gitleaks / release 见同目录其它工作流。
 #
 # 本工作流做什么：
 #   1. 全量构建 appclient / test_client / test_services（Ninja，显式 --parallel 4）
@@ -292,3 +292,108 @@ jobs:
             build/coverage.xml
             build/coverage/
           if-no-files-found: warn
+
+  # ============================================================
+  # 端到端：起真实 server 二进制 + 灌库 → GOCOOK_E2E_BASE 激活 2 例 E2E 用例
+  # （仅 push dev / 手动触发；PR 不跑以省时间）
+  # ============================================================
+  e2e:
+    name: 端到端（真实服务端链路）
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: gocook
+          POSTGRES_PASSWORD: gocook123
+          POSTGRES_DB: gocookdb
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U gocook -d gocookdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Qt 6.11（test_client 需要）
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          modules: 'qt5compat'
+          cache: true
+
+      - name: 安装系统依赖与工具链
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-14 g++-14 ninja-build pkg-config \
+            libpq-dev libssl-dev \
+            libgtest-dev libgmock-dev \
+            libgl1-mesa-dev postgresql-client python3-pip ccache
+          sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
+
+      - name: 恢复 ccache 编译缓存（复用 build-test 的缓存）
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-ubuntu-qt6.11-gcc14-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu-qt6.11-gcc14-
+
+      - name: 源码构建 libpqxx 8.0.1（对齐 Dockerfile 构建阶段）
+        run: |
+          git clone --depth 1 --branch 8.0.1 https://github.com/jtv/libpqxx.git /tmp/libpqxx
+          cmake -B /tmp/libpqxx/build -G Ninja -S /tmp/libpqxx \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -DBUILD_TESTING=OFF -DBUILD_DOC=OFF
+          cmake --build /tmp/libpqxx/build --parallel 4
+          sudo cmake --install /tmp/libpqxx/build
+          sudo ldconfig
+
+      - name: 初始化测试数据库（顺序同 server/reset_db.sh）
+        env:
+          PGPASSWORD: gocook123
+        run: |
+          psql -h 127.0.0.1 -U gocook -d gocookdb -v ON_ERROR_STOP=1 -f server/sql/create_all_tables.sql
+          psql -h 127.0.0.1 -U gocook -d gocookdb -v ON_ERROR_STOP=1 -f server/sql/seed_ingredient_nutrition.sql
+          psql -h 127.0.0.1 -U gocook -d gocookdb -v ON_ERROR_STOP=1 -f server/sql/seed_test_data.sql
+
+      - name: 构建 server 与 test_client
+        run: |
+          cmake -B build -G Ninja -S . \
+            -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build --target server test_client --parallel 4
+
+      - name: 启动 server 并等待就绪
+        run: |
+          export GOCOOK_DB_CONN_STRING="dbname=gocookdb user=gocook password=gocook123 host=127.0.0.1 port=5432"
+          export GOCOOK_JWT_SECRET="$(openssl rand -base64 32)"
+          export GOCOOK_PORT=8080
+          nohup ./build/server/server > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/ >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8080/ >/dev/null || { echo "::error::server 30 秒未就绪"; tail -50 server.log; exit 1; }
+          echo "server 已就绪（cwd=仓库根，uploads 走 server/uploads）"
+
+      - name: 运行 E2E 用例（GOCOOK_E2E_BASE 激活 2 例真链路）
+        env:
+          GOCOOK_E2E_BASE: http://127.0.0.1:8080
+        run: ./build/client/tests/test_client --gtest_filter='HttpApiE2E.*'
+
+      - name: 停止 server（并打印日志尾部）
+        if: always()
+        run: |
+          if [ -f server.pid ]; then kill "$(cat server.pid)" 2>/dev/null || true; fi
+          echo "==== server.log（尾部）===="
+          tail -30 server.log || true
