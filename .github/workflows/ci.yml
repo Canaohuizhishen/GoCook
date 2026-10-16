@@ -95,7 +95,7 @@ jobs:
           sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
 
       - name: 恢复 ccache 编译缓存（apt 装 ccache + 自建缓存，不引第三方 action）
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
           # 精确 key 含 sha：每次都保存一份新缓存；restore-keys 前缀匹配保证能吃到旧缓存
@@ -348,7 +348,7 @@ jobs:
           sudo python3 -m pip install --break-system-packages 'cmake>=4.1.1,<5'
 
       - name: 恢复 ccache 编译缓存（复用 build-test 的缓存）
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
           key: ccache-ubuntu-qt6.11-gcc14-${{ github.sha }}
