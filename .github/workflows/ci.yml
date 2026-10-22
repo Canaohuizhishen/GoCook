@@ -297,7 +297,7 @@ jobs:
           if-no-files-found: warn
 
       - name: 上传覆盖率到 Codecov（OIDC 免令牌；公开仓库）
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./build/coverage.xml
           use_oidc: true
