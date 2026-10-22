@@ -118,7 +118,7 @@ jobs:
 
       - name: 生成镜像标签
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # ghcr 镜像名必须全小写（owner 大小写混排会导致 push 报 invalid reference）
           images: ghcr.io/canaohuizhishen/gocook-server
