@@ -2,7 +2,7 @@
 # GoCook 服务端 — 多阶段 Docker 构建
 # =============================================================================
 # 构建阶段
-FROM ubuntu:24.04 AS build
+FROM ubuntu:25.10 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -41,7 +41,7 @@ RUN cmake -B /app/server/build -G Ninja -S /app/server -DBUILD_TESTING=OFF \
 
 # =============================================================================
 # 运行阶段
-FROM ubuntu:24.04
+FROM ubuntu:25.10
 
 ENV DEBIAN_FRONTEND=noninteractive
 
